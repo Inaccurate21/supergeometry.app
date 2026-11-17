@@ -10,6 +10,7 @@
 import { check, done, sketch, profile, XY, YZ, plane, rect, poly, after, bodies, health } from "./kit";
 import { near, faceRef, edgeRefs } from "./grid";
 import type { Feature, SketchEntity } from "../src/doc/types";
+import { meshVolume } from "../src/kernel/health";
 
 const fs: Feature[] = [];
 let t0 = Date.now();
@@ -74,33 +75,29 @@ fs.push({ id: "hollow", name: "Hollow", type: "shell", body: "mouse", faces: [un
 t0 = Date.now();
 const s4 = await stage("shelled 1.6 from below");
 check("the shell in under 30 s (its wall checks took 51 s)", Date.now() - t0 < 30000, Date.now() - t0);
+const mesh4 = meshVolume(bodies().get("mouse")!, 130);
 check("the shell is a thin skin (under 25 % of the solid)", s4.mouse && s4.mouse.v < s3b.mouse.v * 0.25 && s4.mouse.v > s3b.mouse.v * 0.05, [s3b.mouse?.v, s4.mouse?.v]);
 
 // --- 5. Split lines for the buttons, cut down from above to z = 18: one
-// between left and right button, a slot for the wheel.
-//
-// A line right across behind the buttons is beyond the kernel: cut in two by
-// it, the shell's inner (offset) faces come out with their outlines crossed
-// on the surface - invalid at every tolerance, as a cut, a plain Split and a
-// split along it, and its volume measured wrong. It must say so soon, not
-// after three minutes of repair attempts (the wall checks took 51 s of the
-// shell, the repair 186 s of the cut).
-const across = sk("sAcross", XY(60), [rect("across", -40, 52, 40, 52.8)]);
-fs.push({ id: "acrossCut", name: "Line across", type: "extrude", source: prof("sAcross", across), distance: -42, mode: "cut", target: "mouse" } as Feature);
-t0 = Date.now();
-const { errors: ae } = await after(fs);
-const took = Date.now() - t0;
-check("the line across says it can't, within 20 s", ae.length === 1 && took < 20000, { ae, took });
-fs.pop();
-fs.pop();
-
+// between left and right button, one right across behind them, a slot for
+// the wheel. (The line across used to fail: cut in two by it, the shell's
+// inner faces "didn't meet up", at every tolerance - the edge where the inner
+// top meets the inner round was 0.2 mm off. tightenEdges makes it again.)
 const lines = sk("sLines", XY(60), [
   rect("gap", -0.4, -5, 0.4, 14),
   rect("gap2", -0.4, 36, 0.4, 52),
+  rect("across", -40, 52, 40, 52.8),
   rect("slot", -4.5, 14, 4.5, 36),
 ]);
+const across = lines.slice(2, 3);
 fs.push({ id: "splitLines", name: "Button lines", type: "extrude", source: prof("sLines", lines), distance: -42, mode: "cut", target: "mouse" } as Feature);
+t0 = Date.now();
 const s5 = await stage("button lines cut");
+check("the button lines in under 20 s", Date.now() - t0 < 20000, Date.now() - t0);
+// Counted from meshes (the engine's measure is off on the shell's offset faces):
+// the lines and the slot take a few hundred mm3 of 1.6 mm walls, no more.
+const mesh5 = meshVolume(bodies().get("mouse")!, 130);
+check("the lines took 100 to 600 mm3 (meshed)", mesh4 - mesh5 > 100 && mesh4 - mesh5 < 600, [mesh4, mesh5]);
 // (The health report's volume is the engine's measure, off on offset faces: a mesh tells the change.)
 check("the lines took only a sliver", s5.mouse && s5.mouse.v > s4.mouse.v * 0.9 && s5.mouse.v < s4.mouse.v * 1.05, [s4.mouse?.v, s5.mouse?.v]);
 
@@ -177,7 +174,7 @@ console.log("final", JSON.stringify(await stage("final")));
 // MOUSE_OUT=<file>: the project, with the line across and the missed cut at the end (to open in the app).
 if (process.env.MOUSE_OUT) {
   const { writeFileSync } = await import("node:fs");
-  const extra = [sketch("sAcross", XY(60), across), { id: "acrossCut", name: "Line across", type: "extrude", source: prof("sAcross", across), distance: -42, mode: "cut", target: "mouse" }, sketch("sThumbWrong", plane([-40, 0, 0], [-1, 0, 0], [0, 1, 0]), wrong), { id: "thumbWrong", name: "Thumb (missed)", type: "extrude", source: prof("sThumbWrong", wrong), distance: -15, mode: "cut", target: "mouse" }];
+  const extra = [sketch("sThumbWrong", plane([-40, 0, 0], [-1, 0, 0], [0, 1, 0]), wrong), { id: "thumbWrong", name: "Thumb (missed)", type: "extrude", source: prof("sThumbWrong", wrong), distance: -15, mode: "cut", target: "mouse" }];
   writeFileSync(process.env.MOUSE_OUT, JSON.stringify({ format: "super", version: 2, name: "Mouse (stress)", features: [...fs, ...extra], variables: [], views: [], units: "mm", hidden: [], pins: [], names: {}, colors: {}, historyGroups: [] }));
 }
 done();

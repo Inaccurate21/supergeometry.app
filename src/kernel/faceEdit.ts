@@ -10,7 +10,7 @@ import { assembleWire, basicFaceExtrusion, getOC, loft, makeFace, makeBSplineApp
 import { measureVolume } from "./ocFree";
 import type { PlaneDef, Vec3 } from "../doc/types";
 import { add, cross, dist, dot, len, norm, scale, sub, xDirFor } from "../geom";
-import { subShapes, validNow } from "./health";
+import { shapeValid, subShapes, validNow } from "./health";
 import { faceTriangles } from "./meshing";
 import { borderPieces, borderThrough, boundaryEdges, limitPoints, subdivide, type Cage } from "../freeform/cage";
 import { cageToShape } from "./freeform";
@@ -1442,11 +1442,17 @@ export function unify(body: Shape3D, size?: number): Shape3D {
     u.Build();
     // (The kernel's handle to the result is given back once the body has its own: release.ts.)
     const made = u.Shape();
+    let out: Shape3D;
     try {
-      return cast(made) as Shape3D;
+      out = cast(made) as Shape3D;
     } finally {
       made.delete();
     }
+    // Merged into a broken face: the pieces as they were. (A cut across a
+    // shelled mouse's top was sound; merged again, the two pieces of the
+    // round either side of its seam came out a face that "didn't meet up".)
+    if (out.faces.length !== body.faces.length && !shapeValid(out) && shapeValid(body)) return body;
+    return out;
   } catch {
     // Merging is tidying only: if OpenCascade can't (a fillet ending on a face split in two), keep the pieces.
     return body;

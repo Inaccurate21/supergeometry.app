@@ -2591,10 +2591,15 @@ export function threadFace(body: Shape3D, face: Face, pitch: number, left = fals
   const expect = section * Math.hypot(2 * Math.PI * rc, pitch) * ((hi - lo) / pitch);
   // A face that isn't a whole ring (a shank with flats cut along it, a slot
   // across a hole) loses less: what the groove overlaps, if that's no more.
+  // (A whole ring must lose all of it: a groove that came out broken - a
+  // crankshaft's M24 at one start overlapped the pin by half what it should -
+  // took half, and "what the groove overlaps" passed it.)
+  const whole = trueArea(face) > 2 * Math.PI * cy.r * (t1 - t0) * (1 - 1e-4);
   const ok = (r: Shape3D, cut: Shape3D) => {
     const v = Math.abs(measureVolume(r));
     if (!Number.isFinite(v)) return false;
     if (Math.abs(v0 - v - expect) < expect * 0.03) return true;
+    if (whole) return false;
     try {
       const want = Math.abs(measureVolume(fuzzyBoolean("common", body, cut)));
       return want > expect * 0.05 && want < expect * 1.03 && Math.abs(v0 - v - want) < want * 0.03;
@@ -2790,7 +2795,7 @@ function offsetSolid(off: any, shape: Shape3D, by: number): Shape3D | null {
       // shape itself - class names are renamed in the app's build, so a
       // constructor.name test never matched there and the cut came out null.)
       if (got.wrapped.ShapeType() === oc.TopAbs_ShapeEnum.TopAbs_SHELL) got = makeSolid([got as never]);
-      if (Math.abs(measureVolume(got as Shape3D)) > 0) return got as Shape3D;
+      if (Math.abs(measureVolume(got as Shape3D)) > 0) return tightenEdges(got as Shape3D);
     } catch (err) {
       if (isFault(err)) throw err;
     } finally {
@@ -2798,6 +2803,102 @@ function offsetSolid(off: any, shape: Shape3D, by: number): Shape3D | null {
     }
   }
   return null;
+}
+
+/**
+ * An offset solid with its loose edges made again. Where two offset faces
+ * meet smoothly (a shelled mouse's top and the round along its rim), the
+ * kernel's edge between them strays (0.2 mm off, 0.14 mm allowed) while its
+ * curves on the two faces are exact: any cut across that edge left the faces
+ * "not meeting up", at every tolerance. Each such edge is made again from its
+ * curve on each face (one edge per face), the faces with them, all sewn back
+ * together. Kept only if that comes out one sound solid of the same volume;
+ * else the solid as it was.
+ */
+function tightenEdges(s: Shape3D): Shape3D {
+  const oc = getOC();
+  const size = sizeOf(s);
+  const loose = size * 1e-5;
+  if (!s.edges.some((e) => oc.BRep_Tool.Tolerance(e.wrapped) > loose)) return s;
+  const gc: { delete(): void }[] = [];
+  const keep = <T extends { delete(): void }>(x: T): T => (gc.push(x), x);
+  try {
+    const copy = deepCopy(s);
+    const faces = copy.faces;
+    // Per face: its loose edges and what takes their place there.
+    const swaps = new Map<number, [any, any][]>();
+    for (const e of copy.edges) {
+      if (oc.BRep_Tool.Tolerance(e.wrapped) <= loose) continue;
+      const owners = faces.map((f, i) => [f, i] as const).filter(([f]) => f.edges.some((g) => g.wrapped.IsSame(e.wrapped)));
+      // (A seam - one face on both sides - or an edge of three faces: left as it is.)
+      if (owners.length !== 2) continue;
+      const made = owners.map(([f]) => {
+        const c2 = keep(new oc.BRepAdaptor_Curve2d(e.wrapped, f.wrapped));
+        const mk = keep(new oc.BRepBuilderAPI_MakeEdge(c2.Curve(), oc.BRep_Tool.Surface(f.wrapped), c2.FirstParameter(), c2.LastParameter()));
+        const edge = mk.Edge();
+        oc.BRepLib.BuildCurve3d(edge, 1e-7, oc.GeomAbs_Shape.GeomAbs_C1, 14, 200);
+        return edge;
+      });
+      // The two must be the same curve (exact curves on both faces), within what an edge may be off.
+      const [a, b] = made.map((x) => keep(new oc.BRepAdaptor_Curve(x)));
+      let apart = 0;
+      for (let k = 0; k <= 32; k++) {
+        const p = a.Value(a.FirstParameter() + ((a.LastParameter() - a.FirstParameter()) * k) / 32);
+        const q = b.Value(b.FirstParameter() + ((b.LastParameter() - b.FirstParameter()) * k) / 32);
+        apart = Math.max(apart, p.Distance(q));
+        p.delete();
+        q.delete();
+      }
+      if (apart > loose) continue;
+      owners.forEach(([, i], k) => swaps.set(i, [...(swaps.get(i) ?? []), [e.wrapped, made[k]]]));
+    }
+    if (!swaps.size) return s;
+    // A face's wire with its loose edges swapped, in its own order and directions (a seam twice).
+    const rewire = (w: any, swap: [any, any][]) => {
+      const tb = keep(new oc.TopoDS_Builder());
+      const nw = new oc.TopoDS_Wire();
+      tb.MakeWire(nw);
+      const ex = keep(new oc.TopExp_Explorer(w, oc.TopAbs_ShapeEnum.TopAbs_EDGE, oc.TopAbs_ShapeEnum.TopAbs_SHAPE));
+      for (; ex.More(); ex.Next()) {
+        const ed = ex.Current();
+        const to = swap.find(([o]) => ed.IsSame(o));
+        tb.Add(nw, to ? to[1].Oriented(ed.Orientation()) : ed);
+      }
+      return nw;
+    };
+    const sew = keep(new oc.BRepBuilderAPI_Sewing(size * 1e-6, true, true, true, false));
+    faces.forEach((f, i) => {
+      const swap = swaps.get(i);
+      if (!swap) return void sew.Add(f.wrapped);
+      const fwd = oc.TopoDS.Face(f.wrapped.Oriented(oc.TopAbs_Orientation.TopAbs_FORWARD));
+      const outer = oc.BRepTools.OuterWire(fwd);
+      const mk = keep(new oc.BRepBuilderAPI_MakeFace(oc.BRep_Tool.Surface(fwd), rewire(outer, swap), true));
+      const ex = keep(new oc.TopExp_Explorer(fwd, oc.TopAbs_ShapeEnum.TopAbs_WIRE, oc.TopAbs_ShapeEnum.TopAbs_SHAPE));
+      for (; ex.More(); ex.Next()) if (!ex.Current().IsSame(outer)) mk.Add(rewire(oc.TopoDS.Wire(ex.Current()), swap));
+      if (!mk.IsDone()) throw new Error("face");
+      const nf = mk.Face();
+      sew.Add(f.wrapped.Orientation() === oc.TopAbs_Orientation.TopAbs_REVERSED ? nf.Reversed() : nf);
+    });
+    sew.Perform(keep(new oc.Message_ProgressRange()));
+    const shells = subShapes(cast(sew.SewedShape()) as Shape3D, "SHELL");
+    if (shells.length !== 1) return s;
+    const ms = keep(new oc.BRepBuilderAPI_MakeSolid());
+    ms.Add(oc.TopoDS.Shell(shells[0]));
+    const solid = ms.Solid();
+    oc.BRepLib.OrientClosedSolid(solid);
+    const fix = keep(new oc.ShapeFix_Solid());
+    fix.Init(solid);
+    fix.Perform(keep(new oc.Message_ProgressRange()));
+    const out = cast(fix.Solid()) as Shape3D;
+    const v0 = Math.abs(measureVolume(s));
+    const ok = shapeValid(out) && subShapes(out, "SOLID").length === 1 && openEdges(out).length === 0 && Math.abs(Math.abs(measureVolume(out)) - v0) <= v0 * 1e-4;
+    return ok ? out : s;
+  } catch (err) {
+    if (isFault(err)) throw err;
+    return s;
+  } finally {
+    for (const x of gc.reverse()) x.delete();
+  }
 }
 
 /**
