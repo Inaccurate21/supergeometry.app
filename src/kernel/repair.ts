@@ -363,6 +363,13 @@ export function repairShape(input: Shape3D, o: RepairOptions = {}): { shape: Sha
   }
   const sameShape = (s: Shape3D, hs: Health) => {
     if (Math.abs(sizeOf(s) - size) > size * 1e-3) return false;
+    // A sound solid measuring below nothing or more than its box is a broken
+    // "fix": said at once. (Meshed to compare, each took 13 s - a cut through a
+    // shelled mouse's curved top spent three minutes here before it said no.)
+    if (hs.valid && hs.solids) {
+      const b = s.boundingBox;
+      if (!(hs.volume > 0) || hs.volume > b.width * b.height * b.depth * 1.001) return false;
+    }
     if (m0 !== undefined) {
       try {
         return Math.abs(meshVolume(s, size) - m0) <= m0 * 5e-3;

@@ -2650,31 +2650,27 @@ const WALLS_CLASH =
   "Walls this thick don't fit everywhere: somewhere two faces are closer together than two walls (a hole near a side, a pocket near a hole), and their walls would run into each other - try a thinner wall";
 
 /**
- * Does a shell have a wall behind every face it kept? Small cubes half a wall
- * deep behind spots spread over each face (all of a cube within a wall's
- * thickness of the face, so in the wall wherever it is in the body): as much
- * of the cubes must be in the shell as is in the body. (Two joins with all
- * the cubes at once; 600 cubes at most, shared out among the faces.)
+ * Does a shell have a wall behind every face it kept? Spots half a wall deep
+ * behind points spread over each face (so in the wall wherever it is in the
+ * body): every one of them that is in the body must be in the shell too.
+ * (600 spots at most, shared out among the faces. Asked point by point: done
+ * with booleans against little cubes, the check of a shelled mouse - spline
+ * walls, offset faces inside - took half a minute.)
  */
 function wallsStand(body: Shape3D, shell: Shape3D, kept: Face[], t: number): boolean {
   if (!kept.length || !(t > 0)) return true;
   try {
     const each = Math.max(1, Math.min(6, Math.floor(600 / kept.length)));
     const every = Math.ceil(kept.length / 600);
-    const h = t / 6;
     const at: Vec3[] = [];
     for (const [i, g] of kept.entries()) {
       if (i % every) continue;
       for (const { p, n } of spotsOn(body, g, each)) at.push(sub(p, scale(n, t / 2)));
     }
     if (!at.length) return true;
-    const probes = cubesAt(at, h);
-    const inBody = body.intersect(probes);
-    const want = isEmpty(inBody) ? 0 : Math.abs(measureVolume(inBody));
-    if (!(want > 0)) return true;
-    const inShell = shell.intersect(probes);
-    const got = isEmpty(inShell) ? 0 : Math.abs(measureVolume(inShell));
-    return got >= want * (1 - 1e-3);
+    const inBody = insideOf(body, at);
+    const inShell = insideOf(shell, at.filter((_, k) => inBody[k]));
+    return inShell.every(Boolean);
   } catch {
     // Can't tell: the usual checks speak for it.
     return true;
@@ -2682,29 +2678,30 @@ function wallsStand(body: Shape3D, shell: Shape3D, kept: Face[], t: number): boo
 }
 
 /**
- * Cubes `2h` across, one about each point, as one shape. One cube is made and
- * the others are that cube moved (a handle each): made one by one, every cube
- * stayed in the kernel for good (release.ts) - 250 of them with each check of
- * a 40-face part's shell, megabytes with every move of a drag.
+ * Which of the points are inside the solid (or any of its solids). (The
+ * kernel's distance measure says when a point is inside a solid; its classifier
+ * isn't in this build.)
  */
-function cubesAt(at: Vec3[], h: number): Shape3D {
+function insideOf(s: Shape3D, at: Vec3[]): boolean[] {
   const oc = getOC();
-  const first = makeBox([at[0][0] - h, at[0][1] - h, at[0][2] - h], [at[0][0] + h, at[0][1] + h, at[0][2] + h]) as Shape3D;
-  if (at.length === 1) return first;
-  const cubes: Shape3D[] = [first];
-  for (const p of at.slice(1)) {
-    const move = new oc.gp_Trsf();
-    const by = new oc.gp_Vec(p[0] - at[0][0], p[1] - at[0][1], p[2] - at[0][2]);
-    move.SetTranslation(by);
-    const place = new oc.TopLoc_Location(move);
-    const moved = first.wrapped.Moved(place, true);
+  const out = at.map(() => false);
+  const solids = subShapes(s, "SOLID");
+  for (const solid of solids) {
+    const d = new oc.BRepExtrema_DistShapeShape();
     try {
-      cubes.push(cast(moved) as Shape3D);
+      d.LoadS1(solid);
+      at.forEach((q, k) => {
+        if (out[k]) return;
+        const point = makeVertex(q);
+        d.LoadS2(point.wrapped);
+        d.Perform();
+        if (d.IsDone() && d.InnerSolution()) out[k] = true;
+      });
     } finally {
-      for (const x of [move, by, place, moved]) x.delete();
+      d.delete();
     }
   }
-  return makeCompound(cubes) as unknown as Shape3D;
+  return out;
 }
 
 /** Up to `n` points spread over a face (the middles of triangles of its mesh, taken evenly through them), each with the face's outward normal there. */
@@ -2741,7 +2738,6 @@ function hollowInside(body: Shape3D, shell: Shape3D, kept: Face[], t: number): b
     const skin = subShapes(body, "SHELL");
     if (!skin.length) return true;
     const every = Math.ceil(kept.length / 40);
-    const h = t / 6;
     const at: Vec3[] = [];
     // (One measurer for each skin, asked about every spot: one made for each
     // spot kept what it worked out about the whole skin, for good - release.ts.)
@@ -2770,12 +2766,8 @@ function hollowInside(body: Shape3D, shell: Shape3D, kept: Face[], t: number): b
       for (const d of far) d.delete();
     }
     if (!at.length) return true;
-    const probes = cubesAt(at, h);
-    const inBody = body.intersect(probes);
-    const deep = isEmpty(inBody) ? 0 : Math.abs(measureVolume(inBody));
-    if (!(deep > 0)) return true;
-    const left = shell.intersect(probes);
-    return (isEmpty(left) ? 0 : Math.abs(measureVolume(left))) <= deep * 1e-3;
+    const inBody = insideOf(body, at);
+    return !insideOf(shell, at.filter((_, k) => inBody[k])).some(Boolean);
   } catch {
     // Can't tell: the usual checks speak for it.
     return true;
@@ -3076,6 +3068,9 @@ function resolveAxis(a: AxisRef, ctx: Ctx): { origin: Vec3; dir: Vec3 } {
 }
 
 /** Put a new solid into the model: new body, or join/cut a target. */
+/** A cut that took nothing away: said (a pocket drawn on the wrong side did nothing, without a word). */
+const MISSED_CUT = "This cut doesn't reach the body, so nothing was cut - check which way it goes (Flip), or make it longer.";
+
 function combine(id: string, mode: string, target: string | undefined, solid: Shape3D, negative: boolean, ctx: Ctx): void {
   // (A mode that isn't one - a damaged file: the body was left as it was, and nothing said so.)
   if (typeof mode === "string" && !["auto", "new", "join", "cut", "intersect"].includes(mode)) throw new Error(DAMAGED_TEXT);
@@ -3085,7 +3080,9 @@ function combine(id: string, mode: string, target: string | undefined, solid: Sh
   // body it overlaps. (It used to make a separate body: a nave "added" to its
   // tower stood beside it as Body 2.)
   if (!target && m === "cut") {
-    for (const hit of overlapping(solid, ctx)) {
+    const hits = overlapping(solid, ctx);
+    if (!hits.length) editNotes.push(MISSED_CUT);
+    for (const hit of hits) {
       const t = ctx.bodies.get(hit)!;
       const out = checkedBoolean("cut", t, solid);
       if (isEmpty(out)) ctx.bodies.delete(hit);
@@ -3113,6 +3110,7 @@ function combine(id: string, mode: string, target: string | undefined, solid: Sh
   }
   const t = need(ctx.bodies, target);
   const result = m === "join" ? checkedBoolean("fuse", t, solid) : m === "cut" ? checkedBoolean("cut", t, solid) : t;
+  if (m === "cut" && !isEmpty(result) && Math.abs(volumeOf(result) - volumeOf(t)) <= Math.abs(volumeOf(t)) * 1e-9) editNotes.push(MISSED_CUT);
   if (isEmpty(result)) ctx.bodies.delete(target);
   else ctx.bodies.set(target, result);
 }
