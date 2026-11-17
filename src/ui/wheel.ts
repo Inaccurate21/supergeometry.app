@@ -141,6 +141,32 @@ const rankOf = (id: string) => {
 };
 /** Where a ring's tools go, most used first: eighths of a turn from the way in - straight on, then either side, on round. */
 const ORDER = [0, 1, -1, 2, -2, 3, -3, 4];
+
+/**
+ * Each group's places, most used first (in ORDER from the way in; past eight,
+ * the outer band). A tool has its place whatever is picked, so the hand learns
+ * it: one that doesn't fit the pick stays there greyed, saying why. (Kinds
+ * worth a tap of their own - the planes most used, Pattern's two - are
+ * places of their own; the whole list is still a tap further, under Plane.)
+ * A tool not named here comes after, in the first places left.
+ */
+const SLOTS: Record<string, string[]> = {
+  create: ["extrude", "revolve", "sweep", "loft"],
+  combine: ["subtract", "union", "intersect", "split"],
+  modify: ["fillet", "chamfer", "shell", "offsetFace", "offsetEdge", "thread", "wrap", "fix", "replace"],
+  construct: ["offset", "mid", "plane", "axis", "proje", "3pt", "parallel", "angle"],
+  transform: ["move", "mirror", "linear", "circular", "scale", "translate", "rotate", "align"],
+  freeform: ["ff-box", "ff-cylinder", "ff-sphere", "ff-plane", "faceFreeform", "connect", "editFreeform"],
+};
+/**
+ * The top place's: something picked, what it offers first; nothing picked, the
+ * same places for the view's (Measure, Section View, Variables), Insert and BIM
+ * where Color and Transparency are ("": an empty place).
+ */
+const OWN_PICKED = ["deselect", "delete", "measure", "section", "color", "opacity", "variables", "isolate"];
+const OWN_FREE = ["", "", "measure", "section", "insert", "bim", "variables", "isolate"];
+/** A picked thing's tool that is one of the places' under another name. */
+const ALIAS: Record<string, string> = { patl: "linear", patc: "circular", moveBody: "move", deleteBody: "delete", planePerp: "perp", planeEdge: "angle" };
 /** The model's first ring, clockwise from the top: eight places, each always the same. */
 const MODEL_RING = ["create", "combine", "modify", "construct", "transform", "freeform", "sketch", OWN];
 
@@ -166,6 +192,8 @@ interface Cell {
   item: ToolItem;
   /** A new part of the list starts here. */
   gap?: boolean;
+  /** Not for what's picked: its place kept, greyed, saying this ("": an empty place). */
+  off?: string;
 }
 interface Sector {
   id: string;
@@ -182,6 +210,8 @@ interface Sector {
   mark: boolean;
   /** An empty place (the others keep the places they always have). */
   blank?: boolean;
+  /** Its ring as it opens: `cells` each at its own place, the ones not for this pick greyed there. */
+  ring?: Cell[];
   /** A colour as its picture, in place of an icon. */
   swatch?: string;
 }
@@ -220,7 +250,7 @@ const clamp = (v: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, v
 /** Everything a ring shows, as text: the same again needs no drawing again. */
 function signature(sectors: Sector[]): string {
   const tool = (it: ToolItem): unknown[] => [it.id, it.label, it.icon, it.sub, !!it.active, !!it.pulse, it.swatch, it.shortcut, kidsOf(it).map(tool)];
-  return JSON.stringify(sectors.map((s) => [s.id, s.label, s.icon, !!s.on, s.mark, s.why, s.item && tool(s.item), s.cells.map((c) => [!!c.gap, tool(c.item)])]));
+  return JSON.stringify(sectors.map((s) => [s.id, s.label, s.icon, !!s.on, s.mark, s.why, s.item && tool(s.item), s.cells.map((c) => [!!c.gap, tool(c.item)]), s.ring?.map((c) => [c.off ?? null, c.item.id])]));
 }
 
 /** What a ring shows, its outer band too. */
@@ -839,18 +869,33 @@ export class Wheel implements WheelHandle {
     const shown = usable(column).filter(notSep);
     // (Move's kinds - Move/Rotate, Translate, Rotate Around Axis - are Transform's own tools: no ring more to reach them.)
     const flat = (items: ToolItem[]) => items.flatMap((it) => (it.id === "moveKinds" ? kidsOf(it) : [it]));
-    const ranked = (cells: Cell[]) =>
-      cells
-        .map((c, k) => ({ c, k }))
-        .sort((x, y) => rankOf(x.c.item.id) - rankOf(y.c.item.id) || x.k - y.k)
-        .map(({ c }) => c);
+    // Every tool there is, on or off, by id: a place kept for one that's off shows its name and why.
+    const known = new Map<string, ToolItem>();
+    const learn = (items: ToolItem[]) => {
+      for (const it of items) {
+        if (!known.has(it.id)) known.set(it.id, it);
+        learn(it.children ?? []);
+      }
+    };
+    learn(main);
+    learn(column);
+    learn(bar);
+    const pick = shown.find((it) => it.id === "deselect")?.sub ?? "";
+    const why = (id: string) => {
+      const it = known.get(id);
+      if (!it?.label) return "";
+      const off = [...column, ...bar].find((c) => (c.id === id || ALIAS[c.id] === id) && c.disabled && c.why);
+      return `${it.label}: ${off?.why ?? (pick ? `not for ${pick}` : "pick something first")}`;
+    };
+    const ringFor = (items: ToolItem[], slots: string[]) => this.placed(items, slots, why, known);
     let groups: Sector[];
-    let own: Cell[] = [];
-    if (shown.length > 0 && shown.every((it) => main.some((g) => g.id === it.id))) {
+    let ownItems: ToolItem[] = [];
+    if (!pick && shown.length > 0 && shown.every((it) => main.some((g) => g.id === it.id))) {
       // Nothing picked: the column is the main tools themselves.
       groups = shown.map((g) => {
-        const cells = ranked(flat(kidsOf(g)).map((item) => ({ item })));
-        return { id: g.id, label: g.label, icon: g.icon, cells, item: g.children?.length ? undefined : g, mark: !!g.pulse || marked(cells) };
+        const ring = ringFor(flat(kidsOf(g)), SLOTS[g.id] ?? []);
+        const cells = ring.filter((c) => c.off === undefined);
+        return { id: g.id, label: g.label, icon: g.icon, cells, ring, item: g.children?.length ? undefined : g, mark: !!g.pulse || marked(cells) };
       });
     } else {
       // Something picked: its tools, each in the group the main tool of that name is in.
@@ -862,28 +907,70 @@ export class Wheel implements WheelHandle {
         }
       };
       for (const g of main) walk([g], g.id);
-      const groupOf = (id: string) => GROUP_OF[id] ?? where.get(id) ?? OWN;
-      const lists = new Map<string, Cell[]>(main.map((g) => [g.id, []]));
-      for (const it of flat(shown)) (lists.get(groupOf(it.id)) ?? own).push({ item: it });
+      const groupOf = (id: string) => GROUP_OF[id] ?? where.get(ALIAS[id] ?? id) ?? OWN;
+      const lists = new Map<string, ToolItem[]>(main.map((g) => [g.id, []]));
+      for (const it of flat(shown)) {
+        const list = lists.get(groupOf(it.id));
+        if (list) list.push(it);
+        else ownItems.push(it);
+      }
       // A group with nothing for this pick says why: its tools that are off, with their reasons.
       const off = new Map<string, string[]>();
       for (const it of column) if (it.disabled && it.why && it.label) off.set(groupOf(it.id), [...(off.get(groupOf(it.id)) ?? []), `${it.label}: ${it.why}`]);
-      const what = shown.find((it) => it.id === "deselect")?.sub;
       groups = main.map((g) => {
-        const cells = ranked(lists.get(g.id)!);
-        const why = cells.length ? undefined : off.get(g.id)?.slice(0, 3).join(" · ") ?? `${g.label} has nothing for ${what ?? "this"}`;
-        return { id: g.id, label: g.label, icon: g.icon, cells, why, mark: marked(cells) };
+        const ring = ringFor(lists.get(g.id)!, SLOTS[g.id] ?? []);
+        const cells = ring.filter((c) => c.off === undefined);
+        const why = cells.length ? undefined : off.get(g.id)?.slice(0, 3).join(" · ") ?? `${g.label} has nothing for ${pick || "this"}`;
+        return { id: g.id, label: g.label, icon: g.icon, cells, ring: cells.length ? ring : undefined, why, mark: marked(cells) };
       });
     }
-    const pick = shown.find((it) => it.id === "deselect")?.sub ?? "";
-    own = [...own, ...(this.extras?.() ?? []).map((item) => ({ item }))];
-    const view = ranked(usable(bar).filter(notSep).map((item): Cell => ({ item }))).map((c, i): Cell => ({ ...c, gap: i === 0 && own.length > 0 }));
-    // The More group's own (Insert, BIM) join it: eight places on the ring.
+    ownItems = [...ownItems, ...(this.extras?.() ?? [])];
+    const view = usable(bar).filter(notSep);
+    // The More group's own (Insert, BIM) join the top place: eight places on the ring.
     const more = groups.find((g) => g.id === "more");
     groups = groups.filter((g) => g !== more);
-    const rest = (more?.cells ?? []).map((c, i): Cell => ({ ...c, gap: i === 0 }));
-    const top: Sector = { id: OWN, label: pick || "More", icon: pick ? "pointer" : "more", cells: [...own, ...view, ...rest], mark: marked(view) };
+    const rest = more?.cells.map((c) => c.item) ?? [];
+    const ring = ringFor([...ownItems, ...view, ...rest], pick ? OWN_PICKED : OWN_FREE);
+    const cells = ring.filter((c) => c.off === undefined);
+    const top: Sector = { id: OWN, label: pick || "More", icon: pick ? "pointer" : "more", cells, ring, mark: marked(cells.filter((c) => view.includes(c.item))) };
     return { sectors: compassOf(MODEL_RING, [top, ...groups]), pick };
+  }
+
+  /**
+   * A group's tools at their places (`slots`, most used first): each found
+   * among `items` (or their kinds, or under another name - ALIAS); a place whose
+   * tool isn't there kept, greyed, saying why; then the tools no place names,
+   * most used first.
+   */
+  private placed(items: ToolItem[], slots: string[], why: (id: string) => string, known: Map<string, ToolItem>): Cell[] {
+    const found = new Map<string, ToolItem>();
+    const top = new Map<ToolItem, ToolItem>();
+    const look = (list: ToolItem[], root?: ToolItem) => {
+      for (const it of list) {
+        const id = ALIAS[it.id] ?? it.id;
+        if (!found.has(id)) found.set(id, it);
+        top.set(it, root ?? it);
+        look(kidsOf(it), root ?? it);
+      }
+    };
+    look(items);
+    const used = new Set<ToolItem>();
+    const ring = slots.map((id): Cell => {
+      const it = found.get(id);
+      if (it) {
+        used.add(top.get(it) ?? it);
+        return { item: it };
+      }
+      const base = known.get(id);
+      return { item: { id, label: base?.label ?? "", icon: base?.icon ?? "more" }, off: why(id) };
+    });
+    const extras = items
+      .filter((it) => !used.has(it))
+      .map((item, k) => ({ item, k }))
+      .sort((x, y) => rankOf(x.item.id) - rankOf(y.item.id) || x.k - y.k)
+      .map(({ item }) => item);
+    // (Never in a greyed place: that one's tool would be somewhere else whenever it is on.)
+    return [...ring, ...extras.map((item): Cell => ({ item }))];
   }
 
   /**
@@ -948,6 +1035,11 @@ export class Wheel implements WheelHandle {
     const { column, bar } = this.host.ui.shown();
     const tools = usable(column).filter(notSep);
     const byId = new Map(tools.map((t) => [t.id, t]));
+    const known = new Map(column.filter(notSep).map((t) => [t.id, t]));
+    const why = (id: string) => {
+      const it = known.get(id);
+      return it?.label ? `${it.label}: ${it.why ?? "not now"}` : "";
+    };
     const placed = new Set<string>();
     const sectors: Sector[] = [];
     for (const spec of SKETCH) {
@@ -958,13 +1050,11 @@ export class Wheel implements WheelHandle {
         sectors.push({ id: it.id, label: spec.label ?? it.label, icon: it.icon, cells: [], item: it, on: !!it.active, mark: !!it.pulse });
         continue;
       }
-      const cells = spec.tools.flatMap((id): Cell[] => {
-        const it = byId.get(id);
-        if (!it) return [];
-        placed.add(id);
-        return [{ item: it }];
-      });
-      sectors.push({ id: spec.id, label: spec.label, icon: spec.icon, cells, mark: false });
+      // (Each tool at its own place: one that's off now stays there, greyed.)
+      const ring = this.placed(spec.tools.flatMap((id) => byId.get(id) ?? []), spec.tools, why, known);
+      for (const id of spec.tools) if (byId.has(id)) placed.add(id);
+      const cells = ring.filter((x) => x.off === undefined);
+      sectors.push({ id: spec.id, label: spec.label, icon: spec.icon, cells, ring, mark: false });
     }
     // More: what isn't named above (Other plane, a tool added since), then the bottom bar's (the line
     // type, Normal to Sketch) and the constraints column on or off. (Settings are on their own wheel.)
@@ -1008,8 +1098,11 @@ export class Wheel implements WheelHandle {
     const step = TAU / n;
     const e = Math.round((dir + Math.PI / 2) / step);
     const sectors = Array.from({ length: n }, blank);
-    cells.slice(0, n).forEach((c, k) => (sectors[(((e + ORDER[k]) % n) + n) % n] = this.sectorOf(c.item)));
-    const rest = cells.slice(n);
+    // (A place kept for a tool that isn't for this pick: greyed, its name, a tap says why.)
+    const at = (c: Cell): Sector =>
+      c.off === undefined ? this.sectorOf(c.item) : c.item.label ? { id: c.item.id, label: c.item.label, icon: c.item.icon, cells: [], why: c.off, mark: false } : blank();
+    cells.slice(0, n).forEach((c, k) => (sectors[(((e + ORDER[k]) % n) + n) % n] = at(c)));
+    const rest = cells.slice(n).filter((c) => c.off === undefined);
     const m = this.m;
     const w = TAU / Math.max(n, rest.length);
     const r0 = m.r1 + m.gap;
@@ -1206,7 +1299,7 @@ export class Wheel implements WheelHandle {
         const k = ring.sectors.findIndex((s) => s.id === l.id && !s.item && s.cells.length > 0);
         const c = k < 0 ? ring.fan.find((f) => f.item.id === l.id && opens(f.item)) : undefined;
         if (k < 0 && !c) break;
-        const cells = c ? this.kindsOf(c.item) : ring.sectors[k].cells;
+        const cells = c ? this.kindsOf(c.item) : (ring.sectors[k].ring ?? ring.sectors[k].cells);
         const d = c ? (c.a0 + c.a1) / 2 : this.midOf(k, ring.sectors.length);
         stack.push({ ...l, sectors: ring.sectors, fan: ring.fan, at: k, dir });
         ring = this.ringOf(cells, d);
@@ -1428,7 +1521,7 @@ export class Wheel implements WheelHandle {
     if (this.pressed !== null && !this.grab && hit >= SECTOR && hit < CELL && Math.hypot(x - this.cx, y - this.cy) > (this.m.r0 + this.m.r1) / 2 && Math.hypot(x - this.pressAt.x, y - this.pressAt.y) > 12) {
       const i = hit - SECTOR;
       const s = this.sectors[i];
-      if (!s.item && s.cells.length) return this.enter(s.id, s.cells, this.midOf(i), i);
+      if (!s.item && s.cells.length) return this.enter(s.id, s.ring ?? s.cells, this.midOf(i), i);
     }
     // (The same thing as before: nothing to do. This runs on every move.)
     if (hit !== this.hot) this.point(hit);
@@ -1481,7 +1574,7 @@ export class Wheel implements WheelHandle {
     if (!s || s.blank) return;
     if (s.item) return this.run(s.item);
     if (!s.cells.length) return this.say(this.midOf(i), this.reach() + 8, s.why ?? `${s.label} has nothing here`, { why: true });
-    this.enter(s.id, s.cells, this.midOf(i), i);
+    this.enter(s.id, s.ring ?? s.cells, this.midOf(i), i);
   }
 
   /** A tap on the middle: back a ring; on the first, one up at the pointer closes, one kept somewhere folds or unfolds - twice, the model's is let go. */
