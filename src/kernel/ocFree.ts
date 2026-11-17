@@ -89,6 +89,8 @@ function props(s: Measurable, kind: "volume" | "area") {
 
 /** The volume (signed: below 0 for a solid inside out), as replicad's but to a millionth. */
 export function measureVolume(s: Measurable): number {
+  const own = ownSums(s);
+  if (own) return own.vol;
   const p = props(s, "volume");
   try {
     return p.Mass();
@@ -97,8 +99,261 @@ export function measureVolume(s: Measurable): number {
   }
 }
 
+// Faces swept from a curve (an extruded or revolved spline, and offsets of
+// them) are integrated by OpenCascade over the whole sweep at one fineness,
+// blind to the curve's own pieces: the side of an extruded closed spline
+// measured 14 049 mm² for 13 820, its solid 316 000 mm³ for 284 800 (11 %).
+// (OpenCascade's Gauss-Kronrod measure gets volumes right but took 11 s on a
+// shelled mouse; its areas have no such measure.) Bodies and faces with such
+// faces are integrated here instead, piece by piece:
+// Green's theorem round each face's outline in its own (u, v), so
+// ∫∫ f du dv = ∮ (∫ f du) dv, with f = |Su × Sv| for area and the divergence
+// theorem's (X - R)·N / 3 for volume.
+//
+// (Five points a piece: every piece is smooth, cut at the surface's and the
+// outline's joints and where the outline crosses the surface's.)
+const GAUSS: [number, number][] = [
+  [-0.906179845938664, 0.2369268850561891],
+  [-0.5384693101056831, 0.4786286704993665],
+  [0, 0.5688888888888889],
+  [0.5384693101056831, 0.4786286704993665],
+  [0.906179845938664, 0.2369268850561891],
+];
+
+function sweptFace(f: Face): boolean {
+  const oc = getOC();
+  const T = oc.GeomAbs_SurfaceType;
+  const a = new oc.BRepAdaptor_Surface(f.wrapped, true);
+  try {
+    const t = a.GetType();
+    return t === T.GeomAbs_SurfaceOfExtrusion || t === T.GeomAbs_SurfaceOfRevolution || t === T.GeomAbs_OffsetSurface || t === T.GeomAbs_OtherSurface;
+  } finally {
+    a.delete();
+  }
+}
+
+/** Breaks of [a, b]: its ends and the given joints inside, each piece cut in `k`. */
+function pieces(a: number, b: number, joints: number[], k: number): number[] {
+  const lo = Math.min(a, b);
+  const hi = Math.max(a, b);
+  const at = [lo, ...joints.filter((x) => x > lo + 1e-12 * (1 + Math.abs(lo)) && x < hi - 1e-12 * (1 + Math.abs(hi))), hi];
+  const out: number[] = [];
+  for (let i = 0; i + 1 < at.length; i++) for (let j = 0; j < k; j++) out.push(at[i] + ((at[i + 1] - at[i]) * j) / k);
+  out.push(hi);
+  return a <= b ? out : out.reverse();
+}
+
+/** A face's sums: area, ∫ X dA, its share of the volume (taken from R) and of ∫ (X - R) dV. */
+type Sums = { area: number; m: Vec3; vol: number; mv: Vec3 };
+
+/** A face's sums, integrated piece by piece, the pieces halved until two finenesses agree to a millionth. */
+function faceSums(f: Face, R: Vec3, size: number): Sums {
+  const oc = getOC();
+  const S = oc.GeomAbs_Shape.GeomAbs_C2;
+  const surf = new oc.BRepAdaptor_Surface(f.wrapped, true);
+  const g = new oc.BRepGProp_Face(f.wrapped, false);
+  const p = new oc.gp_Pnt();
+  const n = new oc.gp_Vec();
+  const q = new oc.gp_Pnt2d();
+  const d = new oc.gp_Vec2d();
+  const ex = new oc.TopExp_Explorer(f.wrapped, oc.TopAbs_ShapeEnum.TopAbs_EDGE, oc.TopAbs_ShapeEnum.TopAbs_SHAPE);
+  const intervals = (count: number, fill: (arr: InstanceType<typeof oc.NCollection_Array1_double>) => void) => {
+    const arr = new oc.NCollection_Array1_double(1, count + 1);
+    try {
+      fill(arr);
+      const out: number[] = [];
+      for (let i = 1; i <= count + 1; i++) out.push(arr.Value(i));
+      return out;
+    } finally {
+      arr.delete();
+    }
+  };
+  const edges: { c: InstanceType<typeof oc.BRepAdaptor_Curve2d>; sign: number; t0: number; t1: number; joints: number[] }[] = [];
+  try {
+    // The inner sums run the way the surface has fewer pieces (along an
+    // extrusion's straight side, round a revolve), as each point of the
+    // outline needs one: the other way, across a spline's every piece, a
+    // shelled mouse took 5 s to measure (1 s this way). (Which way round
+    // the outline is then integrated only changes the sign, set below.)
+    const nu = surf.NbUIntervals(S);
+    const nv = surf.NbVIntervals(S);
+    const alongV = nv < nu;
+    const w0 = alongV ? surf.FirstVParameter() : surf.FirstUParameter();
+    const joints = alongV ? intervals(nv, (a) => surf.VIntervals(a, S)) : intervals(nu, (a) => surf.UIntervals(a, S));
+    // The surface's joints the other way: where the outline crosses one, the
+    // sums bend there, so the outline is cut there too.
+    const across = (alongV ? intervals(nu, (a) => surf.UIntervals(a, S)) : intervals(nv, (a) => surf.VIntervals(a, S))).slice(1, -1);
+    for (; ex.More(); ex.Next()) {
+      const cur = ex.Current();
+      const e = oc.TopoDS.Edge(cur);
+      const sign = e.Orientation() === oc.TopAbs_Orientation.TopAbs_REVERSED ? -1 : 1;
+      const c = new oc.BRepAdaptor_Curve2d(e, f.wrapped);
+      e.delete();
+      cur.delete();
+      const tJoints = intervals(c.NbIntervals(S), (a) => c.Intervals(a, S));
+      edges.push({ c, sign, t0: c.FirstParameter(), t1: c.LastParameter(), joints: tJoints });
+      if (!across.length) continue;
+      const other = (t: number) => {
+        c.D1(t, q, d);
+        return alongV ? q.X() : q.Y();
+      };
+      const base = [...tJoints];
+      for (let i = 0; i + 1 < base.length; i++) {
+        // (Sampled, then each crossing found by false position.)
+        const N = 4;
+        let ta = base[i];
+        let oa = other(ta);
+        for (let j = 1; j <= N; j++) {
+          const tb = base[i] + ((base[i + 1] - base[i]) * j) / N;
+          const ob = other(tb);
+          for (const J of across) {
+            if ((oa - J) * (ob - J) >= 0) continue;
+            let [lo, hi, flo, fhi] = [ta, tb, oa - J, ob - J];
+            let side = 0;
+            let t = lo;
+            for (let it = 0; it < 60; it++) {
+              t = (lo * fhi - hi * flo) / (fhi - flo);
+              const ft = other(t) - J;
+              if (Math.abs(ft) <= 1e-13 * (1 + Math.abs(J)) || hi - lo <= 1e-14 * (1 + Math.abs(hi))) break;
+              if (ft * flo < 0) {
+                [hi, fhi] = [t, ft];
+                if (side === -1) flo /= 2;
+                side = -1;
+              } else {
+                [lo, flo] = [t, ft];
+                if (side === 1) fhi /= 2;
+                side = 1;
+              }
+            }
+            tJoints.push(t);
+          }
+          ta = tb;
+          oa = ob;
+        }
+      }
+      tJoints.sort((x, y) => x - y);
+    }
+    const r = new Float64Array(8);
+    const tot = new Float64Array(8);
+    // The outline's pieces each cut in ko, the inner sums' in ki.
+    const sums = (ko: number, ki: number): Sums => {
+      // ∫ from w0 to w, at the other parameter o, of each sum's integrand.
+      const inner = (w: number, o: number) => {
+        r.fill(0);
+        const ws = pieces(w0, w, joints, ki);
+        for (let i = 0; i + 1 < ws.length; i++) {
+          const h = (ws[i + 1] - ws[i]) / 2;
+          const c = (ws[i + 1] + ws[i]) / 2;
+          for (const [x, wt] of GAUSS) {
+            if (alongV) g.Normal(o, c + h * x, p, n);
+            else g.Normal(c + h * x, o, p, n);
+            const nx = n.X();
+            const ny = n.Y();
+            const nz = n.Z();
+            const X = p.X();
+            const Y = p.Y();
+            const Z = p.Z();
+            const dx = X - R[0];
+            const dy = Y - R[1];
+            const dz = Z - R[2];
+            const wh = wt * h;
+            const a = Math.hypot(nx, ny, nz) * wh;
+            r[0] += a;
+            r[1] += a * X;
+            r[2] += a * Y;
+            r[3] += a * Z;
+            r[4] += ((dx * nx + dy * ny + dz * nz) / 3) * wh;
+            r[5] += ((dx * dx) / 2) * nx * wh;
+            r[6] += ((dy * dy) / 2) * ny * wh;
+            r[7] += ((dz * dz) / 2) * nz * wh;
+          }
+        }
+        return r;
+      };
+      tot.fill(0);
+      for (const { c, sign, t0, t1, joints: tj } of edges) {
+        const ts = pieces(t0, t1, tj, ko);
+        for (let i = 0; i + 1 < ts.length; i++) {
+          const h = (ts[i + 1] - ts[i]) / 2;
+          const m = (ts[i + 1] + ts[i]) / 2;
+          for (const [x, wt] of GAUSS) {
+            c.D1(m + h * x, q, d);
+            const dOther = alongV ? d.X() : d.Y();
+            if (dOther === 0) continue;
+            const got = alongV ? inner(q.Y(), q.X()) : inner(q.X(), q.Y());
+            const f2 = sign * dOther * wt * h;
+            for (let j = 0; j < 8; j++) tot[j] += got[j] * f2;
+          }
+        }
+      }
+      // (Which way round the outline runs depends on the face's own way
+      // round: the area must come out above 0.)
+      const s = tot[0] < 0 ? -1 : 1;
+      return { area: s * tot[0], m: [s * tot[1], s * tot[2], s * tot[3]], vol: s * tot[4], mv: [s * tot[5], s * tot[6], s * tot[7]] };
+    };
+    // Each way halved on its own, while halving it still changes the sums
+    // (one way is often cut fine already, by a spline's many pieces).
+    const same = (a: Sums, b: Sums) => Math.abs(a.area - b.area) <= EPS * b.area && Math.abs(a.vol - b.vol) <= EPS * b.area * size;
+    let ko = 1;
+    let ki = 1;
+    let last = sums(ko, ki);
+    for (let round = 0; round < 6; round++) {
+      const finerIn = sums(ko, ki * 2);
+      const finerOut = sums(ko * 2, ki);
+      const inOk = same(last, finerIn);
+      const outOk = same(last, finerOut);
+      if (inOk && outOk) return finerIn;
+      if (!inOk) ki *= 2;
+      if (!outOk) ko *= 2;
+      last = inOk ? finerOut : outOk ? finerIn : sums(ko, ki);
+    }
+    return last;
+  } finally {
+    for (const e of edges) e.c.delete();
+    ex.delete();
+    d.delete();
+    q.delete();
+    n.delete();
+    p.delete();
+    g.delete();
+    surf.delete();
+  }
+}
+
+/** Sums over all its faces, integrated here - or null when none is swept (OpenCascade measures the rest right). */
+function ownSums(s: Measurable): (Sums & { R: Vec3 }) | null {
+  // (Kept per shape: a shell's checks measure the same body several times.)
+  const known = measured.get(s);
+  if (known !== undefined) return known;
+  const got = ownSumsNow(s);
+  measured.set(s, got);
+  return got;
+}
+const measured = new WeakMap<object, (Sums & { R: Vec3 }) | null>();
+
+function ownSumsNow(s: Measurable): (Sums & { R: Vec3 }) | null {
+  const faces = s.faces;
+  if (!faces.some(sweptFace)) return null;
+  const b = s.boundingBox;
+  const R = [...b.center] as Vec3;
+  const size = Math.max(1e-9, Math.hypot(b.width, b.height, b.depth));
+  const out: Sums = { area: 0, m: [0, 0, 0], vol: 0, mv: [0, 0, 0] };
+  for (const f of faces) {
+    const r = faceSums(f, R, size);
+    out.area += r.area;
+    out.vol += r.vol;
+    for (let j = 0; j < 3; j++) {
+      out.m[j] += r.m[j];
+      out.mv[j] += r.mv[j];
+    }
+  }
+  return { ...out, R };
+}
+
 /** The area of all its faces, to a millionth. */
 export function measureArea(s: Measurable): number {
+  const own = ownSums(s);
+  if (own) return own.area;
   const p = props(s, "area");
   try {
     return p.Mass();
@@ -109,6 +364,8 @@ export function measureArea(s: Measurable): number {
 
 /** A face's area and its middle (centre of area), measured once - at the plain fineness (for showing, not for checks). */
 export function areaProperties(f: Face): { area: number; center: Vec3 } {
+  const own = ownSums(f);
+  if (own) return { area: own.area, center: own.m.map((x) => x / own.area) as Vec3 };
   const oc = getOC();
   const p = new oc.GProp_GProps();
   oc.BRepGProp.SurfaceProperties(f.wrapped, p, false, false);
@@ -123,6 +380,8 @@ export function areaProperties(f: Face): { area: number; center: Vec3 } {
 
 /** Volume and centre of mass, to a millionth. */
 export function volumeProperties(s: Shape3D): { volume: number; centerOfMass: Vec3 } {
+  const own = ownSums(s);
+  if (own) return { volume: own.vol, centerOfMass: own.mv.map((x, j) => own.R[j] + x / own.vol) as Vec3 };
   const p = props(s, "volume");
   const c = p.CentreOfMass();
   try {

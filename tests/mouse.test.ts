@@ -11,6 +11,7 @@ import { check, done, sketch, profile, XY, YZ, plane, rect, poly, after, bodies,
 import { near, faceRef, edgeRefs } from "./grid";
 import type { Feature, SketchEntity } from "../src/doc/types";
 import { meshVolume } from "../src/kernel/health";
+import { measureArea as trueArea, measureVolume as trueVolume } from "../src/kernel/ocFree";
 
 const fs: Feature[] = [];
 let t0 = Date.now();
@@ -42,6 +43,17 @@ const outline = sk("sTop", XY(), [
 fs.push({ id: "mouse", name: "Shape", type: "extrude", source: prof("sTop", outline), distance: 45, mode: "new" } as Feature);
 const s1 = await stage("outline extruded");
 check("outline block volume is plausible (about 6000 mm2 x 45)", s1.mouse?.v > 45 * 5000 && s1.mouse?.v < 45 * 7500, s1.mouse?.v);
+// The block is its flat end times 45, and its side the outline times 45: the
+// engine's measure had the block 11 % over (316 000 for 284 800) and the side
+// 1.7 % over, integrating the spline's extruded side in one piece.
+{
+  const b = bodies().get("mouse")!;
+  const cap = trueArea(b.faces.find((f) => f.geomType === "PLANE")!);
+  const sideFace = b.faces.find((f) => f.geomType !== "PLANE")!;
+  const rim = b.edges.filter((e) => Math.abs(e.startPoint.z) < 1e-6 && Math.abs(e.endPoint.z) < 1e-6).reduce((a, e) => a + e.length, 0);
+  check("the block's volume is its end x 45 (to a millionth)", Math.abs(trueVolume(b) - cap * 45) < cap * 45 * 1e-6, [trueVolume(b), cap * 45]);
+  check("the block's side is its outline x 45 (to a millionth)", Math.abs(trueArea(sideFace) - rim * 45) < rim * 45 * 1e-6, [trueArea(sideFace), rim * 45]);
+}
 
 // --- 2. Side profile on YZ (u = world Y, v = world Z): flat bottom, spline top
 // low at the front, a hump two thirds back, down at the tail. Intersect.
@@ -75,8 +87,11 @@ fs.push({ id: "hollow", name: "Hollow", type: "shell", body: "mouse", faces: [un
 t0 = Date.now();
 const s4 = await stage("shelled 1.6 from below");
 check("the shell in under 30 s (its wall checks took 51 s)", Date.now() - t0 < 30000, Date.now() - t0);
-const mesh4 = meshVolume(bodies().get("mouse")!, 130);
 check("the shell is a thin skin (under 25 % of the solid)", s4.mouse && s4.mouse.v < s3b.mouse.v * 0.25 && s4.mouse.v > s3b.mouse.v * 0.05, [s3b.mouse?.v, s4.mouse?.v]);
+// Measured right on the offset faces too (it read 21 489 for 22 249): a fine
+// mesh comes to it from above (22 310, 22 290, 22 255 as it gets finer).
+const mesh4 = meshVolume(bodies().get("mouse")!, 130);
+check("the shell's volume agrees with a mesh (0.5 %)", Math.abs(mesh4 - s4.mouse.v) < s4.mouse.v * 0.005, [s4.mouse.v, mesh4]);
 
 // --- 5. Split lines for the buttons, cut down from above to z = 18: one
 // between left and right button, one right across behind them, a slot for
@@ -94,12 +109,8 @@ fs.push({ id: "splitLines", name: "Button lines", type: "extrude", source: prof(
 t0 = Date.now();
 const s5 = await stage("button lines cut");
 check("the button lines in under 20 s", Date.now() - t0 < 20000, Date.now() - t0);
-// Counted from meshes (the engine's measure is off on the shell's offset faces):
-// the lines and the slot take a few hundred mm3 of 1.6 mm walls, no more.
-const mesh5 = meshVolume(bodies().get("mouse")!, 130);
-check("the lines took 100 to 600 mm3 (meshed)", mesh4 - mesh5 > 100 && mesh4 - mesh5 < 600, [mesh4, mesh5]);
-// (The health report's volume is the engine's measure, off on offset faces: a mesh tells the change.)
-check("the lines took only a sliver", s5.mouse && s5.mouse.v > s4.mouse.v * 0.9 && s5.mouse.v < s4.mouse.v * 1.05, [s4.mouse?.v, s5.mouse?.v]);
+// The lines and the slot take a few hundred mm3 of 1.6 mm walls, no more.
+check("the lines took 100 to 600 mm3", s4.mouse.v - s5.mouse.v > 100 && s4.mouse.v - s5.mouse.v < 600, [s4.mouse?.v, s5.mouse?.v]);
 
 // --- 6. The scroll wheel: a disc 7 wide about X at (y 25, z 24), r 9, with 24
 // knurls (a little block on the rim, Pattern Circular, Union).
