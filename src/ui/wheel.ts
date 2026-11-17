@@ -95,7 +95,7 @@ interface Metrics {
   min: number;
   max: number;
 }
-const FINE: Metrics = { hub: 24, r0: 30, r1: 100, gap: 4, depth: 54, min: 46, max: 58 };
+const FINE: Metrics = { hub: 24, r0: 30, r1: 104, gap: 4, depth: 54, min: 46, max: 58 };
 /** Fingers (and a headset's ray): bigger cells. */
 const COARSE: Metrics = { hub: 26, r0: 32, r1: 108, gap: 4, depth: 58, min: 52, max: 64 };
 /** The drawings are this far (px) each way from the middle at most. */
@@ -270,6 +270,76 @@ function path(cls: string, d: string): SVGPathElement {
 }
 
 const calm = () => matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+/**
+ * How wide a name can be in the piece from `r0` to `r1` out and `span`
+ * (radians) round about `mid`, its item centred `r` out: twice the way, left or
+ * right, from the name's middle (under the icon) to the piece's nearest edge,
+ * a little in from the hairlines, at the name's top and bottom.
+ */
+function roomFor(r: number, mid: number, span: number, r0: number, r1: number): number {
+  const M = 2.5;
+  const inside = (x: number, y: number) => {
+    const d = Math.hypot(x, y);
+    if (d < r0 + M || d > r1 - M) return false;
+    let off = Math.atan2(y, x) - mid;
+    off = Math.atan2(Math.sin(off), Math.cos(off));
+    return Math.abs(off) * d < (span / 2) * d - M;
+  };
+  const x0 = r * Math.cos(mid);
+  const y0 = r * Math.sin(mid) + 11.5;
+  let half = Infinity;
+  for (const y of [y0 - 5, y0 + 5]) {
+    for (const s of [-1, 1]) {
+      let k = 0;
+      while (k < 120 && inside(x0 + s * k, y)) k++;
+      half = Math.min(half, k);
+    }
+  }
+  return 2 * half;
+}
+
+let measurer: CanvasRenderingContext2D | null = null;
+let family = "";
+function textWidth(s: string, px: number, weight: number): number {
+  measurer ??= document.createElement("canvas").getContext("2d");
+  if (!measurer) return s.length * px * 0.55;
+  if (!family) family = getComputedStyle(document.body).fontFamily || "sans-serif";
+  measurer.font = `${weight} ${px}px ${family}`;
+  return measurer.measureText(s).width;
+}
+/** How many lines `label` takes `width` wide, broken at spaces (Infinity: a word alone is wider). */
+function linesOf(label: string, width: number, px: number, weight: number): number {
+  let n = 1;
+  let line = "";
+  for (const word of label.split(" ")) {
+    const both = line ? `${line} ${word}` : word;
+    if (textWidth(both, px, weight) <= width) line = both;
+    else if (textWidth(word, px, weight) > width) return Infinity;
+    else {
+      n++;
+      line = word;
+    }
+  }
+  return n;
+}
+/**
+ * The biggest size from `px` down at which `label` fits `width`, its words
+ * whole: in two lines down to 9px, else (three words or more) in three.
+ */
+const sizes = new Map<string, { size: number; lines: number }>();
+function fitSize(label: string, width: number, px: number, weight: number): { size: number; lines: number } {
+  const key = `${label}|${width}|${px}|${weight}`;
+  const known = sizes.get(key);
+  if (known) return known;
+  const fit = (lines: number, least: number) => {
+    for (let size = px; size >= least; size -= 0.5) if (linesOf(label, width, size, weight) <= lines) return { size, lines };
+    return null;
+  };
+  const got = fit(2, 9) ?? fit(3, 8) ?? fit(2, 7.5) ?? { size: 7.5, lines: 2 };
+  sizes.set(key, got);
+  return got;
+}
 
 export class Wheel implements WheelHandle {
   private readonly root = el("div", "");
@@ -1164,16 +1234,25 @@ export class Wheel implements WheelHandle {
     return -Math.PI / 2 + (i * TAU) / n;
   }
 
-  private item(it: { icon: IconName; swatch?: string }, label: string, cls: string, r: number, a: number, width?: number): HTMLElement {
+  private item(it: { icon: IconName; swatch?: string }, label: string, cls: string, r: number, a: number, width: number, big = false): HTMLElement {
     const d = el("div", `wheel-item ${cls}`);
     if (it.swatch) {
       const sw = el("span", "swatch");
       sw.style.background = it.swatch;
       d.append(sw);
     } else d.innerHTML = icons[it.icon] ?? "";
-    // (A long word - Transparency, Perpendicular - a size smaller: it stays in one piece.)
-    const name = el("span", `wheel-name${label.split(/[\s/]+/).some((w) => w.length > 10) ? " long" : ""}`, label);
-    if (width) name.style.width = `${Math.round(width)}px`;
+    // The name stays inside its piece: broken at spaces onto two lines, and a size smaller as far as that needs.
+    const name = el("span", "wheel-name", label);
+    const w = Math.max(24, Math.floor(width));
+    name.style.width = `${w}px`;
+    const base = big ? 10.5 : 9.5;
+    const { size, lines } = fitSize(label, w, base, big ? 600 : 400);
+    if (size < base || lines > 2) {
+      name.style.fontSize = `${size}px`;
+      name.style.lineHeight = `${size + 1.5}px`;
+      name.style.maxHeight = `${lines * (size + 1.5)}px`;
+      name.style.setProperty("-webkit-line-clamp", String(lines));
+    }
     d.append(name);
     d.style.left = `${(r * Math.cos(a)).toFixed(1)}px`;
     d.style.top = `${(r * Math.sin(a)).toFixed(1)}px`;
@@ -1213,7 +1292,8 @@ export class Wheel implements WheelHandle {
       const own = !inner && (s.id === OWN || (this.layout === "sketch" && s.id === "exit"));
       const p = path(`wheel-cell wheel-sector${dim ? " dim" : ""}${own ? " own" : ""}${s.on ? " on" : ""}`, wedge(m.r0, m.r1, mid - step / 2, mid + step / 2, 3));
       this.ringSvg.append(p);
-      this.ringItems.append(this.item(s, inner && !s.item && s.cells.length ? `${s.label} ›` : s.label, `sector${dim ? " dim" : ""}${s.mark ? " mark" : ""}${s.on ? " on" : ""}`, (m.r0 + m.r1) / 2 + 1, mid));
+      const rm = (m.r0 + m.r1) / 2 + 3;
+      this.ringItems.append(this.item(s, inner && !s.item && s.cells.length ? `${s.label} ›` : s.label, `sector${dim ? " dim" : ""}${s.mark ? " mark" : ""}${s.on ? " on" : ""}`, rm, mid, roomFor(rm, mid, step, m.r0, m.r1), true));
       return p;
     });
     // (What's on is drawn last: its outline whole, over its neighbours'.)
@@ -1239,11 +1319,7 @@ export class Wheel implements WheelHandle {
       this.fanSvg.append(p);
       const rm = (c.r0 + c.r1) / 2;
       const mid = (c.a0 + c.a1) / 2;
-      // The room for its name: the cell's width along the band above and below the wheel, its depth at the sides.
-      const up = Math.abs(Math.sin(mid));
-      const across = Math.abs(Math.cos(mid));
-      const width = (up * (c.a1 - c.a0) * rm + across * (c.r1 - c.r0)) / (up + across) - 4;
-      this.fanItems.append(this.item(it, kidsOf(it).length ? `${it.label} ›` : it.label, `${it.active ? "on" : ""}${it.pulse ? " mark" : ""}`, rm, mid, width));
+      this.fanItems.append(this.item(it, kidsOf(it).length ? `${it.label} ›` : it.label, `${it.active ? "on" : ""}${it.pulse ? " mark" : ""}`, rm, mid, roomFor(rm, mid, c.a1 - c.a0, c.r0, c.r1)));
       return p;
     });
     for (const p of this.fanEls) if (p.classList.contains("on")) this.fanSvg.append(p);
