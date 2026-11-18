@@ -738,7 +738,10 @@ export class Wheel implements WheelHandle {
       if (it.type === "choice") {
         const now = it.options.find((o) => o.id === it.value);
         const cells = it.options.map((o): Cell => ({ item: opt(o.label, () => it.onChange(o.id), o.id === it.value) }));
-        sectors.push({ id: `choice-${k}`, label: it.label ?? now?.label ?? "Kind", icon: "more", cells, mark: false });
+        // (A slot's quick picks - XY, XZ, YZ for a plane's From - have no name
+        // and none picked: "Kind" hid them; they're named by what they are.)
+        const named = it.label ?? now?.label ?? (it.options.length <= 3 ? it.options.map((o) => o.label).join(" · ") : "Kind");
+        sectors.push({ id: `choice-${k}`, label: named, icon: "more", cells, mark: false });
       } else if (it.type === "toggle") {
         const item = opt(it.label, () => it.onChange(!it.value), it.value, it.value ? "On" : "Off", iconNameFor(it.label) ?? (it.value ? "check" : "close"));
         sectors.push({ id: item.id, label: it.label, icon: item.icon, cells: [], item, on: it.value, mark: false });

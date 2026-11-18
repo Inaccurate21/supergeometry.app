@@ -1333,7 +1333,7 @@ export class ShellOp extends FeatureOp<ShellFeature> {
     return [this.num("Thickness", "thickness", "length", { min: 0.0001, onInput: (v) => this.setThickness(v), inBox: true })];
   }
 
-  /** The wall thickness, typed on the (first) open face. */
+  /** The wall thickness, typed on the open face tapped last. */
   private dim: DimWidget | null = null;
   private dimFace = "";
 
@@ -1346,13 +1346,16 @@ export class ShellOp extends FeatureOp<ShellFeature> {
   }
 
   protected onDraftChanged(): void {
-    const f = this.feature.faces[0];
+    // The face tapped last: the one being looked at. (On the first, a duct's
+    // top, it was hidden from below when its other end was tapped there -
+    // turned away - and the thickness was out of reach.)
+    const f = this.feature.faces[this.feature.faces.length - 1];
     if (!f) {
       this.dim?.dispose();
       this.dim = null;
       return;
     }
-    // (A new first face: the box goes with it, and turns away with it.)
+    // (Another face: the box goes with it, and turns away with it.)
     const key = `${f.body}:${f.center.map((x) => x.toFixed(6))}:${f.normal.map((x) => x.toFixed(6))}`;
     if (this.dim && this.dimFace !== key) {
       this.dim.dispose();
