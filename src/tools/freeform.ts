@@ -67,6 +67,9 @@ export function layFaceCage(tris: [Vec3, Vec3, Vec3][], center: Vec3, normal: Ve
   return null;
 }
 
+/** "Pick in a box" (a finger draws the box): on until switched off. */
+let boxByFinger = false;
+
 export class FreeformTool implements Tool {
   readonly id = "freeform";
   private cage: Cage;
@@ -78,6 +81,14 @@ export class FreeformTool implements Tool {
   private typing: DragTyping;
   /** The card's exact values: what they act on (Move, Turn, Scale), and the points as they were before typing. */
   private xform: "move" | "turn" | "scale" = "move";
+  /**
+   * A finger drawing a box picks the points inside it (seen through: the
+   * ones behind too) - a whole slice of a shape in one go from a side view.
+   * Off, a finger orbits as usual. (Kept on for the next shape.)
+   */
+  get boxByFinger(): boolean {
+    return boxByFinger;
+  }
   private fieldBase: Map<number, Vec3> | null = null;
   private fieldVals = [0, 0, 0, 1];
   private live: Live | null = null;
@@ -371,6 +382,17 @@ export class FreeformTool implements Tool {
         for (const [k, a] of ["X", "Y", "Z"].entries()) items.push({ type: "number", label: turn ? `${a}°` : `Δ${a}`, value: 0, kind: turn ? "angle" : "length", onInput: (v) => this.setField(k, v) });
       }
     }
+    // A phone has no mouse to draw a box round the points: a finger draws it while this is on.
+    if (isCoarse && !this.placing && (!this.live || this.live.kind === "shape" || this.live.kind === "sheet"))
+      items.push({
+        type: "toggle",
+        label: "Pick in a box",
+        value: this.boxByFinger,
+        onChange: (on) => {
+          boxByFinger = on;
+          this.app.ui.setHint(on ? "Draw a box with your finger round the points to pick (the ones behind are picked too). Two fingers still move the view." : "A finger turns the view again.");
+        },
+      });
     if (this.face) return this.facePanel(items);
     if (!this.live && !this.placing) {
       items.push({

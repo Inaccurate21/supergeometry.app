@@ -33,6 +33,8 @@ export interface PointerHandler {
   dragStart?(from: ToolPointer): boolean;
   /** Box (window) selection with mouse/pen; `final` on release. */
   box?(a: { x: number; y: number }, b: { x: number; y: number }, final: boolean, add: boolean): void;
+  /** A finger's drag on empty space draws the box too (instead of orbiting): a phone has no mouse to draw one. */
+  boxByFinger?: boolean;
 }
 
 const TAP_SLOP = { mouse: 4, pen: 6, touch: 10 };
@@ -211,7 +213,7 @@ export class InputRouter {
           return;
         }
         // Mouse/pen drag on empty space = box selection; a finger orbits.
-        this.mode = t.type !== "touch" && this.handler.box ? "box" : "orbit";
+        this.mode = (t.type !== "touch" || this.handler.boxByFinger) && this.handler.box ? "box" : "orbit";
         return;
       }
       case "box": {
@@ -275,7 +277,8 @@ export class InputRouter {
     if (mode === "rpending") this.handler.context?.(this.tp(t));
     if (mode === "box") {
       this.marquee.hidden = true;
-      this.handler.box?.({ x: t.x0, y: t.y0 }, { x: t.x, y: t.y }, true, this.modifiers);
+      // (On a touch screen every tap adds to what's picked: a box does too.)
+      this.handler.box?.({ x: t.x0, y: t.y0 }, { x: t.x, y: t.y }, true, this.modifiers || t.type === "touch");
     }
   }
 

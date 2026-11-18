@@ -265,7 +265,9 @@ sketch. A sketch stays in view until every region of it is used.
 - **Freeform** - organic shapes: start from a box, sphere, cylinder or plane
   (its size and rows in the card) and pull its cage points, edges and faces.
   Tap picks the closest point, edge or face (tap a face again for the one
-  behind it); press on empty space and drag a box to pick the points inside.
+  behind it); press on empty space and drag a box to pick the points inside
+  (on a touch screen: switch on **Pick in a box** in the card, and a finger
+  draws the box - the points behind are picked too, a whole slice from a side view).
   Move / Turn / Scale take exact X, Y, Z values in the card. Cage tools:
   **Extrude faces** (Length, Bend, Taper and Steps sliders - a spout in one
   go), **Bridge faces** (two faces become a tube; two looking the same way
