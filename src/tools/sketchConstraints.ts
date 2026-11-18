@@ -271,6 +271,15 @@ export class ConstraintGlyphs {
     this.host.hidden = !on;
   }
 
+  /**
+   * Tapped to select (in the Select tool), or let through to the drawing under
+   * them: a rectangle's width label under its edge took Mirror's tap on the
+   * circle there, and the shapes picked so far were let go.
+   */
+  setTappable(on: boolean): void {
+    this.host.classList.toggle("passive", !on);
+  }
+
   private layout(): void {
     if (!this.plane) return;
     for (const it of this.items) {

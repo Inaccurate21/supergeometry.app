@@ -670,6 +670,7 @@ export class SketchTool implements Tool {
     this.glyphs.selected = this.selConstraint;
     this.glyphs.set(this.plane, this.entities, this.constraints);
     this.glyphs.setVisible(settings.value.showConstraintGlyphs);
+    this.glyphs.setTappable(this.kind === "select");
     document.body.classList.add("sketching");
     if (!this.listening) {
       this.listening = true;
@@ -1229,6 +1230,7 @@ export class SketchTool implements Tool {
     // projected - next it only asks where to.
     this.projectOut = kind === "project" ? this.entities.filter((e) => this.selected.has(e.id)).map((e) => e.id) : [];
     this.kind = kind;
+    this.glyphs?.setTappable(kind === "select");
     this.pts = [];
     this.locks = {};
     // A new tool starts a new chain: a line drawn after an arc was tied to the
@@ -3080,6 +3082,8 @@ export class SketchTool implements Tool {
         else if (this.startRef && auto) cs.push(co(this.startRef, { e: id, p: "a" }));
         else if (this.pts.length === 1) cs.push(...this.snapKeeps(this.startSnap, { e: id, p: "a" }));
         const closes = this.pts.length > 1 && samePt(pt, start) && this.chainFirstId;
+        // Closed: it ends on the first point itself (not 3e-15 off it, as a typed 180° left it).
+        if (closes) pt = [...start] as Vec2;
         if (closes) cs.push(co({ e: id, p: "b" }, { e: this.chainFirstId!, p: "a" }));
         else if (snapRef && auto) cs.push(co({ e: id, p: "b" }, snapRef));
         else if (!locked) cs.push(...this.snapKeeps(this.cursor, { e: id, p: "b" }));
@@ -3209,7 +3213,9 @@ export class SketchTool implements Tool {
     if (this.kind === "text" && this.pts.length) return void this.commitText();
     if (this.kind === "offset" && this.edit.offsetOf) return this.applyOffset();
     if (this.isSelectionTool() && this.selected.size) return this.applyTransform();
-    if (this.pts.length && Object.keys(this.locks).length && this.cursor) return this.addPoint(this.cursor.uv, 1);
+    // A size typed: placed as Done would (the first point typed on a phone
+    // leaves no pointer to go by - the shape went, before).
+    if (this.pts.length && Object.keys(this.locks).length) return this.finishTyped();
     this.resetDrawing();
   }
 
@@ -4195,8 +4201,10 @@ export class SketchTool implements Tool {
       return this.applyTransform();
     }
     // …or an axis (the upright one through the origin, for a shape drawn on one
-    // side): it used to clear the selection.
-    if (!c && this.kind === "mirror" && this.selected.size && !p.shift) {
+    // side): it used to clear the selection. A shape near the axis only wins
+    // when the tap is right on it (a slot 5 from the axis, zoomed out, was let
+    // go instead of mirrored).
+    if (this.kind === "mirror" && this.selected.size && !p.shift && (!c || (count < 2 && !this.curveAt({ ...p, tol: p.tol * 0.4 })))) {
       const line = this.axisLineAt(p);
       if (line) {
         this.edit.mirrorLine = line;

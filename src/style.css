@@ -1237,6 +1237,9 @@ input.np-all {
   pointer-events: none;
   z-index: 7;
 }
+.cglyphs.passive .cglyph {
+  pointer-events: none;
+}
 .cglyph {
   position: absolute;
   left: 0;
