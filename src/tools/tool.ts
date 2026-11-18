@@ -153,6 +153,27 @@ app: AppContext, s: { body: string; edge: number }): EdgeRef | null {
 
 }
 
+/**
+ * The edges round a face (its outline and its holes'), by index: those whose
+ * drawn points are all corners of its triangles (the face's mesh and the
+ * edges' lines are cut from one tessellation, so they share their points).
+ */
+export function edgesOfFace(app: AppContext, body: string, face: number): number[] {
+  const m = app.view.body(body);
+  const g = m?.faceGroups.find((x) => x.face === face);
+  if (!m || !g) return [];
+  const key = (a: ArrayLike<number>, i: number) => `${Math.round(a[3 * i] * 1e4)},${Math.round(a[3 * i + 1] * 1e4)},${Math.round(a[3 * i + 2] * 1e4)}`;
+  const corners = new Set<string>();
+  for (let k = g.start; k < g.start + g.count; k++) corners.add(key(m.positions, m.indices[k]));
+  return m.edgeGroups
+    .filter((eg) => {
+      if (!eg.count) return false;
+      for (let j = eg.start; j < eg.start + eg.count; j++) if (!corners.has(key(m.edgePositions, j))) return false;
+      return true;
+    })
+    .map((eg) => eg.edge);
+}
+
 /** A selected profile or flat face as something extrude/revolve/… can use. */
 export function sourcesOf(app: AppContext, sel: Sel[]): ExtrudeSource[] {
   const out: ExtrudeSource[] = [];

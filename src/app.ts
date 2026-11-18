@@ -8,7 +8,7 @@ import { currentProjectId, forgetProject, keepProject, libraryEntries, newProjec
 import { showLibrary } from "./ui/library";
 import { showAbout } from "./ui/about";
 import { findAction, openCommandSearch, showShortcuts } from "./ui/commands";
-import type { EdgeFeature, ExtrudeFeature, ExtrudeSource, Feature, FillToPlaneFeature, ImageFeature, LoftFeature, PathRef, PinDef, PlaneDef, PlaneFeature, ProjectDoc, RevolveFeature, ShellFeature, SketchEntity, SketchFeature, SplitFeature, SweepFeature, TransformFeature, Units, Vec3 } from "./doc/types";
+import type { EdgeFeature, EdgeRef, ExtrudeFeature, ExtrudeSource, Feature, FillToPlaneFeature, ImageFeature, LoftFeature, PathRef, PinDef, PlaneDef, PlaneFeature, ProjectDoc, RevolveFeature, ShellFeature, SketchEntity, SketchFeature, SplitFeature, SweepFeature, TransformFeature, Units, Vec3 } from "./doc/types";
 import { emptyDoc } from "./doc/types";
 import { createVariable, insertFile, insertImage } from "./io/insert";
 import { numpadVariables } from "./ui/numpad";
@@ -37,7 +37,7 @@ import { BooleanOp } from "./tools/booleanOp";
 import { FeatureOp, sketchesUsed } from "./tools/featureOp";
 import { SketchTool } from "./tools/sketch";
 import { definedCurves } from "./sketch/constraints";
-import { bodiesOf, edgeRefOf, faceRefOf, sameSel, sourcesOf, type AppContext, type Sel, type Tool } from "./tools/tool";
+import { bodiesOf, edgeRefOf, edgesOfFace, faceRefOf, sameSel, sourcesOf, type AppContext, type Sel, type Tool } from "./tools/tool";
 import { setupRightColumn } from "./ui/panels";
 import type { ToolItem } from "./ui/ui";
 import { UI } from "./ui/ui";
@@ -905,6 +905,17 @@ export class App implements AppContext {
   // ------------------------------------------------------------ menus
 
   /** Nothing selected: the top-level menu (the left tool column). */
+  /** The edges picked for a fillet or chamfer: each edge, and every edge round each face. */
+  private pickedEdges(): EdgeRef[] {
+    const out: EdgeRef[] = [];
+    const have = (r: EdgeRef) => out.some((e) => e.body === r.body && Math.hypot(e.mid[0] - r.mid[0], e.mid[1] - r.mid[1], e.mid[2] - r.mid[2]) < 1e-6);
+    for (const s of this.selection) {
+      const refs = s.kind === "edge" ? [edgeRefOf(this, s)] : s.kind === "face" ? edgesOfFace(this, s.body, s.face).map((k) => edgeRefOf(this, { body: s.body, edge: k })) : [];
+      for (const r of refs) if (r && !have(r)) out.push(r);
+    }
+    return out;
+  }
+
   mainTools(): ToolItem[] {
     const wait = (label: string, accepts: Sel["kind"][], run: () => void) => () => {
       this.selectTool.waitFor(label, accepts, run);
@@ -935,8 +946,8 @@ export class App implements AppContext {
         label: "Modify",
         icon: "fillet",
         children: [
-          { id: "fillet", label: "Fillet", icon: "fillet", run: wait("Fillet", ["edge"], () => this.setTool(new EdgeOp(this, "fillet", this.selection.flatMap((s) => (s.kind === "edge" ? [edgeRefOf(this, s)!] : []))))) },
-          { id: "chamfer", label: "Chamfer", icon: "chamfer", run: wait("Chamfer", ["edge"], () => this.setTool(new EdgeOp(this, "chamfer", this.selection.flatMap((s) => (s.kind === "edge" ? [edgeRefOf(this, s)!] : []))))) },
+          { id: "fillet", label: "Fillet", icon: "fillet", run: wait("Fillet", ["edge", "face"], () => this.setTool(new EdgeOp(this, "fillet", this.pickedEdges()))) },
+          { id: "chamfer", label: "Chamfer", icon: "chamfer", run: wait("Chamfer", ["edge", "face"], () => this.setTool(new EdgeOp(this, "chamfer", this.pickedEdges()))) },
           { id: "shell", label: "Shell", icon: "shell", run: wait("Shell", ["face", "body"], () => {
             const s = this.selection[0];
             const faces = this.selection.flatMap((x) => (x.kind === "face" ? [faceRefOf(this, x)!] : []));

@@ -12,7 +12,7 @@ import type { ToolPointer } from "../view/input";
 import { FeatureOp, type Slot } from "./featureOp";
 import { axisDrag, Handle } from "./handles";
 import { axisSlot, chainThrough, curvesSlot, directionSlot, faceOfName, facesSlot, pathSlot, planeSlot, pointSlot, sectionsSlot } from "./slots";
-import { edgeRefOf, faceIndexOf, faceRefOf, goneRefs, oppositeFace, sourceFrame, targetOf, type AppContext, type Sel } from "./tool";
+import { edgeRefOf, edgesOfFace, faceIndexOf, faceRefOf, goneRefs, oppositeFace, sourceFrame, targetOf, type AppContext, type Sel } from "./tool";
 import { SketchTool } from "./sketch";
 import { screenClass } from "../device";
 import { faceBeforeShell } from "./shellFace";
@@ -584,7 +584,7 @@ export class EdgeOp extends FeatureOp<EdgeFeature> {
   }
 
   protected hint(): string {
-    return this.feature.type === "fillet" ? "Drag the dot or type a size to round the edge. Tap more edges to round them too." : "Drag the dot or type a size to cut the edge off at a slant. Tap more edges to add them.";
+    return this.feature.type === "fillet" ? "Drag the dot or type a size to round the edge. Tap more edges to round them too (a face: all round it)." : "Drag the dot or type a size to cut the edge off at a slant. Tap more edges to add them (a face: all round it).";
   }
 
   protected items(): PanelItem[] {
@@ -737,6 +737,22 @@ export class EdgeOp extends FeatureOp<EdgeFeature> {
       }
     }
     if (!hit) return this.done();
+    // A face: all the edges round it (a nut's top, its six edges in one tap) -
+    // or, all of them picked already, none of them.
+    if (hit.kind === "face") {
+      const refs = edgesOfFace(this.app, hit.body, hit.face).flatMap((k) => edgeRefOf(this.app, { body: hit.body, edge: k }) ?? []);
+      const at = (r: EdgeRef) => this.feature.edges.findIndex((e) => e.body === r.body && Math.hypot(...sub(e.mid, r.mid)) < 1e-6);
+      if (!refs.length) return;
+      if (refs.every((r) => at(r) >= 0)) this.feature.edges = this.feature.edges.filter((e) => !refs.some((r) => r.body === e.body && Math.hypot(...sub(e.mid, r.mid)) < 1e-6));
+      else {
+        const kin = withCircleKin(this.app, refs.filter((r) => at(r) < 0));
+        this.groupKin(kin);
+        for (const r of kin) if (at(r) < 0) this.feature.edges.push(r);
+      }
+      this.app.setSelection(this.edgeSels());
+      this.update();
+      return;
+    }
     if (hit.kind !== "edge") return;
     const info = this.app.view.body(hit.body)?.edges[hit.edge];
     if (!info) return;
