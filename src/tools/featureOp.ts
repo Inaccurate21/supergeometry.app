@@ -181,6 +181,24 @@ export abstract class FeatureOp<F extends Feature> implements Tool {
     this.update();
   }
 
+  /**
+   * A body tapped in Items: the slot waiting takes it, as a tap on it in the
+   * view would. (Six pegs inside a pulley's web, to subtract, can't be tapped
+   * there - and the tap in Items put Subtract away and selected the body.)
+   */
+  pickBody(id: string): boolean {
+    const slot = this.slots[this.active];
+    if (!slot || !slot.accept({ kind: "body", body: id, point: [0, 0, 0] } as unknown as PickHit)) return false;
+    if (!slot.multi) this.active = this.slots.findIndex((s, i) => i > this.active && !s.filled());
+    this.render();
+    if (this.finishWhenPicked && this.ready()) {
+      void this.finishIfOk();
+      return true;
+    }
+    this.update();
+    return true;
+  }
+
   /** Nothing left to set once the picks are made (e.g. Replace Face): the last pick finishes. */
   protected finishWhenPicked = false;
 

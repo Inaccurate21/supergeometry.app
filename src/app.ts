@@ -34,7 +34,7 @@ import { FreeformTool } from "./tools/freeform";
 import { sectionPlane, SectionTool, type SectionState } from "./tools/section";
 import { SelectTool } from "./tools/select";
 import { BooleanOp } from "./tools/booleanOp";
-import { sketchesUsed } from "./tools/featureOp";
+import { FeatureOp, sketchesUsed } from "./tools/featureOp";
 import { SketchTool } from "./tools/sketch";
 import { definedCurves } from "./sketch/constraints";
 import { bodiesOf, edgeRefOf, faceRefOf, sameSel, sourcesOf, type AppContext, type Sel, type Tool } from "./tools/tool";
@@ -206,6 +206,8 @@ export class App implements AppContext {
         // (After the first body the view's taps go to its direction: four
         // pockets to pattern across could only be had by starting again.)
         if (this.tool instanceof TransformOp && this.tool.toggleBody(id)) return;
+        // Subtract, Shell… waiting for a body: it takes this one.
+        if (this.tool instanceof FeatureOp && this.tool.pickBody(id)) return;
         const had = this.selection.filter((s) => s.kind === "body");
         this.setTool(null);
         if (!isTouchDevice || !had.length || had.length !== this.selection.length) return this.setSelection([{ kind: "body", body: id }]);
