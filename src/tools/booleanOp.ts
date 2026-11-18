@@ -168,6 +168,26 @@ export class BooleanOp extends FeatureOp<BooleanFeature> {
     this.dim.set(mid, mid);
     this.dim.setMode(f.cutFrom ?? "body");
     this.dim.setValue(f.clearance ?? 0);
+    // (The signs again, clear of the box just made.)
+    this.placeMarks();
+  }
+
+  /**
+   * The sign on `body` turned the other way: a "−" body becomes the one
+   * changed, the one that was takes its place among the others; the "+" body
+   * swaps with the first of the others.
+   */
+  private swap(body: string): void {
+    const f = this.feature;
+    if (!f.target || !f.tools.length) return;
+    const other = body === f.target ? f.tools[0] : body;
+    if (!f.tools.includes(other)) return;
+    f.tools = f.tools.map((t) => (t === other ? f.target : t));
+    f.target = other;
+    f.whole = undefined;
+    this.render();
+    this.update();
+    this.placeMarks();
   }
 
   /** "+" on the body that's changed, "−" on each body it's changed with. */
@@ -179,20 +199,37 @@ export class BooleanOp extends FeatureOp<BooleanFeature> {
     while (this.marks.length < want.length) {
       const m = document.createElement("div");
       m.className = "bool-mark";
+      // A tap on a sign turns it the other way round: picked in the wrong order, fixed in one tap.
+      m.addEventListener("pointerdown", (e) => e.stopPropagation());
+      m.addEventListener("click", (e) => {
+        e.stopPropagation();
+        if (m.dataset.body) this.swap(m.dataset.body);
+      });
       document.body.append(m);
       this.marks.push(m);
     }
     const r = this.app.view.canvas.getBoundingClientRect();
+    // (Bodies sharing a middle - a peg through a plate - get their signs side by side, each one tappable.)
+    const placed: [number, number][] = [];
+    // (And clear of the clearance's box, which sits between the first two bodies.)
+    const a = this.centers.get(this.feature.target), b = this.feature.tools[0] ? this.centers.get(this.feature.tools[0]) : undefined;
+    const box = this.dim && a && b ? this.app.view.toScreen(scale(add(a, b), 0.5)) : null;
     want.forEach(([body, sign], i) => {
       const m = this.marks[i];
-      m.title = sign === "+" ? "Changed" : "Changed with";
+      m.dataset.body = body;
+      m.title = sign === "+" ? "Changed - tap to change it with this one instead" : "Changed with - tap to change this one instead";
       m.classList.toggle("minus", sign !== "+");
       // (Where the body was: in the preview a subtracted body is used up.)
       if (this.app.view.bodyList.some((b) => b.id === body)) this.centers.set(body, bodyCenter(this.app, [body]));
       const at = this.centers.get(body);
       const c = at ? this.app.view.toScreen(at) : null;
       m.hidden = !c;
-      if (c) m.style.transform = `translate(${Math.round(r.left + c[0] - 14)}px, ${Math.round(r.top + c[1] - 14)}px)`;
+      if (!c) return;
+      let x = c[0], y = c[1];
+      if (box && Math.abs(box[0] - x) < 100 && Math.abs(box[1] - y) < 36) y = box[1] - 36;
+      while (placed.some(([px, py]) => Math.abs(px - x) < 30 && Math.abs(py - y) < 30)) x += 32;
+      placed.push([x, y]);
+      m.style.transform = `translate(${Math.round(r.left + x - 14)}px, ${Math.round(r.top + y - 14)}px)`;
     });
   }
 }
