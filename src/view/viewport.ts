@@ -1295,9 +1295,16 @@ export class Viewport {
       const s = new Float64Array(2);
       if (this.projector()(0, 0, 0, s) && Math.hypot(s[0] - x, s[1] - y) < Math.max(12, edgeTolPx)) return { kind: "origin", point: [0, 0, 0] };
     }
+    // A plane of the project's own, where the tap lands on one: the origin
+    // planes draw over everything and covered it (a plane 18 up, tapped from
+    // the top, gave the floor; they have buttons in the card as well). A
+    // sketch's shape on it still comes first (tapped to carry on with it).
+    let ownPlane: PickHit | null = null;
     if (planes && planesFirst) {
-      const hit = this.raycaster.intersectObjects(this.planeMeshes.filter((m) => m.userData.origin), false)[0];
-      if (hit) return { kind: "plane", id: hit.object.userData.plane, point: hit.point.toArray() as Vec3 };
+      const hits = this.raycaster.intersectObjects(this.planeMeshes, false);
+      const own = hits.find((h) => !h.object.userData.origin);
+      if (own) ownPlane = { kind: "plane", id: own.object.userData.plane, point: own.point.toArray() as Vec3 };
+      else if (hits[0]) return { kind: "plane", id: hits[0].object.userData.plane, point: hits[0].point.toArray() as Vec3 };
     }
     const visibleBodies = bodies && settings.value.shader !== "wireframe";
     const meshes = visibleBodies ? this.visibleBodies().map((b) => b.mesh) : [];
@@ -1398,6 +1405,7 @@ export class Viewport {
         if (sa && sb && distToSeg(x, y, sa, sb) < edgeTolPx) return { kind: "axis", id: a.id, point: a.a.toArray() as Vec3 };
       }
     }
+    if (ownPlane) return ownPlane;
     if (planes) {
       const hit = this.raycaster.intersectObjects(this.planeMeshes, false)[0];
       if (hit && hit.distance <= faceDist) return { kind: "plane", id: hit.object.userData.plane, point: hit.point.toArray() as Vec3 };

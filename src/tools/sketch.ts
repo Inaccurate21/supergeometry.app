@@ -277,6 +277,17 @@ const refKey = (r: PointRef) => `${r.e}:${r.p}`;
  * plane or an existing sketch); the camera then looks straight at it in
  * orthographic and Line is active. Every finished shape commits right away.
  */
+/**
+ * `len` from `o` at `deg` degrees: square angles exactly (a line typed 80
+ * long at 90° ended at x -29.999999999999996, not -30 - and the arc drawn from
+ * its end was off by as much).
+ */
+function along(o: Vec2, deg: number, len: number): Vec2 {
+  const turn = ((deg % 360) + 360) % 360;
+  const [c, s] = turn === 0 ? [1, 0] : turn === 90 ? [0, 1] : turn === 180 ? [-1, 0] : turn === 270 ? [0, -1] : [Math.cos((deg * Math.PI) / 180), Math.sin((deg * Math.PI) / 180)];
+  return [o[0] + c * len, o[1] + s * len];
+}
+
 export class SketchTool implements Tool {
   readonly id = "sketch";
   private phase: "plane" | "draw";
@@ -2596,7 +2607,7 @@ export class SketchTool implements Tool {
     } else return;
     this.app.ui.showPanel(null);
     // Say which plane it is (an origin plane tapped in 3D is easy to mistake).
-    if (hit.kind === "plane") this.app.ui.toast(`Sketching on ${hit.id === "XY" ? "XY (floor)" : hit.id === "XZ" ? "XZ (front)" : hit.id === "YZ" ? "YZ (side)" : "the plane"}`);
+    if (hit.kind === "plane") this.app.ui.toast(`Sketching on ${hit.id === "XY" ? "XY (floor)" : hit.id === "XZ" ? "XZ (front)" : hit.id === "YZ" ? "YZ (side)" : (this.app.store.features.find((f) => f.id === hit.id)?.name ?? "the plane")}`);
     this.beginDrawing();
   }
 
@@ -2856,8 +2867,9 @@ export class SketchTool implements Tool {
     const firstSide = this.pts.length === 1 && ((this.kind === "arc" && memory.arc !== "center") || (this.kind === "rect" && memory.rect === "3pt") || (this.kind === "circle" && memory.circle === "3pt"));
     if (firstSide) {
       if (L.len === undefined && L.ang === undefined) return c;
-      const ang = L.ang !== undefined ? (L.ang * Math.PI) / 180 : Math.atan2(c[1] - a[1], c[0] - a[0]);
       const len = L.len ?? Math.hypot(c[0] - a[0], c[1] - a[1]);
+      if (L.ang !== undefined) return along(a, L.ang, len);
+      const ang = Math.atan2(c[1] - a[1], c[0] - a[0]);
       return [a[0] + Math.cos(ang) * len, a[1] + Math.sin(ang) * len];
     }
     if (this.pts.length === 2 && ((this.kind === "arc" && memory.arc !== "center" && L.r !== undefined) || (this.kind === "rect" && memory.rect === "3pt" && L.h !== undefined))) {
@@ -2886,8 +2898,8 @@ export class SketchTool implements Tool {
         if (L.dx !== undefined || L.dy !== undefined) return [last[0] + (L.dx ?? 0), last[1] + (L.dy ?? 0)];
         let ang = Math.atan2(c[1] - last[1], c[0] - last[0]);
         let len = Math.hypot(c[0] - last[0], c[1] - last[1]);
-        if (L.ang !== undefined) ang = (L.ang * Math.PI) / 180;
         if (L.len !== undefined) len = L.len;
+        if (L.ang !== undefined) return along(last, L.ang, len);
         return [last[0] + Math.cos(ang) * len, last[1] + Math.sin(ang) * len];
       }
       case "rect": {

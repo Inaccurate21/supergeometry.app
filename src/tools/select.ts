@@ -185,6 +185,10 @@ export class SelectTool implements Tool {
     const forced = this.chosenHit;
     this.chosenHit = null;
     let hit = forced ?? this.tapHit(p);
+    // Waiting for edges (Fillet, Chamfer): a corner within a finger's reach
+    // isn't one - the edge under the finger is (a slot's rim, tapped from the
+    // top, gave the corner of the wheel standing in it).
+    if (!forced && hit?.kind === "vertex" && this.pending && !this.pending.accepts.includes("vertex") && this.pending.accepts.includes("edge")) hit = this.app.view.pick(p.x, p.y, { edgeTolPx: p.tol, vertices: false }) ?? hit;
     // Faces of several bodies in the same place (a bolt flush with the flange
     // it cuts): which one, from a list by the pointer.
     if (!forced && hit?.kind === "face" && count < 2 && !this.app.view.selectThrough) {

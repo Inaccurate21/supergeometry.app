@@ -153,7 +153,12 @@ export abstract class FeatureOp<F extends Feature> implements Tool {
   tap(p: ToolPointer): void {
     const slot = this.slots[this.active];
     const h = this.lastHover;
-    const hit = h?.hit && Math.hypot(h.x - p.x, h.y - p.y) < 6 ? h.hit : this.app.view.pick(p.x, p.y, { edgeTolPx: p.tol, ...(slot?.pick ?? {}) });
+    let hit = h?.hit && Math.hypot(h.x - p.x, h.y - p.y) < 6 ? h.hit : this.app.view.pick(p.x, p.y, { edgeTolPx: p.tol, ...(slot?.pick ?? {}) });
+    // Not what this step is making (its preview): what's under it. (A Fill's
+    // last boundary curve, tapped once the loop closed, took the edge of the
+    // surface just made on it instead.)
+    const mine = (b: string) => b === this.feature.id || b.startsWith(`${this.feature.id}:`);
+    if (hit && "body" in hit && hit.body && mine(hit.body)) hit = this.app.view.pick(p.x, p.y, { edgeTolPx: p.tol, ...(slot?.pick ?? {}), bodies: false });
     if (this.moreRegions && (!slot || !hit || hit.kind === "plane" || hit.kind === "profile") && this.regionTap(p)) return;
     // Tapping empty space ends the tool: keep the result if it's complete.
     if (!hit) {
