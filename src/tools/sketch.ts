@@ -1447,7 +1447,21 @@ export class SketchTool implements Tool {
         }
         break;
       case "fillet":
-        items.push({ type: "number", label: memory.corner === "chamfer" ? "Distance" : "Radius", value: memory.fillet, kind: "length", min: 0.0001, onInput: (v) => (memory.fillet = v) });
+        // (Typed here while a corner is being sized: that corner takes it - it
+        // only set the next one's, and the corner kept its tenth of a side.)
+        items.push({
+          type: "number",
+          label: memory.corner === "chamfer" ? "Distance" : "Radius",
+          value: memory.fillet,
+          kind: "length",
+          min: 0.0001,
+          onInput: (v) => {
+            memory.fillet = v;
+            if (!this.filletEdit) return;
+            this.filletEdit.widget.setValue(v);
+            this.applyFillet(v);
+          },
+        });
         break;
       case "offset":
         // Edge: just the tapped curve. Chain: the whole connected outline, kept closed.
