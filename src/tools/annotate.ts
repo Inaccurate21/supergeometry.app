@@ -5,7 +5,7 @@ import { BufferGeometry, ConeGeometry, Group, Line, LineBasicMaterial, LineDashe
 import { mergingCommits } from "../doc/store";
 import type { PinDef, Vec3 } from "../doc/types";
 import { el } from "../ui/ui";
-import { numpadInput, openNumpad } from "../ui/numpad";
+import { numpadInput, openNumpad, typingInto } from "../ui/numpad";
 import { settings } from "../settings";
 import { evaluate, toDisplay, trim, UNIT_LABEL, units } from "../units";
 import type { Viewport } from "../view/viewport";
@@ -244,7 +244,7 @@ export class DimWidget {
   }
 
   setValue(v: number): void {
-    if (document.activeElement !== this.input) this.input.value = this.show(v);
+    if (!typingInto(this.input)) this.input.value = this.show(v);
     this.box.classList.remove("typing", "invalid");
   }
 

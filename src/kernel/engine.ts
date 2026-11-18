@@ -1099,6 +1099,19 @@ async function apply(f: Feature, ctx: Ctx): Promise<void> {
       // its own (no body it belongs to), it then only cuts - no new body.
       if (f.mode === "auto") {
         const hit = overlapping(solid, ctx, f.target);
+        // Started inside a body (drawn on a plane through it) and reaching out
+        // of it: cut, and the part outside left off - said so (a pipe's branch
+        // drawn on the floor through the pipe came out a notch, no word why).
+        if (hit.length && !f.target && Math.abs(distance) > 1e-9) {
+          const dir = Math.sign(distance);
+          const starts = startFaces().flatMap(({ face, normal }) => { const { p } = pointOnFace(face as unknown as Shape3D, face); const e = 1e-3; return [add(p, scale(normal, e * dir)), add(p, scale(normal, -e * dir))]; });
+          const inside = hit.some((id) => insideOf(need(bodies, id), starts).every(Boolean));
+          if (inside) {
+            let rest: Shape3D = solid;
+            for (const id of hit) rest = checkedBoolean("cut", rest, need(bodies, id));
+            if (!isEmpty(rest) && Math.abs(measureVolume(rest)) > 1e-3 * Math.abs(measureVolume(solid))) editNotes.push(AUTO_CUT_INSIDE);
+          }
+        }
         for (const id of hit) {
           const cut = checkedBoolean("cut", need(bodies, id), solid);
           if (isEmpty(cut)) bodies.delete(id);
@@ -3249,6 +3262,8 @@ function resolveAxis(a: AxisRef, ctx: Ctx): { origin: Vec3; dir: Vec3 } {
 const PINCHED = "This only touches the body along an edge, so the two hang together by nothing - let them overlap a little (start it inside the body).";
 
 /** A cut that took nothing away: said (a pocket drawn on the wrong side did nothing, without a word). */
+/** Auto, drawn inside a body and reaching out of it: cut, not added. */
+export const AUTO_CUT_INSIDE = "Auto cut this out of the body it starts inside - what reaches past that body isn't added. To add it (a branch, a boss), pick Add.";
 const MISSED_CUT = "This cut doesn't reach the body, so nothing was cut - check which way it goes (Flip), or make it longer.";
 
 function combine(id: string, mode: string, target: string | undefined, solid: Shape3D, negative: boolean, ctx: Ctx): void {

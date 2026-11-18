@@ -44,6 +44,10 @@ export function numpadVariables(hooks: typeof varHooks): void {
 class Numpad {
   private el = document.createElement("div");
   private target: HTMLInputElement | null = null;
+  /** Open on this box. */
+  typingInto(input: HTMLInputElement): boolean {
+    return this.target === input && !this.el.hidden;
+  }
 
   /** Put away if it's open on this box. */
   closeIf(input: HTMLInputElement): void {
@@ -378,6 +382,15 @@ class Numpad {
 }
 
 let pad: Numpad | null = null;
+
+/**
+ * Is this box being typed into - focused, or the numpad's (which works without
+ * focus)? Then its text is left as it is: "1." is on its way to 1.5, and a
+ * box that rewrote itself from the value on each key made it 1, then 15.
+ */
+export function typingInto(input: HTMLInputElement): boolean {
+  return document.activeElement === input || pad?.typingInto(input) === true;
+}
 
 /**
  * Let a numeric input use the on-screen numpad (when it's on): the system

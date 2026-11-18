@@ -6,7 +6,7 @@ import type { FeatureError } from "../kernel/protocol";
 import { evaluate, toDisplay, trim, UNIT_LABEL, units } from "../units";
 import { iconNameFor, icons, type IconName } from "./icons";
 import { DIALOG_ACTION } from "./dialogAction";
-import { numpadInput } from "./numpad";
+import { numpadInput, typingInto } from "./numpad";
 import { selectAll, textField } from "./textField";
 import { settings } from "../settings";
 
@@ -1538,7 +1538,7 @@ export class UI {
   updatePanelValues(values: number[]): void {
     this.panel.querySelectorAll<HTMLInputElement>("input[data-index]").forEach((input) => {
       const v = values[Number(input.dataset.index)];
-      if (v !== undefined && document.activeElement !== input) input.value = shown(v, input.dataset.kind as FieldKind);
+      if (v !== undefined && !typingInto(input)) input.value = shown(v, input.dataset.kind as FieldKind);
     });
   }
 

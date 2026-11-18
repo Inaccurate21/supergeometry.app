@@ -304,8 +304,17 @@ export abstract class FeatureOp<F extends Feature> implements Tool {
       shown(r);
       this.error = r?.errors.find((e) => e.featureId === this.feature.id)?.message ?? null;
       this.setHint();
+      // What the step notes about itself (it cut where Add may have been
+      // meant, a piece left off): said while it's being made, not only on
+      // its History row, out of sight on a phone. Once per new note.
+      const note = r ? (r.notes?.find((n) => n.featureId === this.feature.id)?.message ?? null) : this.noted;
+      if (note && note !== this.noted && !this.error) this.app.ui.toast(note);
+      this.noted = note;
     });
   }
+
+  /** The note the last preview had for this step (said once). */
+  private noted: string | null = null;
 
   /** Hook for handles etc. */
   protected onDraftChanged(): void {}
