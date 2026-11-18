@@ -1452,34 +1452,67 @@ async function apply(f: Feature, ctx: Ctx): Promise<void> {
       let target = need(bodies, f.target);
       const toolIds = bodyList(f.tools, bodies, "tools", f.whole);
       const solidsIn = (x: Shape3D) => [...iterTopo(x.wrapped, "solid")].length;
-      // Subtract: every tool at once - joined, then one tolerant cut checked by
-      // its volume. Cut one by one, eight vents round a lamp shade left it with
-      // no solid after the sixth, and the message blamed an "open surface".
+      // Subtract: every tool at once (see cutAway), each kept the clearance
+      // away if one is set, cut from the body, the tools or all of them.
       if (f.op === "subtract" && toolIds.length) {
         const tools = toolIds.map((t) => need(bodies, t));
         if (!solidsIn(target) || tools.some((t) => !solidsIn(t)))
           throw new Error("One of these is an open surface (e.g. a freeform with a hole), not a solid. Close it first: tap an edge of the hole → Fill hole, or give it a Thickness - then Union.");
-        const all = fuseAll(tools.map((t) => t.clone()));
-        let out = fuzzyBoolean("cut", target, all);
-        if (!solidsIn(out) || !booleanVolumeOk("cut", target, all, out)) {
-          const plain = target.cut(all);
-          if (solidsIn(plain) && booleanVolumeOk("cut", target, all, plain)) out = plain;
-          else if (isEmpty(out) && isEmpty(plain)) throw new Error("The result is empty");
-          else throw new Error("Subtracting these didn't work out - the geometry engine lost the shape. Try the tools one or two at a time");
-        }
-        // The tolerant cut can leave faces that don't meet up where the plain one
-        // is clean (a direction switch's slot through the housing's shelled top).
-        else if (!shapeValid(out) && shapeValid(target)) {
-          try {
-            const plain = target.cut(all);
-            if (solidsIn(plain) && shapeValid(plain) && booleanVolumeOk("cut", target, all, plain)) out = plain;
-          } catch {
-            // No plain cut either (it can come back empty): the tolerant one goes on to be checked.
+        const gap = Math.max(0, f.clearance ?? 0);
+        const from = f.cutFrom ?? "body";
+        // Each body grown by the gap it keeps from the others (once each).
+        const grown = new Map<Shape3D, Map<number, Shape3D[]>>();
+        const grow = (s: Shape3D, by: number): Shape3D[] => {
+          if (!(by > 0)) return [s.clone()];
+          let g = grown.get(s)?.get(by);
+          if (!g) {
+            g = grownBy(s, by) ?? undefined;
+            if (!g) throw new Error(`Couldn't keep ${+by.toFixed(4)} mm clear round one of the bodies - try a smaller clearance`);
+            grown.set(s, (grown.get(s) ?? new Map()).set(by, g));
           }
+          return g.map((x) => x.clone());
+        };
+        if (from === "body") {
+          const out = cutAway(target, tools.flatMap((t) => grow(t, gap)));
+          if (!f.keepTools) for (const t of toolIds) bodies.delete(t);
+          // Kept as it was: the result is a body of its own.
+          bodies.set(f.keepTarget ? f.id : f.target, out);
+          return;
         }
-        if (!f.keepTools) for (const t of toolIds) bodies.delete(t);
-        // Kept as it was: the result is a body of its own.
-        bodies.set(f.keepTarget ? f.id : f.target, out);
+        // The others give way: each cut by the body, grown by the gap.
+        if (from === "tools") {
+          const outs = tools.map((t) => cutAway(t, grow(target, gap)));
+          outs.forEach((o, k) => bodies.set(toolIds[k], o));
+          return;
+        }
+        // All of them, in turn: each gives way half the gap to the ones still
+        // to come, and the ones before it what's left - itself less the
+        // earlier ones grown by the whole gap, but its own core (itself
+        // brought in by half the gap) kept. So any two end up the gap apart,
+        // half from each where they overlapped: a peg through a plate, a hole
+        // r + gap/2 and a pin r - gap/2. Only the bodies as they were are
+        // grown or brought in (the kernel can't grow a cut one: its round
+        // from the cut is the gap's own radius).
+        const ids = [f.target, ...toolIds];
+        const was = [target, ...tools];
+        const now = was.map((b, k) => {
+          const by = was.slice(k + 1).flatMap((x) => grow(x, gap / 2));
+          if (k > 0) {
+            let early = fuseAll(was.slice(0, k).flatMap((x) => grow(x, gap)));
+            const core = gap > 0 ? broughtIn(b, gap / 2) : b.clone();
+            // (Its core not kept, if that cut fails: more is cut away, still the gap apart.)
+            if (core) {
+              try {
+                early = fuzzyBoolean("cut", early, core);
+              } catch (err) {
+                if (isFault(err)) throw err;
+              }
+            }
+            if (!isEmpty(early)) by.push(early);
+          }
+          return by.length ? cutAway(b, by) : b;
+        });
+        now.forEach((s, k) => bodies.set(ids[k], s));
         return;
       }
       let open: number | undefined;
@@ -2806,6 +2839,36 @@ function offsetSolid(off: any, shape: Shape3D, by: number): Shape3D | null {
 }
 
 /**
+ * A body grown by `by` all round (what a clearance cut takes away), or brought
+ * in when `by` is negative, as pieces that together are it - grown a piece at
+ * a time: the kernel's offset of a body in two pieces (a peg cut into two
+ * stubs) fails. Null: no go.
+ */
+function grownBy(s: Shape3D, by: number): Shape3D[] | null {
+  const oc = getOC();
+  const off = new oc.BRepOffsetAPI_MakeOffsetShape();
+  try {
+    const parts = subShapes(s, "SOLID");
+    const out: Shape3D[] = [];
+    for (const x of parts.length > 1 ? parts.map((p) => cast(p) as Shape3D) : [s]) {
+      const g = offsetSolid(off, unify(x), by);
+      const v = g ? Math.abs(measureVolume(g)) : 0, v0 = Math.abs(measureVolume(x));
+      if (!g || !(by > 0 ? v > v0 : v < v0 && v > 0)) return null;
+      out.push(g);
+    }
+    return out;
+  } finally {
+    off.delete();
+  }
+}
+
+/** A body brought in by `by` all round (one shape), or null when that doesn't work. */
+function broughtIn(s: Shape3D, by: number): Shape3D | null {
+  const g = grownBy(s, -by);
+  return g ? (g.length > 1 ? fuseAll(g) : g[0]) : null;
+}
+
+/**
  * An offset solid with its loose edges made again. Where two offset faces
  * meet smoothly (a shelled mouse's top and the round along its rim), the
  * kernel's edge between them strays (0.2 mm off, 0.14 mm allowed) while its
@@ -3229,6 +3292,34 @@ function checkedBoolean(op: "fuse" | "cut", t: Shape3D, solid: Shape3D): Shape3D
   const plain = op === "fuse" ? t.fuse(solid) : t.cut(solid);
   if (!booleanVolumeOk(op, t, solid, plain)) throw new Error(op === "fuse" ? "Joining these didn't work out - the shapes only just overlap here: let them overlap more" : "This cut didn't work out - the shapes only just overlap here: let them overlap more, or less");
   return plain;
+}
+
+/**
+ * The Subtract tool's cut: every tool at once - joined, then one tolerant cut
+ * checked by its volume. Cut one by one, eight vents round a lamp shade left
+ * it with no solid after the sixth, and the message blamed an "open surface".
+ */
+function cutAway(target: Shape3D, tools: Shape3D[]): Shape3D {
+  const solidsIn = (x: Shape3D) => [...iterTopo(x.wrapped, "solid")].length;
+  const all = fuseAll(tools);
+  let out = fuzzyBoolean("cut", target, all);
+  if (!solidsIn(out) || !booleanVolumeOk("cut", target, all, out)) {
+    const plain = target.cut(all);
+    if (solidsIn(plain) && booleanVolumeOk("cut", target, all, plain)) out = plain;
+    else if (isEmpty(out) && isEmpty(plain)) throw new Error("The result is empty");
+    else throw new Error("Subtracting these didn't work out - the geometry engine lost the shape. Try the tools one or two at a time");
+  }
+  // The tolerant cut can leave faces that don't meet up where the plain one
+  // is clean (a direction switch's slot through the housing's shelled top).
+  else if (!shapeValid(out) && shapeValid(target)) {
+    try {
+      const plain = target.cut(all);
+      if (solidsIn(plain) && shapeValid(plain) && booleanVolumeOk("cut", target, all, plain)) out = plain;
+    } catch {
+      // No plain cut either (it can come back empty): the tolerant one goes on to be checked.
+    }
+  }
+  return out;
 }
 
 /**

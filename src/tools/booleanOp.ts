@@ -2,7 +2,9 @@
 // change it with (−), picked in turn; keep either side if wanted.
 
 import type { BooleanFeature, Vec3 } from "../doc/types";
+import { add, scale } from "../geom";
 import type { PanelItem } from "../ui/ui";
+import { DimWidget } from "./annotate";
 import { FeatureOp, type Slot } from "./featureOp";
 import { bodyCenter } from "./ops";
 import type { AppContext } from "./tool";
@@ -60,8 +62,13 @@ export class BooleanOp extends FeatureOp<BooleanFeature> {
     this.slots = [targetSlot, toolsSlot];
   }
 
+  /** Names seen (while its preview is being made, a body can be missing from the list). */
+  private names = new Map<string, string>();
+
   private nameOf(id: string): string {
-    return this.app.store.doc.names?.[id] ?? this.app.view.bodyList.find((b) => b.id === id)?.name ?? "Body";
+    const name = this.app.store.doc.names?.[id] ?? this.app.view.bodyList.find((b) => b.id === id)?.name ?? this.names.get(id);
+    if (name) this.names.set(id, name);
+    return name ?? "Body";
   }
 
   protected hint(): string {
@@ -70,10 +77,43 @@ export class BooleanOp extends FeatureOp<BooleanFeature> {
       : "Tap a body, then the bodies it overlaps. Only the part they share is kept.";
   }
 
+  /** Which bodies give way to the clearance, named after the bodies picked. */
+  private sides(): { id: string; label: string }[] {
+    const t = this.feature.tools;
+    return [
+      { id: "body", label: this.feature.target ? this.nameOf(this.feature.target) : "Body" },
+      { id: "tools", label: t.length === 1 ? this.nameOf(t[0]) : "The others" },
+      { id: "all", label: t.length > 1 ? "All" : "Both" },
+    ];
+  }
+
+  private setSide(id: string): void {
+    this.feature.cutFrom = id === "body" ? undefined : (id as "tools" | "all");
+    this.render();
+    this.update();
+  }
+
+  private setClearance(v: number): void {
+    if (!(v >= 0)) return;
+    this.feature.clearance = v || undefined;
+    this.app.ui.updatePanelValues([v]);
+    this.dim?.setValue(v);
+    this.update();
+  }
+
   protected items(): PanelItem[] {
     const f = this.feature;
     const sub = f.op === "subtract";
+    const gap: PanelItem[] = sub
+      ? [
+          { ...this.num("Clearance", "clearance", "length", { min: 0, onInput: (v) => this.setClearance(v), inBox: true }), value: f.clearance ?? 0 } as PanelItem,
+          { type: "choice", label: "Cut from", options: this.sides(), value: f.cutFrom ?? "body", onChange: (id) => this.setSide(id) },
+        ]
+      : [];
+    // The others give way (or all do): every body stays, changed.
+    if (sub && f.cutFrom) return gap;
     return [
+      ...gap,
       { type: "toggle", label: "Keep modified body", value: !!f.keepTarget, onChange: (v) => ((f.keepTarget = v || undefined), this.render(), this.update()) },
       { type: "toggle", label: sub ? "Keep subtracted bodies" : "Keep intersecting bodies", value: !!f.keepTools, onChange: (v) => ((f.keepTools = v || undefined), this.render(), this.update()) },
     ];
@@ -86,14 +126,48 @@ export class BooleanOp extends FeatureOp<BooleanFeature> {
   }
 
   exit(): void {
+    this.dim?.dispose();
+    this.dim = null;
     this.app.view.frameHooks.delete(this.hook);
     for (const m of this.marks) m.remove();
     this.marks = [];
     super.exit();
   }
 
+  /** The clearance, typed between the body and the first body it's subtracted with. */
+  private dim: DimWidget | null = null;
+  /** The names in its drop-down (made again when the bodies picked change). */
+  private dimSides = "";
+
   protected onDraftChanged(): void {
     this.placeMarks();
+    const f = this.feature;
+    const a = this.centers.get(f.target), b = f.tools[0] ? this.centers.get(f.tools[0]) : undefined;
+    const sides = this.sides();
+    const key = JSON.stringify(sides);
+    if (f.op !== "subtract" || !a || !b || key !== this.dimSides) {
+      this.dim?.dispose();
+      this.dim = null;
+    }
+    if (f.op !== "subtract" || !a || !b) return;
+    this.dimSides = key;
+    this.dim ??= new DimWidget(this.app.view, {
+      noLine: true,
+      value: f.clearance ?? 0,
+      modes: sides,
+      mode: f.cutFrom ?? "body",
+      onMode: (id) => this.setSide(id),
+      onInput: (v, text) => {
+        if (!(v >= 0)) return;
+        this.typedInto("clearance", text);
+        this.setClearance(v);
+      },
+      onCommit: () => this.done(),
+    });
+    const mid = scale(add(a, b), 0.5);
+    this.dim.set(mid, mid);
+    this.dim.setMode(f.cutFrom ?? "body");
+    this.dim.setValue(f.clearance ?? 0);
   }
 
   /** "+" on the body that's changed, "−" on each body it's changed with. */

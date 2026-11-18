@@ -229,6 +229,14 @@ export interface BooleanFeature extends FeatureBase {
   keepTarget?: boolean;
   /** Subtract / Intersect: the bodies it was changed with stay. */
   keepTools?: boolean;
+  /** Subtract: the gap (mm) the cut leaves between the bodies (missing: none, they meet). */
+  clearance?: number;
+  /**
+   * Subtract: which bodies give way - the body (missing: the usual subtract),
+   * the bodies it's subtracted with (each cut by the body, which stays), or
+   * all of them (each cut by every other, half the gap each).
+   */
+  cutFrom?: "body" | "tools" | "all";
   /**
    * Patterns it used whole (`<pattern step>:<original body>`): the original and
    * every copy there was when it was made. They stay whole when the pattern's
