@@ -1395,7 +1395,18 @@ async function apply(f: Feature, ctx: Ctx): Promise<void> {
       // pocket's walls without a word, the pocket a window into the hollow.
       const kept = body.faces.filter((g) => !faces.some((h) => h.isSame(g)));
       const gaps = openEdges(body).length;
-      const good = (s: Shape3D | null): s is Shape3D => hollowed(s) && shapeValid(s) && openEdges(s).length <= gaps && wallsStand(body, s, kept, t) && hollowInside(body, s, kept, t);
+      // (No hair-thin faces either, as every edit is held to: the exact case
+      // above comes out "fine" with its inside rounds shrunk to slivers.)
+      const thin0 = hairThin(body);
+      const fine = (s: Shape3D) => {
+        if (hairThin(s) <= thin0) return true;
+        try {
+          return hairThin(unify(s)) <= thin0;
+        } catch {
+          return false;
+        }
+      };
+      const good = (s: Shape3D | null): s is Shape3D => hollowed(s) && shapeValid(s) && openEdges(s).length <= gaps && fine(s) && wallsStand(body, s, kept, t) && hollowInside(body, s, kept, t);
       // The ways there are, in turn: in one step (no face picked: that gives
       // only the inner core back - a battery case came out solid); hollowed
       // with an offset copy of the body, the openings cut through (many-faced
@@ -1414,7 +1425,8 @@ async function apply(f: Feature, ctx: Ctx): Promise<void> {
           }
         },
         () => shellByOffset(body, faces, t),
-        ...(faces.length ? [1 + 1e-4, 1 + 1e-3].map((k) => () => shellByOffset(body, faces, t * k)) : []),
+        // (Sealed too: a closed box with 2 mm rounds hollowed 2 thick.)
+        ...[1 + 1e-4, 1 + 1e-3].map((k) => () => shellByOffset(body, faces, t * k)),
         // ...and the hollow put together from what is cut out of the body, each
         // cut-out grown on its own: where two of them are closer than two walls
         // (a pocket 1.7 mm from a hole, 1 mm walls) offsetting the whole body fails.
