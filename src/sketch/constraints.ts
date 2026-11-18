@@ -541,6 +541,16 @@ function solveGroup(entities: SketchEntity[], live: SketchConstraint[], opts: So
     const xg = gradually(1 / 16, 60);
     if (xg && errorAt(xg) <= Math.max(errorAt(xs), tol)) xs = xg;
   }
+  // Float noise off the answer (a height typed as 93 solved to 92.999999999999,
+  // then shown, saved and built so): each value a hair off a clean one is put
+  // on it, when that keeps the constraints as well met.
+  if (!drags.length) {
+    const clean = xs.map((v) => {
+      const r = Math.round(v * 1e9) / 1e9;
+      return r !== v && Math.abs(r - v) < 1e-10 * Math.max(1, Math.abs(v)) ? r : v;
+    });
+    if (clean.some((v, i) => v !== xs[i]) && errorAt(clean) <= Math.max(errorAt(xs), tol)) xs = clean;
+  }
   const m = build(xs);
   const error = errorAt(xs);
   return { entities: entities.map((e) => m.get(e.id) ?? e), error, ok: error < 1e-6 * Math.max(1, scale) };

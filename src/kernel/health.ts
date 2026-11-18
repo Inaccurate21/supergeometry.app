@@ -56,30 +56,45 @@ export function validNow(wrapped: unknown): boolean {
  * shape, like the checks below: every edit asks it of the body as it was
  * before, which is the same body on each move of a drag.
  */
-const openCache = new WeakMap<Shape3D, number[]>();
+const openCache = new WeakMap<Shape3D, { open: number[]; pinched: number }>();
 export function openEdges(shape: Shape3D): number[] {
+  return edgeUse(shape).open;
+}
+
+/**
+ * Edges with more than two faces round them: two pieces that only meet
+ * along an edge (a slab stood on a block's edge and "joined"), held
+ * together by nothing - one body by name, two by any printer or saw.
+ */
+export function pinchedEdges(shape: Shape3D): number {
+  return edgeUse(shape).pinched;
+}
+
+function edgeUse(shape: Shape3D): { open: number[]; pinched: number } {
   let known = openCache.get(shape);
-  if (!known) openCache.set(shape, (known = findOpenEdges(shape)));
+  if (!known) openCache.set(shape, (known = findEdgeUse(shape)));
   return known;
 }
 
-function findOpenEdges(shape: Shape3D): number[] {
+function findEdgeUse(shape: Shape3D): { open: number[]; pinched: number } {
   const edges = shape.edges;
-  const buckets = new Map<number, { e: Edge; i: number; n: number }[]>();
+  const buckets = new Map<number, { e: Edge; i: number; n: number; faces: Set<number> }[]>();
   edges.forEach((e, i) => {
     const h = e.hashCode;
-    buckets.set(h, [...(buckets.get(h) ?? []), { e, i, n: 0 }]);
+    buckets.set(h, [...(buckets.get(h) ?? []), { e, i, n: 0, faces: new Set<number>() }]);
   });
   const oc = getOC();
-  for (const f of shape.faces) {
+  shape.faces.forEach((f, k) => {
     for (const fe of f.edges) {
       const m = buckets.get(fe.hashCode)?.find((x) => x.e.isSame(fe));
       // A seam (cylinder/torus) belongs to its face twice but is listed once.
       if (m) m.n += oc.BRep_Tool.IsClosed(fe.wrapped, f.wrapped) ? 2 : 1;
+      m?.faces.add(k);
     }
-  }
+  });
   // A pole (where a revolved profile touches the axis) is a point-edge, not a gap.
-  return [...buckets.values()].flat().filter((x) => x.n < 2 && !oc.BRep_Tool.Degenerated(x.e.wrapped)).map((x) => x.i);
+  const all = [...buckets.values()].flat();
+  return { open: all.filter((x) => x.n < 2 && !oc.BRep_Tool.Degenerated(x.e.wrapped)).map((x) => x.i), pinched: all.filter((x) => x.faces.size > 2).length };
 }
 
 /**

@@ -182,12 +182,14 @@ export class ExtrudeOp extends FeatureOp<ExtrudeFeature> {
     if (this.offsetsFace()) return "Drag the arrow or type a distance to push or pull the face. The faces around it follow.";
     if (this.feature.extent === "through") return "It goes through every body in its way. Flip direction turns it the other way.";
     if (this.feature.extent === "to") return "It stops at the face or plane picked (a round face too).";
+    if (this.feature.symmetric) return "Symmetric: the distance goes each way from the shape - type half the whole width.";
     return "Drag the arrow or type a distance to make it 3D. A negative distance cuts into the body.";
   }
 
   protected items(): PanelItem[] {
     const src = this.feature.source;
-    const distance = this.num("Distance", "distance", "length", { onInput: (v) => this.setDistance(v), inBox: true });
+    // Symmetric: what's typed goes each way (30 typed made a clamp 60 wide, the box said "Distance").
+    const distance = this.num(this.feature.symmetric && !this.offsetsFace() ? "Each side" : "Distance", "distance", "length", { onInput: (v) => this.setDistance(v), inBox: true });
     // (No Join / Cut / New or taper: those make it an extrusion.)
     if (this.offsetsFace()) return [distance];
     const ext = this.feature.extent ?? "distance";
@@ -205,6 +207,7 @@ export class ExtrudeOp extends FeatureOp<ExtrudeFeature> {
         value: this.feature.symmetric ? "sym" : "one",
         onChange: (id: string) => {
           this.feature.symmetric = id === "sym" || undefined;
+          this.setHint();
           this.render();
           this.update();
         },
@@ -213,6 +216,8 @@ export class ExtrudeOp extends FeatureOp<ExtrudeFeature> {
         () => this.feature.mode,
         (m) => {
           this.feature.mode = m;
+          // Through all with no way picked yet: a cut goes into the body.
+          if (this.feature.extent === "through" && !this.throughFlipped) this.feature.distance = this.throughInto(m) ? -1 : 1;
           // A new body from a face (a spire on a tower): its own height is what's typed,
           // not the total through the body - 68 typed came out 102 down into the tower.
           if (m === "new" && this.measure === "total") {
@@ -272,7 +277,7 @@ export class ExtrudeOp extends FeatureOp<ExtrudeFeature> {
       },
       // Through all: which way (the arrow's).
       ...(ext === "through"
-        ? [{ type: "button" as const, label: "Flip direction", onClick: () => ((f.distance = -(f.distance || 1)), this.onDraftChanged(), this.render(), this.update()) }]
+        ? [{ type: "button" as const, label: "Flip direction", onClick: () => ((this.throughFlipped = true), (f.distance = -(f.distance || 1)), this.onDraftChanged(), this.render(), this.update()) }]
         : []),
     ];
   }
@@ -286,6 +291,18 @@ export class ExtrudeOp extends FeatureOp<ExtrudeFeature> {
     ];
   }
 
+  /** Flip direction pressed: Through all goes the way the user chose, whatever the mode. */
+  private throughFlipped = false;
+
+  /** Through all with no way picked: into the body for a cut, or for Auto on a body's face (it faces out). */
+  private throughInto(mode: ExtrudeFeature["mode"]): boolean {
+    if (mode === "cut") return true;
+    if (mode !== "auto") return false;
+    const src = this.feature.source;
+    const sk = src.kind === "profile" ? this.app.store.find<SketchFeature>(src.sketch) : undefined;
+    return !!sk?.attachedTo && dot(sk.attachedTo.normal, sk.plane.normal) > 0.5;
+  }
+
   private setExtent(ext: "distance" | "through" | "to"): void {
     const f = this.feature;
     f.extent = ext === "distance" ? undefined : ext;
@@ -295,6 +312,10 @@ export class ExtrudeOp extends FeatureOp<ExtrudeFeature> {
     this.active = ext === "to" && !f.to ? 0 : -1;
     if (ext === "to" && f.symmetric) f.symmetric = undefined;
     if (ext === "distance" && !f.distance) f.distance = lastExtrude.distance;
+    // Through all, no way picked yet: a cut goes into the body (a sketch on a
+    // face faces out of it: a hole "through all" went off into the air, cut nothing).
+    // (So does Auto on a body's face: up off it, Through all only made a tower 350 high.)
+    if (ext === "through" && !this.throughFlipped && (!f.distance || this.throughInto(f.mode))) f.distance = this.throughInto(f.mode) ? -1 : 1;
     this.onDraftChanged();
     this.render();
     this.update();
@@ -484,7 +505,9 @@ export class ExtrudeOp extends FeatureOp<ExtrudeFeature> {
   }
 
   protected done(): void {
-    if (this.feature.distance === 0) return this.app.setTool(null);
+    // Nothing pulled: nothing made. (Up to a face or plane, or through all, has
+    // no distance of its own: Done there made nothing and said nothing.)
+    if (this.feature.distance === 0 && (this.feature.extent ?? "distance") === "distance") return this.app.setTool(null);
     if (!this.existing && this.feature.source.kind === "profile") lastExtrude.distance = this.feature.distance;
     super.done();
   }
@@ -493,12 +516,42 @@ export class ExtrudeOp extends FeatureOp<ExtrudeFeature> {
 
 // ---------------------------------------------------------- fillet/chamfer
 
+/**
+ * The edges with the other pieces of their circle: a loft from a square to a
+ * round mouth has the mouth's circle in five pieces, and one tapped was a
+ * quarter of the rim - its fillet could not be made ("would damage the body").
+ */
+function withCircleKin(app: AppContext, edges: EdgeRef[]): EdgeRef[] {
+  const out = [...edges];
+  const has = (body: string, m: Vec3) => out.some((e) => e.body === body && Math.hypot(...sub(e.mid, m)) < 1e-6);
+  for (const e of edges) {
+    const all = app.view.body(e.body)?.edges;
+    const me = all?.find((x) => Math.hypot(...sub(x.mid, e.mid)) < 1e-6);
+    if (!all || !me || me.type !== "CIRCLE") continue;
+    // The circle through its ends and middle (a whole circle, its ends one point, is already whole).
+    const a = sub(me.start, me.end), b = sub(me.mid, me.end);
+    const n = cross(a, b);
+    const nn = dot(n, n);
+    if (nn < 1e-12 || Math.hypot(...a) < 1e-6) continue;
+    const c = add(me.end, scale(cross(sub(scale(b, dot(a, a)), scale(a, dot(b, b))), n), 1 / (2 * nn)));
+    const r = Math.hypot(...sub(me.mid, c));
+    const axis = norm(n);
+    const tol = 1e-5 * Math.max(1, r);
+    const on = (q: Vec3) => Math.abs(Math.hypot(...sub(q, c)) - r) < tol && Math.abs(dot(sub(q, c), axis)) < tol;
+    for (const x of all) {
+      if (x.type !== "CIRCLE" || !on(x.start) || !on(x.mid) || !on(x.end) || has(e.body, x.mid)) continue;
+      out.push({ body: e.body, mid: x.mid, dir: x.dir, length: x.length, ...(x.steps ? { steps: x.steps } : {}) });
+    }
+  }
+  return out;
+}
+
 export class EdgeOp extends FeatureOp<EdgeFeature> {
   readonly id: string;
   private handle: Handle;
   private origin: Vec3;
   private axis: Vec3;
-  private dragging: { from: ToolPointer; r0: number } | null = null;
+  private dragging: { from: ToolPointer; r0: number; onDot?: boolean; moved?: boolean } | null = null;
 
   /** Text typed on the selected edges before the tool took over (restored into the size box). */
   private typed?: string;
@@ -508,7 +561,7 @@ export class EdgeOp extends FeatureOp<EdgeFeature> {
     // Started by typing: the first digit is the size so far.
     const t = typed !== undefined && !variable ? Number(typed) : NaN;
     const v = variable ? evaluate(variable, "length") : t > 0 ? t : null;
-    super(app, { ...app.store.newIdentity(kind), type: kind, edges, radius: v ?? 1, ...(variable && v !== null ? { exprs: { radius: variable } } : {}) }, existing);
+    super(app, { ...app.store.newIdentity(kind), type: kind, edges: existing ? edges : withCircleKin(app, edges), radius: v ?? 1, ...(variable && v !== null ? { exprs: { radius: variable } } : {}) }, existing);
     this.id = kind;
     this.typed = typed;
     this.names = { fillet: existing?.type === "fillet" ? existing.name : app.store.newIdentity("fillet").name, chamfer: existing?.type === "chamfer" ? existing.name : app.store.newIdentity("chamfer").name };
@@ -520,6 +573,7 @@ export class EdgeOp extends FeatureOp<EdgeFeature> {
       return dot(perp, view) < 0 ? scale(perp, -1) : perp;
     })();
     this.handle = new Handle(app.view, "dot");
+    this.groupKin(this.feature.edges);
   }
 
   private names: { fillet: string; chamfer: string };
@@ -666,19 +720,94 @@ export class EdgeOp extends FeatureOp<EdgeFeature> {
   /** Tapping edges while filleting adds/removes them. */
   tap(p: ToolPointer): void {
     const hit = this.app.view.pick(p.x, p.y, { edgeTolPx: p.tol, profiles: false, planes: false, axes: false, vertices: false });
+    // A picked edge, tapped again: dropped. Its preview has rounded it away
+    // (the view shows the result), so it's found by where it was - when it's
+    // nearer the finger than any edge the view has there (the lip's other top
+    // edge, 6 mm off, tapped, is that one, not the first one again; the
+    // chamfer's own new edge beside where the first was is not).
+    {
+      const shown = hit?.kind === "edge" ? this.app.view.body(hit.body)?.edges[hit.edge] : undefined;
+      const hitD = shown ? this.screenDist(shown, p.x, p.y) : Infinity;
+      const again = this.pickedNear(p.x, p.y, Math.min(p.tol, hitD));
+      if (again >= 0) {
+        this.dropWithKin(again);
+        this.app.setSelection(this.edgeSels());
+        this.update();
+        return;
+      }
+    }
     if (!hit) return this.done();
     if (hit.kind !== "edge") return;
     const info = this.app.view.body(hit.body)?.edges[hit.edge];
     if (!info) return;
     const i = this.feature.edges.findIndex((e) => e.body === hit.body && Math.hypot(...sub(e.mid, info.mid)) < 1e-6);
-    if (i >= 0) this.feature.edges.splice(i, 1);
-    else this.feature.edges.push({ body: hit.body, mid: info.mid, dir: info.dir, length: info.length, ...(info.steps ? { steps: info.steps } : {}) });
+    if (i >= 0) this.dropWithKin(i);
+    else {
+      // (With the rest of its circle, where the circle is in pieces.)
+      const have = (m: Vec3) => this.feature.edges.some((e) => e.body === hit.body && Math.hypot(...sub(e.mid, m)) < 1e-6);
+      const kin = withCircleKin(this.app, [{ body: hit.body, mid: info.mid, dir: info.dir, length: info.length, ...(info.steps ? { steps: info.steps } : {}) }]);
+      this.groupKin(kin);
+      for (const r of kin) if (!have(r.mid)) this.feature.edges.push(r);
+    }
 
     this.app.setSelection(this.edgeSels());
     this.update();
   }
 
+  /** A picked edge dropped, and the other pieces of its circle with it (found before the preview rounded them away). */
+  private dropWithKin(i: number): void {
+    const key = (e: EdgeRef) => `${e.body}:${e.mid.map((v) => v.toFixed(5)).join(",")}`;
+    const group = this.kinGroups.get(key(this.feature.edges[i]));
+    this.feature.edges = this.feature.edges.filter((e, j) => j !== i && (group === undefined || this.kinGroups.get(key(e)) !== group));
+  }
+
+  /** Which picked edges are pieces of one circle (each piece's key: its group). */
+  private kinGroups = new Map<string, number>();
+
+  private groupKin(edges: EdgeRef[]): void {
+    const key = (e: EdgeRef) => `${e.body}:${e.mid.map((v) => v.toFixed(5)).join(",")}`;
+    for (const e of edges) {
+      if (this.kinGroups.has(key(e))) continue;
+      const kin = withCircleKin(this.app, [e]);
+      if (kin.length < 2) continue;
+      const g = this.kinGroups.size + 1;
+      for (const k of kin) this.kinGroups.set(key(k), g);
+    }
+  }
+
   hover(): void {}
+
+  /**
+   * The picked edge (index) within `tol` px of the screen point, by its own
+   * line (a straight edge's, or a curved one's middle), or -1. Only while the
+   * view shows the preview: otherwise the edge is there to be picked.
+   */
+  private pickedNear(x: number, y: number, tol: number): number {
+    const view = this.app.view;
+    let best = -1;
+    let bestD = tol;
+    this.feature.edges.forEach((e, i) => {
+      if (view.body(e.body)?.edges.some((q) => Math.hypot(...sub(q.mid, e.mid)) < 1e-6)) return;
+      const dist = this.screenDist(e, x, y);
+      if (dist < bestD) [best, bestD] = [i, dist];
+    });
+    return best;
+  }
+
+  /** How far (px) a screen point is from an edge drawn as the line through its middle along its direction. */
+  private screenDist(e: { mid: Vec3; dir: Vec3; length?: number }, x: number, y: number): number {
+    const view = this.app.view;
+    const d = norm(e.dir);
+    const half = (e.length ?? 0) / 2;
+    const straight = Math.abs(len(e.dir)) > 0 && half > 0;
+    const a = view.toScreen(straight ? sub(e.mid, scale(d, half)) : e.mid);
+    const b = view.toScreen(straight ? add(e.mid, scale(d, half)) : e.mid);
+    if (!a || !b) return Infinity;
+    const [vx, vy] = [b[0] - a[0], b[1] - a[1]];
+    const l2 = vx * vx + vy * vy;
+    const t = l2 > 0 ? Math.max(0, Math.min(1, ((x - a[0]) * vx + (y - a[1]) * vy) / l2)) : 0;
+    return Math.hypot(x - (a[0] + t * vx), y - (a[1] + t * vy));
+  }
 
   private edgeSels(): Sel[] {
     return this.feature.edges.flatMap((e) => {
@@ -709,12 +838,13 @@ export class EdgeOp extends FeatureOp<EdgeFeature> {
       return true;
     }
     if (!this.handle.hit(p)) return false;
-    this.dragging = { from: p, r0: this.signed() };
+    this.dragging = { from: p, r0: this.signed(), onDot: true };
     return true;
   }
 
   drag(p: ToolPointer): void {
     if (!this.dragging) return;
+    if (Math.hypot(p.x - this.dragging.from.x, p.y - this.dragging.from.y) > 4) this.dragging.moved = true;
     this.typing.track(p);
     if (this.typing.active) return;
     const { r0, from } = this.dragging;
@@ -733,9 +863,15 @@ export class EdgeOp extends FeatureOp<EdgeFeature> {
   }
 
   up(): void {
+    const d = this.dragging;
     this.dragging = null;
     this.typing.reset();
     this.app.ui.setLabel(0, 0, null);
+    // The dot only touched, not dragged: a tap (on a lip 6 mm deep the dot on
+    // one top edge sits a finger's width from the other, which took no taps there).
+    // (Right on the dot it stays a touch of the dot.)
+    const g = d?.onDot && !d.moved ? this.handle.grabPoint() : null;
+    if (g && Math.hypot(g[0] - d!.from.x, g[1] - d!.from.y) > 14) this.tap(d!.from);
   }
 
   private typing = new DragTyping(this.app);
@@ -1278,6 +1414,19 @@ export class TransformOp extends FeatureOp<TransformFeature> {
       const g = this.gimbal;
       this.copyToggle = new CopyToggle(app.view, () => g.origin, (on) => ((this.feature.copy = on), (this.feature.link = on && linkMode.on ? true : undefined), this.render(), this.update()));
     }
+  }
+
+  /** A body tapped in Items: added to what's moved / patterned, or (there already) taken out - never the last (that tap does nothing). */
+  toggleBody(id: string): boolean {
+    const bs = this.feature.bodies;
+    const i = bs.indexOf(id);
+    if (i >= 0 && bs.length === 1) return true;
+    this.feature.bodies = i >= 0 ? bs.filter((b) => b !== id) : [...bs, id];
+    this.app.setSelection(this.feature.bodies.map((body) => ({ kind: "body" as const, body })));
+    this.app.ui.toast(`${this.feature.bodies.length} bodies`);
+    this.render();
+    this.update();
+    return true;
   }
 
   private copyToggle: CopyToggle | null = null;

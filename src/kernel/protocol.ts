@@ -118,6 +118,8 @@ export interface BodyHealth {
   solids: number;
   shells: number;
   openEdges: number;
+  /** Edges more than two faces meet at: pieces that only touch along an edge. */
+  pinched: number;
   /** Hair-thin faces. */
   thin: number;
   volume: number;

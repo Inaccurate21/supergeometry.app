@@ -245,7 +245,7 @@ export abstract class FeatureOp<F extends Feature> implements Tool {
     this.app.setSelection(this.slots.flatMap((s) => s.shows?.() ?? []));
   }
 
-  private setHint(): void {
+  protected setHint(): void {
     const slot = this.slots[this.active];
     const text = this.error ? `⚠ ${this.error}` : slot && !slot.filled() ? `${slot.label}: ${slot.describe()}` : this.hint();
     this.app.ui.setHint(text);

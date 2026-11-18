@@ -202,6 +202,10 @@ export class App implements AppContext {
       // the second one replaced the first.
       selectBody: (id) => {
         if (this.tool === this.selectTool && this.selectTool.pickFromList({ kind: "body", body: id })) return;
+        // A pattern (mirror, move…) under way: the body joins it, or leaves it.
+        // (After the first body the view's taps go to its direction: four
+        // pockets to pattern across could only be had by starting again.)
+        if (this.tool instanceof TransformOp && this.tool.toggleBody(id)) return;
         const had = this.selection.filter((s) => s.kind === "body");
         this.setTool(null);
         if (!isTouchDevice || !had.length || had.length !== this.selection.length) return this.setSelection([{ kind: "body", body: id }]);
@@ -1625,6 +1629,8 @@ export class App implements AppContext {
     this.projectId = id;
     this.projectKept = kept;
     this.store.openDoc(doc);
+    // A new one starts from the default view (not looking up from below, as the last was left).
+    if (!doc.features.length) this.view.cam.iso();
     setTimeout(() => this.fit(), 400);
   }
 

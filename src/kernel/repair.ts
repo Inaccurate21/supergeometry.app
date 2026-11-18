@@ -9,26 +9,29 @@
 import { assembleWire, cast, getOC, makeCompound, makeFace, makeLine, makeThreePointArc, measureArea, type Shape3D, type Wire } from "replicad";
 import { measureVolume } from "./ocFree";
 import { unify } from "./faceEdit";
-import { deepCopy, hairThin, meshVolume, openEdges, shapeValid, subShapes } from "./health";
+import { deepCopy, hairThin, meshVolume, openEdges, pinchedEdges, shapeValid, subShapes } from "./health";
 
 export interface Health {
   valid: boolean;
   solids: number;
   shells: number;
   openEdges: number;
+  /** Edges more than two faces meet at (pieces touching only along an edge). */
+  pinched: number;
   thin: number;
   volume: number;
   faces: number;
 }
 
 export function healthOf(s: Shape3D): Health {
-  const h: Health = { valid: false, solids: 0, shells: 0, openEdges: 0, thin: 0, volume: 0, faces: 0 };
+  const h: Health = { valid: false, solids: 0, shells: 0, openEdges: 0, pinched: 0, thin: 0, volume: 0, faces: 0 };
   try {
     h.faces = s.faces.length;
     h.valid = shapeValid(s);
     h.solids = subShapes(s, "SOLID").length;
     h.shells = subShapes(s, "SHELL").length;
     h.openEdges = openEdges(s).length;
+    h.pinched = pinchedEdges(s);
     h.thin = hairThin(s);
     h.volume = h.solids ? measureVolume(s) : 0;
   } catch {
@@ -44,9 +47,9 @@ export interface RepairOptions {
   volume?: number;
 }
 
-/** A clean solid: valid, closed, no hair-thin faces, real volume. */
+/** A clean solid: valid, closed, no pieces meeting only at an edge, no hair-thin faces, real volume. */
 export function isHealthy(h: Health, o: RepairOptions = {}): boolean {
-  return h.valid && h.solids >= 1 && (!o.maxSolids || h.solids <= o.maxSolids) && h.openEdges === 0 && h.thin === 0 && h.volume > 0;
+  return h.valid && h.solids >= 1 && (!o.maxSolids || h.solids <= o.maxSolids) && h.openEdges === 0 && !h.pinched && h.thin === 0 && h.volume > 0;
 }
 
 /** How broken (0: healthy) - to tell whether a fix helped. */

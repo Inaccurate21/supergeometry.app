@@ -62,7 +62,7 @@ import { carried } from "../sketch/follow";
 
 import { cageToShape } from "./freeform";
 import { arcSpine, carriedFrames, evenly, gentle, guideCurve, oriented, plainSpine, slideAxis, slidingSpine, smoothed } from "../freeform/connect";
-import { deepCopy, hairThin, meshVolume, openEdges, shapeValid, subShapes } from "./health";
+import { deepCopy, hairThin, meshVolume, openEdges, pinchedEdges, shapeValid, subShapes } from "./health";
 import { healthOf, isHealthy, repairShape } from "./repair";
 export { shapeValid } from "./health";
 import { applyPlan, boundaryEdges, cachedPlan, deleteFaces, isClosed, selfCrossings, subdivide } from "../freeform/cage";
@@ -3232,6 +3232,9 @@ function resolveAxis(a: AxisRef, ctx: Ctx): { origin: Vec3; dir: Vec3 } {
 }
 
 /** Put a new solid into the model: new body, or join/cut a target. */
+/** A join that only touches along an edge. */
+const PINCHED = "This only touches the body along an edge, so the two hang together by nothing - let them overlap a little (start it inside the body).";
+
 /** A cut that took nothing away: said (a pocket drawn on the wrong side did nothing, without a word). */
 const MISSED_CUT = "This cut doesn't reach the body, so nothing was cut - check which way it goes (Flip), or make it longer.";
 
@@ -3274,6 +3277,9 @@ function combine(id: string, mode: string, target: string | undefined, solid: Sh
   }
   const t = need(ctx.bodies, target);
   const result = m === "join" ? checkedBoolean("fuse", t, solid) : m === "cut" ? checkedBoolean("cut", t, solid) : t;
+  // Joined, but only touching along an edge (a back stood on the base's
+  // edge): one body by name, two pieces held by nothing. Said, not refused.
+  if (m === "join" && pinchedEdges(result) > pinchedEdges(t) + pinchedEdges(solid)) editNotes.push(PINCHED);
   if (m === "cut" && !isEmpty(result) && Math.abs(volumeOf(result) - volumeOf(t)) <= Math.abs(volumeOf(t)) * 1e-9) editNotes.push(MISSED_CUT);
   if (isEmpty(result)) ctx.bodies.delete(target);
   else ctx.bodies.set(target, result);

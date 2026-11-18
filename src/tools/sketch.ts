@@ -1327,6 +1327,9 @@ export class SketchTool implements Tool {
       kind,
         onInput: (v) => {
           this.locks[key] = v;
+          // A polygon's size is one or the other: to a corner, or across the flats.
+          if (key === "r") delete this.locks.af;
+          if (key === "af") delete this.locks.r;
           this.refreshPreview();
         },
         onExpr: (text) => {
@@ -1394,7 +1397,8 @@ export class SketchTool implements Tool {
         break;
       case "polygon":
         items.push({ type: "number", label: "Sides", value: memory.sides, kind: "int", min: 3, onInput: (v) => ((memory.sides = Math.max(3, Math.min(64, v))), this.refreshPreview(), this.updateMenu()) });
-        if (this.pts.length === 1) items.push(...firstAt(), lock("r", "Radius"));
+        // (A nut or a spanner's hex is sized across its flats: 10, not 5.7735 to a corner.)
+        if (this.pts.length === 1) items.push(...firstAt(), lock("r", "Radius"), lock("af", "Across flats"));
         break;
       case "spline":
         // The point just placed, typed exactly (no grid gets every point).
@@ -2911,10 +2915,11 @@ export class SketchTool implements Tool {
       }
       case "circle":
       case "polygon": {
-        if (L.r === undefined) return c;
-        // A circle's typed size is its diameter; a polygon's, its radius.
+        const af = this.kind === "polygon" && L.af !== undefined ? L.af / (2 * Math.cos(Math.PI / memory.sides)) : undefined;
+        if (L.r === undefined && af === undefined) return c;
+        // A circle's typed size is its diameter; a polygon's, its radius (or across its flats).
         // (Circle by two points: the second point is the diameter away.)
-        const r = this.kind === "circle" ? (memory.circle === "2pt" ? L.r : L.r / 2) : L.r;
+        const r = af ?? (this.kind === "circle" ? (memory.circle === "2pt" ? L.r! : L.r! / 2) : L.r!);
         const ang = Math.atan2(c[1] - a[1], c[0] - a[0]);
         return [a[0] + Math.cos(ang) * r, a[1] + Math.sin(ang) * r];
       }
@@ -3150,6 +3155,8 @@ export class SketchTool implements Tool {
           if (e.kind === "arc") dim("radius", memory.arc === "center" && L.r === undefined ? "len" : "r");
           if (e.kind === "circle") dim("diameter", "r");
           if (e.kind === "polygon") dim("radius", "r");
+          // (Typed across its flats: kept as the radius that makes it.)
+          if (e.kind === "polygon" && L.r === undefined && L.af !== undefined) cs.push({ id: uid(), type: "dim", curves: [e.id], prop: "radius", value: e.radius });
           if (e.kind === "ellipse") (dim("dx", "rx"), dim("dy", "ry"));
           this.lockExprs = {};
           // A centre placed on an existing point stays on it.
@@ -3667,6 +3674,8 @@ export class SketchTool implements Tool {
         const t = deg(Math.atan2(c[1] - a[1], c[0] - a[0]));
         return t < 0 ? t + 360 : t;
       }
+      case "af":
+        return 2 * Math.hypot(c[0] - a[0], c[1] - a[1]) * Math.cos(Math.PI / memory.sides);
       case "rx":
         return 2 * Math.hypot(c[0] - a[0], c[1] - a[1]);
       case "ry":
@@ -4505,6 +4514,13 @@ export class SketchTool implements Tool {
       results = results.filter((e) => !(e.kind === "line" && onAxis(e.a) && onAxis(e.b)));
     }
     const keepOriginals = this.kind === "patternLinear" || this.kind === "patternCircular" || ((this.kind === "mirror" ? this.edit.mirrorCopy : this.edit.copy));
+    // A copy exactly on a curve already there (the same mirror tapped twice) is not added again.
+    if (keepOriginals) {
+      const sig = (e: SketchEntity) => JSON.stringify({ ...e, id: undefined, construction: undefined }, (_k, v) => (typeof v === "number" ? Math.round(v * 1e6) / 1e6 + 0 : v));
+      const there = new Set(this.entities.map(sig));
+      results = results.filter((e) => !there.has(sig(e)));
+      if (!results.length) return this.app.ui.toast("Those copies are there already");
+    }
     // A pattern's copies stay linked to their originals: change one, and the copies follow.
     const links = this.patternLinks(results);
     const base = keepOriginals ? this.entities : this.entities.filter((e) => !this.selected.has(e.id));
@@ -4551,6 +4567,12 @@ export class SketchTool implements Tool {
     if (!keepOriginals) {
       this.selected = new Set(results.map((e) => e.id));
       this.showSelection();
+    }
+    // Mirrored as a copy: done with that shape - the next line tapped doesn't mirror it again, and the card says so.
+    if (this.kind === "mirror" && keepOriginals) {
+      this.clearSelection();
+      this.edit.mirrorLine = undefined;
+      this.updatePanel();
     }
     this.refreshPreview();
   }

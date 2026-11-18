@@ -164,8 +164,9 @@ export class BooleanOp extends FeatureOp<BooleanFeature> {
       },
       onCommit: () => this.done(),
     });
-    const mid = scale(add(a, b), 0.5);
-    this.dim.set(mid, mid);
+    const [p, q] = this.boxAt(scale(add(a, b), 0.5));
+    this.boxPoint = p;
+    this.dim.set(p, q);
     this.dim.setMode(f.cutFrom ?? "body");
     this.dim.setValue(f.clearance ?? 0);
     // (The signs again, clear of the box just made.)
@@ -191,10 +192,34 @@ export class BooleanOp extends FeatureOp<BooleanFeature> {
   }
 
   /** "+" on the body that's changed, "−" on each body it's changed with. */
+  /**
+   * Where the clearance box goes: between the two bodies, or - when that's
+   * over a body (a tray's middle, its pockets still to be tapped) - further
+   * down the screen, clear of them. (It sat on the pockets; its number pad,
+   * opened by a tap meant for one, covered half the tray.)
+   */
+  private boxPoint: Vec3 | null = null;
+
+  private boxAt(mid: Vec3): [Vec3, Vec3] {
+    const view = this.app.view;
+    const s = view.toScreen(mid);
+    if (!s) return [mid, mid];
+    const over = (y: number) => [-90, 0, 90].some((dx) => view.pick(s[0] + dx, y, { edgeTolPx: 24, planes: false }));
+    if (!over(s[1])) return [mid, mid];
+    let y = s[1];
+    while (y < view.height - 160 && over(y)) y += 20;
+    if (over(y)) return [mid, mid];
+    const w = view.worldUnder(s[0], y).toArray() as Vec3;
+    return [w, w];
+  }
+
   private placeMarks(): void {
     const want: [string, string][] = [];
     if (this.feature.target) want.push([this.feature.target, "+"]);
-    for (const t of this.feature.tools) want.push([t, "−"]);
+    // Many taken away (eight pockets out of a tray): only the first keeps its
+    // sign - the rest, pushed aside to clear each other, landed on bodies still
+    // to be tapped, and a tap meant for a pocket swapped the tray out instead.
+    for (const t of this.feature.tools.length > 2 ? this.feature.tools.slice(0, 1) : this.feature.tools) want.push([t, "−"]);
     while (this.marks.length > want.length) this.marks.pop()!.remove();
     while (this.marks.length < want.length) {
       const m = document.createElement("div");
@@ -213,7 +238,7 @@ export class BooleanOp extends FeatureOp<BooleanFeature> {
     const placed: [number, number][] = [];
     // (And clear of the clearance's box, which sits between the first two bodies.)
     const a = this.centers.get(this.feature.target), b = this.feature.tools[0] ? this.centers.get(this.feature.tools[0]) : undefined;
-    const box = this.dim && a && b ? this.app.view.toScreen(scale(add(a, b), 0.5)) : null;
+    const box = this.dim && a && b ? this.app.view.toScreen(this.boxPoint ?? scale(add(a, b), 0.5)) : null;
     want.forEach(([body, sign], i) => {
       const m = this.marks[i];
       m.dataset.body = body;
