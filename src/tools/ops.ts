@@ -1302,6 +1302,7 @@ export class ShellOp extends FeatureOp<ShellFeature> {
 
   /** The wall thickness, typed on the (first) open face. */
   private dim: DimWidget | null = null;
+  private dimFace = "";
 
   private setThickness(v: number): void {
     if (!(v > 0)) return;
@@ -1318,8 +1319,16 @@ export class ShellOp extends FeatureOp<ShellFeature> {
       this.dim = null;
       return;
     }
+    // (A new first face: the box goes with it, and turns away with it.)
+    const key = `${f.body}:${f.center.map((x) => x.toFixed(6))}:${f.normal.map((x) => x.toFixed(6))}`;
+    if (this.dim && this.dimFace !== key) {
+      this.dim.dispose();
+      this.dim = null;
+    }
+    this.dimFace = key;
     this.dim ??= new DimWidget(this.app.view, {
       noLine: true,
+      facing: f.normal,
       value: this.feature.thickness,
       onInput: (v, text) => {
         if (!(v > 0)) return;

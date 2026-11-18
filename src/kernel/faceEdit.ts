@@ -882,6 +882,9 @@ function needsContinuation(body: Shape3D, F: Face): boolean {
  * heading there) until it is d further out; the slab between the old and the
  * new outline is added (d > 0) or taken away (d < 0).
  */
+/** A face pulled past where its sides meet (a cone's end pulled past its point). */
+export const SIDES_MEET = "Pulled this far, its sides would meet in a point (they lean in) - pull it less, or draw the shape on the face and extrude that for straight sides";
+
 function offsetByContinuation(body: Shape3D, F: Face, d: number): Shape3D {
   const fp = planeOf(F);
   const n = fp.normal;
@@ -936,6 +939,45 @@ function offsetByContinuation(body: Shape3D, F: Face, d: number): Shape3D {
     // would move it its own way (a wall at 45° and one square to F disagree,
     // and halfway between them leaves both: slanted slivers stood up as fins).
     // Without such an edge: halfway between their two estimates.
+    // Do the sides meet on the way (a cone's end pulled past its point)? Each
+    // point of the outline goes in a straight line, so the area inside it is a
+    // quadratic in how far it has gone: down to nothing on the way, or turned
+    // inside out, and what's left is an hourglass (or nothing at all: the
+    // kernel gave the body back unchanged, without a word).
+    {
+      const u = xDirFor(n);
+      const w = cross(n, u);
+      const ps: Vec3[] = [];
+      const vs: Vec3[] = [];
+      for (const { k, rev } of order) {
+        for (let j = 0; j < 8; j++) {
+          const t = rev ? 1 - j / 8 : j / 8;
+          const p = tup(edges[k].pointAt(t));
+          ps.push(p);
+          vs.push(sub(movedAt(k, t), p));
+        }
+      }
+      const areaAt = (s: number) => {
+        let A = 0;
+        for (let i = 0; i < ps.length; i++) {
+          const j = (i + 1) % ps.length;
+          const a = add(ps[i], scale(vs[i], s));
+          const b = add(ps[j], scale(vs[j], s));
+          A += dot(a, u) * dot(b, w) - dot(b, u) * dot(a, w);
+        }
+        return A / 2;
+      };
+      // (Counted the way round that makes it positive at the start.)
+      const sg = Math.sign(areaAt(0)) || 1;
+      const A0 = sg * areaAt(0);
+      const Ah = sg * areaAt(0.5);
+      const A1 = sg * areaAt(1);
+      const qa = 2 * A1 - 4 * Ah + 2 * A0;
+      const qb = 4 * Ah - A1 - 3 * A0;
+      const sv = qa > 0 ? -qb / (2 * qa) : -1;
+      const least = Math.min(A1, sv > 0 && sv < 1 ? qa * sv * sv + qb * sv + A0 : Infinity);
+      if (A0 > 0 && least < A0 * 1e-3) throw new Error(SIDES_MEET);
+    }
     const m = order.length;
     const fEdges = F.edges;
     const bodyEdges = body.edges.filter((e) => !fEdges.some((fe) => fe.isSame(e)));
@@ -1012,7 +1054,9 @@ export function offsetFace(body: Shape3D, F: Face, d: number): Shape3D {
   if (F.geomType === "PLANE" && (curved || (!holed && !convexFace(F)))) {
     try {
       return offsetByContinuation(body, F, d);
-    } catch {
+    } catch (err) {
+      // (Sides that meet meet with the plane trick too.)
+      if (err instanceof Error && err.message === SIDES_MEET) throw err;
       // fall through to the plane trick
     }
   }

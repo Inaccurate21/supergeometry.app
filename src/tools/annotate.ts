@@ -103,6 +103,13 @@ export interface DimWidgetOptions {
   angle?: boolean;
   /** No dimension line (just the box, e.g. at the corner between two lines). */
   noLine?: boolean;
+  /**
+   * The face the value belongs to, by its outward normal: seen from behind,
+   * the box steps aside (the value is in the tool's card then). It sat over
+   * whatever is in front of that face: a funnel's spout end, tapped from
+   * below to open it too, went to Shell's thickness box on the top face.
+   */
+  facing?: Vec3;
   /** Variables to choose from (a ƒx menu before the pin): the value becomes that variable. */
   variables?: string[];
   onVariable?(name: string): void;
@@ -121,6 +128,7 @@ export class DimWidget {
   private boxAt: "middle" | "side" | "beyond" | "clear";
   private boxGap: number;
   private dir?: Vec3;
+  private facing?: Vec3;
   private hook = () => this.layout();
 
   constructor(
@@ -131,6 +139,7 @@ export class DimWidget {
     this.boxAt = opts.boxAt ?? "middle";
     this.boxGap = opts.boxGap ?? 0;
     this.dir = opts.dir;
+    this.facing = opts.facing;
     view.overlay.add(this.line.group);
     if (opts.modes) {
       const sel = document.createElement("select");
@@ -290,6 +299,16 @@ export class DimWidget {
         if (n[1] > 0) n = [-n[0], -n[1]];
         const k = Math.abs(n[0] * half.w) + Math.abs(n[1] * half.h);
         s = [s[0] + n[0] * k, s[1] + n[1] * k];
+      }
+    }
+    // Its face turned away (seen from behind): out of the way - and out of
+    // the numpad's hands (on a phone it has it from the start), the value
+    // then typed in the tool's card.
+    if (s && this.facing) {
+      const v = this.view.cam.viewDir();
+      if (v.x * this.facing[0] + v.y * this.facing[1] + v.z * this.facing[2] > 0.05) {
+        s = null;
+        if (this.input === document.activeElement) this.input.blur();
       }
     }
     this.box.hidden = !s;

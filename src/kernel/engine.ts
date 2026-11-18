@@ -76,7 +76,7 @@ import { edgeOrigins, edgeSteps, faceAliases, faceOrigins, faceSteps, inheritTag
 import { closestOnEntity } from "../sketch/regions";
 
 import { cylinderOf, deleteFace,
- deleteFaces as deleteBodyFaces, editNotes, freeformFace, sameSizesAgain, sheetFace, hasBlends, offsetFace, onFace as pointOnFace, planeOf, replaceFacePlane, sizeOf, unify } from "./faceEdit";
+ deleteFaces as deleteBodyFaces, editNotes, freeformFace, sameSizesAgain, sheetFace, hasBlends, offsetFace, onFace as pointOnFace, planeOf, replaceFacePlane, SIDES_MEET, sizeOf, unify } from "./faceEdit";
 import { threadDepth } from "./threads";
 import { anchorOf, freeformFaces, meshViews, viewEdge } from "./viewLines";
 import { entitiesWire, regionFaces, regionHoleWires, regionWire, withFittedSplines } from "./sketchGeom";
@@ -1082,7 +1082,8 @@ async function apply(f: Feature, ctx: Ctx): Promise<void> {
         } catch (err) {
           // Faces whose neighbours don't enclose them still get a straight push -
           // but not one with a fillet on it (the old fillet would stay standing).
-          if (face.geomType !== "PLANE" || hasBlends(body, face)) throw err;
+          // (Nor one whose sides meet before it gets there: straight sides would be another shape.)
+          if (face.geomType !== "PLANE" || hasBlends(body, face) || (err instanceof Error && err.message === SIDES_MEET)) throw err;
         }
       }
       // Symmetric: from `distance` behind the shape to `distance` in front.
