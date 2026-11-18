@@ -1064,6 +1064,9 @@ export class Wheel implements WheelHandle {
       const cons = settings.value.showConstraints;
       const constraints: ToolItem = { id: "set-constraints", label: "Constraints", icon: "constraints", sub: cons ? "On" : "Off", active: cons, run: () => this.host.ui.popAt("constraints", 0, 0) };
       more.cells = [...rest, ...[...usable(bar).filter(notSep), constraints].map((item, i): Cell => ({ item, gap: i === 0 && rest.length > 0 }))];
+      // (Its ring is these: the one made from its own list above is empty, and a
+      // ring is opened before cells - More opened on nothing, Other plane out of reach.)
+      more.ring = undefined;
     }
     for (const s of sectors) if (!s.item) s.mark = marked(s.cells);
     // (A category with nothing in it has no place on the ring.)

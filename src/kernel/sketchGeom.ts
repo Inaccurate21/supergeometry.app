@@ -61,8 +61,20 @@ export function entitiesWire(entities: SketchEntity[], ids: string[], plane: Pla
       else edges.push(exactSpline(p, 0, 1, plane) ?? bspline(Array.from({ length: 65 }, (_, i) => evalPrim(p, i / 64)), plane));
     }
   }
-  return assembleWire(endToEnd(edges));
+  return pathOf(endToEnd(edges));
 }
+
+/** A path's curves as one wire - a gap in it said "Failed to build the wire, disconnected wire". */
+export function pathOf(edges: Edge[]): Wire {
+  try {
+    return assembleWire(edges);
+  } catch (e) {
+    if (/disconnected/i.test(String((e as Error)?.message ?? e))) throw new Error(PATH_GAP);
+    throw e;
+  }
+}
+
+export const PATH_GAP = "The path's curves don't join end to end - tap a curve again to leave it out, or pick ones that meet";
 
 /**
  * Path curves in the order they run, whatever order they were picked or drawn

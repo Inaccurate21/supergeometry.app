@@ -79,7 +79,7 @@ import { cylinderOf, deleteFace,
  deleteFaces as deleteBodyFaces, editNotes, freeformFace, sameSizesAgain, sheetFace, hasBlends, offsetFace, onFace as pointOnFace, planeOf, replaceFacePlane, SIDES_MEET, sizeOf, unify } from "./faceEdit";
 import { threadDepth } from "./threads";
 import { anchorOf, freeformFaces, meshViews, viewEdge } from "./viewLines";
-import { entitiesWire, regionFaces, regionHoleWires, regionWire, withFittedSplines } from "./sketchGeom";
+import { entitiesWire, pathOf, regionFaces, regionHoleWires, regionWire, withFittedSplines } from "./sketchGeom";
 import { stretchShape } from "./stretch";
 import { imprint, onFace as linesOnFace, seenFrom, wrapOnto } from "./wrap";
 import type { BodyHealth, BodyMesh, BodyProps, ProjectedView, ViewBody, ViewEdge, ViewSpec, ConstructionInfo, EdgeInfo, ExportFormat, FaceInfo, FeatureError, RegenResult } from "./protocol";
@@ -3131,7 +3131,7 @@ function pathWire(path: PathRef, ctx: Ctx): Wire {
     return entitiesWire(sketch.entities, path.entities, sketch.plane);
   }
   const edges: Edge[] = path.edges.map((r) => resolveEdge(need(ctx.bodies, r.body), r));
-  return assembleWire(edges);
+  return pathOf(edges);
 }
 
 /** A wire's points in order along it, close together (curves sampled finely). */
