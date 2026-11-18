@@ -728,7 +728,11 @@ export class EdgeOp extends FeatureOp<EdgeFeature> {
     {
       const shown = hit?.kind === "edge" ? this.app.view.body(hit.body)?.edges[hit.edge] : undefined;
       const hitD = shown ? this.screenDist(shown, p.x, p.y) : Infinity;
-      const again = this.pickedNear(p.x, p.y, Math.min(p.tol, hitD));
+      let again = this.pickedNear(p.x, p.y, Math.min(p.tol, hitD));
+      // Or the edge where its preview's rounding meets a face (a 1 mm round's,
+      // a hair nearer the finger than the edge it rounds: it was added, not
+      // the edge dropped) - along it, the radius off it.
+      if (again < 0 && shown) again = this.roundedInto(shown);
       if (again >= 0) {
         this.dropWithKin(again);
         this.app.setSelection(this.edgeSels());
@@ -768,6 +772,19 @@ export class EdgeOp extends FeatureOp<EdgeFeature> {
 
     this.app.setSelection(this.edgeSels());
     this.update();
+  }
+
+  /** The picked straight edge whose preview's round (or cut) `e` is a border of: parallel, the size off it; else -1. */
+  private roundedInto(e: { mid: Vec3; dir: Vec3 }): number {
+    const r = this.feature.radius;
+    const d = norm(e.dir);
+    return this.feature.edges.findIndex((x) => {
+      const xd = norm(x.dir);
+      if (Math.abs(dot(xd, d)) < 0.9999) return false;
+      const off = len(cross(sub(e.mid, x.mid), xd));
+      // (Along it too: not the next edge over that happens to be in line.)
+      return Math.abs(off - r) < 1e-3 * Math.max(1, r) && Math.abs(dot(sub(e.mid, x.mid), xd)) < x.length / 2;
+    });
   }
 
   /** A picked edge dropped, and the other pieces of its circle with it (found before the preview rounded them away). */

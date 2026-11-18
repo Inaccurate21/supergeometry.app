@@ -54,6 +54,8 @@ class Numpad {
   private selEnd = 0;
   /** Just opened on a box: the first key typed replaces what's in it. */
   private fresh = false;
+  /** The first key was − (the sign flipped): digits next type a new negative number. */
+  private minusFirst = false;
   /** ƒx on: operators and the variables' names to type formulas with. */
   private fx = false;
   private fxRow = document.createElement("div");
@@ -196,6 +198,7 @@ class Numpad {
     this.target?.classList.remove("np-all");
     this.target = input;
     this.fresh = true;
+    this.minusFirst = false;
     // A formula in the box already: ƒx is on.
     this.setFx(/[a-z_]/i.test(input.value.replace(/(\d)\s*(mm|cm|m|in|ft)\b/gi, "$1")));
     // All of it selected, so typing overrides it - but a minus stays: the
@@ -313,6 +316,11 @@ class Numpad {
     // A variable tapped first: the box becomes it.
     if (this.fresh && varHooks?.names().includes(k)) [s, e] = [0, v.length];
     if (this.fresh && k === "⌫") [s, e] = [0, v.length];
+    // − first, then digits: that number, negative. (−24 in a box showing
+    // -24.6224 flipped it, then put the 24 on the end: 24.622424. − then ↵
+    // still flips the sign.)
+    if (this.minusFirst && (k === "." || /^\d$/.test(k))) [v, s, e] = ["-", 1, 1];
+    this.minusFirst = this.fresh && k === "−" && !this.fx;
     if (k !== "↵") this.fresh = false;
     const put = (text: string) => {
       v = v.slice(0, s) + text + v.slice(e);
