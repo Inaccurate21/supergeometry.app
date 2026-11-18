@@ -6,7 +6,7 @@
 // the body is on (planes → half-spaces, cylinders → infinite cylinders). Changing
 // F then only means adding/removing the right slab of E.
 
-import { assembleWire, basicFaceExtrusion, getOC, loft, makeFace, makeBSplineApproximation, makeCylinder, makeLine, makePolygon, makeSphere, measureArea, cast, Vector, type Edge, type Face, type Shape3D } from "replicad";
+import { assembleWire, basicFaceExtrusion, getOC, loft, makeFace, makeBSplineApproximation, makeCylinder, makeLine, makePolygon, makeSphere, measureArea, cast, revolution, Vector, type Edge, type Face, type Shape3D } from "replicad";
 import { measureVolume } from "./ocFree";
 import type { PlaneDef, Vec3 } from "../doc/types";
 import { add, cross, dist, dot, len, norm, scale, sub, xDirFor } from "../geom";
@@ -135,6 +135,51 @@ function infiniteCylinder(cy: Cyl, r: number, L0: number): Shape3D {
 }
 
 /**
+ * A conical face's apex, its axis pointing into the half of the cone the face
+ * is on, and the tangent of its half-angle - from points on it (this kernel
+ * build can't hand over its cone).
+ */
+export function coneOf(f: Face): { apex: Vec3; a: Vec3; t: number } | null {
+  if (f.geomType !== "CONE") return null;
+  try {
+    const at = (u: number, v: number) => tup(f.pointOnSurface(u, v));
+    // A circle round the axis: three points at one height, and its middle.
+    const centre = (p: Vec3, q: Vec3, r: Vec3): Vec3 => {
+      const ab = sub(q, p), ac = sub(r, p);
+      const n = cross(ab, ac);
+      const nn = dot(n, n);
+      if (nn < 1e-18) throw new Error("flat");
+      return add(p, scale(add(scale(cross(n, ab), dot(ac, ac)), scale(cross(ac, n), dot(ab, ab))), 1 / (2 * nn)));
+    };
+    const ring = (v: number) => {
+      const ps = [0.2, 0.5, 0.8].map((u) => at(u, v));
+      return { c: centre(ps[0], ps[1], ps[2]), p: ps[1] };
+    };
+    const lo = ring(0.2), hi = ring(0.8);
+    const r1 = dist(lo.p, lo.c), r2 = dist(hi.p, hi.c);
+    const h = dist(lo.c, hi.c);
+    if (h < 1e-9 || Math.abs(r2 - r1) < 1e-9) return null;
+    const up = norm(sub(hi.c, lo.c));
+    // Radius r1 at lo, r2 at hi: none at the apex.
+    const apex = sub(lo.c, scale(up, (r1 * h) / (r2 - r1)));
+    const t = Math.abs(r2 - r1) / h;
+    const a = dot(sub(lo.p, apex), up) > 0 ? up : scale(up, -1);
+    return t > 1e-9 && t < 1e6 ? { apex, a, t } : null;
+  } catch {
+    return null;
+  }
+}
+
+/** The solid inside a cone, from its apex out past `L` (a triangle turned round its axis). */
+function infiniteCone(k: { apex: Vec3; a: Vec3; t: number }, L0: number): Shape3D {
+  const L = vary(L0);
+  const p = norm(cross(k.a, Math.abs(k.a[0]) < 0.9 ? [1, 0, 0] : [0, 1, 0]));
+  const end = add(k.apex, scale(k.a, L));
+  const tri = makeFace(assembleWire([makeLine(k.apex, end), makeLine(end, add(end, scale(p, L * k.t))), makeLine(add(end, scale(p, L * k.t)), k.apex)]));
+  return revolution(tri, k.apex, k.a) as Shape3D;
+}
+
+/**
  * g, a round face next to flat face F, is a convex fillet that ends on F
  * (its axis runs through F, and it rounds the edge between two flat faces it
  * is tangent to): those two faces' planes, outward. Null otherwise.
@@ -231,6 +276,17 @@ function regionAround(body: Shape3D, F: Face, nb: Face[], q: Vec3, L: number, pa
           if (pts.every((p) => dot(off(p), dn) > -cy.r * 1e-6)) keep.push(halfSpace({ origin: cy.c, normal: dn, xDir: xDirFor(dn) }, L));
         }
       }
+    } else if (coneOf(g)) {
+      // A tapered side (a foot stepping in under a cup): it carries on as the
+      // cone it is - the inside of it kept or taken away as for a cylinder.
+      // (Treated as any other surface, the region round a cup's floor was open
+      // above and ran off out of the part.)
+      const k = coneOf(g)!;
+      const rel = sub(q, k.apex);
+      const along = dot(rel, k.a);
+      const radial = len(sub(rel, scale(k.a, along)));
+      const reach = len(sub(c, k.apex)) + 2 * L;
+      (along > 0 && radial < along * k.t ? keep : remove).push(infiniteCone(k, reach));
     } else {
       // A curve pulled straight (a spline side extruded) meeting F along a
       // straight edge: it carries on along its tangent there. Bounded only by

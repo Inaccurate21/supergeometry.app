@@ -155,11 +155,20 @@ export function wrapOnto(body: Shape3D, round: Face, src: Src, height: number): 
   // The plane's nearest point to the axis: where the wrap starts.
   let R0 = sub(o, Loc);
   R0 = sub(R0, scale(Z, dot(R0, Z)));
-  if (len(R0) < 1e-9) R0 = n;
+  // (Straight out from the axis to the plane, along its normal: not towards
+  // the first shape, or a word centred on a mug's far side came out started
+  // from its first letter's place, a quarter of the way round.)
+  const side = dot(R0, n);
+  if (Math.abs(side) > 1e-9) R0 = scale(n, Math.sign(side));
+  else if (len(R0) < 1e-9) R0 = n;
   R0 = norm(R0);
   const T = cross(Z, R0);
   const theta0 = (Math.atan2(dot(R0, Y), dot(R0, X)) + 2 * Math.PI) % (2 * Math.PI);
-  const map = (p: Vec3): [number, number] => [r * theta0 + dot(sub(p, Loc), T), dot(sub(p, Loc), Z)];
+  // Seen from outside the face, as it can only be read: a sketch facing in
+  // towards the axis (drawn on a plane through the far side, looking out from
+  // inside) is turned round, or its letters came out back to front.
+  const across = dot(n, R0) < 0 ? -1 : 1;
+  const map = (p: Vec3): [number, number] => [r * theta0 + across * dot(sub(p, Loc), T), dot(sub(p, Loc), Z)];
 
   const solids: Shape3D[] = [];
   for (const { face } of src) {

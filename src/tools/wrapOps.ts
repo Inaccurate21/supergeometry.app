@@ -2,7 +2,7 @@
 
 import type { EdgeRef, ExtrudeSource, FaceRef, ImprintFeature, PlaneDef, SketchFeature, WrapFeature } from "../doc/types";
 import { projectRegions } from "../sketch/edit";
-import { arrangement, resolveRegion, type Region } from "../sketch/regions";
+import { arrangement, materialRegions, regionRef, resolveRegion, type Region } from "../sketch/regions";
 import { planeSlot } from "./slots";
 import type { PanelItem } from "../ui/ui";
 import { FeatureOp, type Slot } from "./featureOp";
@@ -32,6 +32,59 @@ function faceSlot(app: AppContext, label: string, get: () => FaceRef | null, set
 }
 
 /**
+ * The sketch's shapes a step puts onto the body: more of them tapped, one
+ * tapped again taken back out, or All (every shape drawn, letters with their
+ * holes). Started from the menu, the first shape tapped was all it took: a
+ * word wrapped round a mug came out as its first letter, a handle's second pad
+ * was never drawn onto it.
+ */
+function shapesSlot(app: AppContext, get: () => ExtrudeSource | undefined, set: (s: ExtrudeSource) => void): Slot {
+  const regionsOf = (sketch: string) => arrangement(app.sketchCurves(sketch)).regions;
+  const same = (a: { c: number[] }, b: { c: number[] }) => Math.hypot(a.c[0] - b.c[0], a.c[1] - b.c[1]) < 1e-6;
+  const count = () => {
+    const s = get();
+    return s?.kind === "profile" ? s.regions.length : 0;
+  };
+  return {
+    label: "Shapes",
+    multi: true,
+    describe: () => (count() ? `${count()} shape${count() > 1 ? "s" : ""} - tap more` : "Tap the shapes"),
+    filled: () => count() > 0,
+    pick: { bodies: false, edges: false, vertices: false, planes: false, axes: false },
+    shows: () => {
+      const s = get();
+      if (s?.kind !== "profile") return [];
+      const all = regionsOf(s.sketch).map(regionRef);
+      return s.regions.map((r) => ({ kind: "profile" as const, sketch: s.sketch, region: all.findIndex((x) => same(x, r)) })).filter((x) => x.region >= 0);
+    },
+    presets: [
+      {
+        label: "All",
+        apply: () => {
+          const s = get();
+          if (s?.kind === "profile") set({ ...s, regions: materialRegions(arrangement(app.sketchCurves(s.sketch))).map(regionRef) });
+        },
+      },
+    ],
+    accept(hit) {
+      if (hit.kind !== "profile") return false;
+      const r = regionsOf(hit.sketch)[hit.region];
+      if (!r) return false;
+      const ref = regionRef(r);
+      const s = get();
+      // (Another sketch's shape: that sketch's instead.)
+      if (s?.kind !== "profile" || s.sketch !== hit.sketch) set({ kind: "profile", sketch: hit.sketch, regions: [ref] });
+      else {
+        const i = s.regions.findIndex((x) => same(x, ref));
+        if (i >= 0 && s.regions.length === 1) return true;
+        set({ ...s, regions: i >= 0 ? s.regions.filter((_, j) => j !== i) : [...s.regions, ref] });
+      }
+      return true;
+    },
+  };
+}
+
+/**
  * Project as Edge. A sketch: its shapes drawn onto the body's faces seen from
  * it, along its normal. Edges: drawn onto a face picked next, along its normal.
  * The faces are split there; nothing else changes.
@@ -51,6 +104,7 @@ export class ImprintOp extends FeatureOp<ImprintFeature> {
     this.onto = f.face ?? null;
     if (f.source) {
       this.slots = [
+        shapesSlot(app, () => f.source, (src) => (f.source = src)),
         faceSlot(
           app,
           "Onto body",
@@ -96,6 +150,7 @@ export class WrapOp extends FeatureOp<WrapFeature> {
     const f = this.feature;
     this.onto = existing ? existing.face : null;
     this.slots = [
+      shapesSlot(app, () => f.source, (src) => (f.source = src)),
       faceSlot(
         app,
         "Round face",

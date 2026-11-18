@@ -98,6 +98,9 @@ function carried(c: (t: number) => Vec3, n: number): { P: Vec3[]; F: Frame[] } {
   return { P, F };
 }
 
+/** The directions across a curve at `n` + 1 points along it, carried without twisting (as the sweep carries the bridge's outline). */
+export const carriedFrames = (c: (t: number) => Vec3, n: number): Frame[] => carried(c, n).F;
+
 /**
  * Whether a curve (0..1) never turns tighter than the bridge is wide: at each
  * point its radius more than how far the outline reaches towards the middle

@@ -61,7 +61,7 @@ import { solveFine } from "../sketch/constraints";
 import { carried } from "../sketch/follow";
 
 import { cageToShape } from "./freeform";
-import { arcSpine, evenly, gentle, guideCurve, oriented, plainSpine, slideAxis, slidingSpine, smoothed } from "../freeform/connect";
+import { arcSpine, carriedFrames, evenly, gentle, guideCurve, oriented, plainSpine, slideAxis, slidingSpine, smoothed } from "../freeform/connect";
 import { deepCopy, hairThin, meshVolume, openEdges, shapeValid, subShapes } from "./health";
 import { healthOf, isHealthy, repairShape } from "./repair";
 export { shapeValid } from "./health";
@@ -3998,6 +3998,8 @@ interface BridgeEnd {
   reach: number;
   /** Points round the outline (sized), from the middle. */
   ring: Vec3[];
+  /** Made of two faces either side of a seam (its outline in more pieces than the face's own: a sweep pairs them up wrongly). */
+  joined?: boolean;
   /** The face's area (sized). */
   area: number;
 }
@@ -4008,10 +4010,63 @@ interface BridgeEnd {
  * joined or cut (so the bodies overlap it, not only touch) - never out of the
  * far side.
  */
+/**
+ * A patch on a round face that crosses the seam of its surface (where a
+ * revolved body's surface starts and ends) comes in two faces, one each side:
+ * the piece on the other side of `face`'s, and the outline of the two as one.
+ * (A handle's pad projected onto a mug's side, on the seam: one tap picked
+ * half of it, and the handle was bridged from half a pad.)
+ */
+function acrossSeam(body: Shape3D, face: Face): { other: Face; wire: any } | null {
+  if (!["CYLINDRE", "CONE", "SPHERE", "TORUS", "REVOLUTION_SURFACE"].includes(face.geomType)) return null;
+  const TAU = 2 * Math.PI;
+  const onSeam = (f: Face, p: Vec3) => {
+    const m = ((f.uvCoordinates(p)[0] % TAU) + TAU) % TAU;
+    return m < 1e-6 || TAU - m < 1e-6;
+  };
+  try {
+    for (const e of face.edges) {
+      const mid = e.pointAt(0.5).toTuple() as Vec3;
+      if (!onSeam(face, mid)) continue;
+      const other = body.faces.find((g) => !g.isSame(face) && g.geomType === face.geomType && g.edges.some((x) => x.isSame(e)));
+      // (The same surface going on smoothly across the edge.)
+      if (!other || dot(norm(face.normalAt(mid).toTuple() as Vec3), norm(other.normalAt(mid).toTuple() as Vec3)) < 1 - 1e-6) continue;
+      // The two outlines, the edge between them left out, end to end.
+      const pool = [...face.clone().outerWire().edges, ...other.clone().outerWire().edges].filter((x) => !x.isSame(e));
+      const chain = [pool.shift()!];
+      const tol = sizeOf(body) * 1e-5;
+      while (pool.length) {
+        const end = chain[chain.length - 1].endPoint.toTuple() as Vec3;
+        const end0 = chain[chain.length - 1].startPoint.toTuple() as Vec3;
+        const i = pool.findIndex((x) => [x.startPoint, x.endPoint].some((q) => [end, end0].some((p) => dist(q.toTuple() as Vec3, p) < tol)));
+        if (i < 0) return null;
+        chain.push(pool.splice(i, 1)[0]);
+      }
+      return { other, wire: assembleWire(chain).wrapped };
+    }
+  } catch {
+    // (Not one to join: the face as it is.)
+  }
+  return null;
+}
+
 function bridgeEnd(body: Shape3D, face: Face, size: number, inward: boolean, sink: boolean): BridgeEnd {
   const oc = getOC();
-  const info = faceInfo(face);
-  const ring = curvePoints(oc.BRepTools.OuterWire(face.wrapped), 64, true);
+  const joined = acrossSeam(body, face);
+  let info = faceInfo(face);
+  if (joined) {
+    // The middle, the area and the way out of the two pieces as one.
+    const o = faceInfo(joined.other);
+    const area = info.area + o.area;
+    const center = scale(add(scale(info.center, info.area), scale(o.center, o.area)), 1 / area);
+    info = { ...info, area, center, normal: norm(add(scale(info.normal, info.area), scale(o.normal, o.area))) };
+  }
+  const wire = joined?.wire ?? oc.BRepTools.OuterWire(face.wrapped);
+  // (A joined outline evenly round by length: by the pieces' own measures, its
+  // points bunched on the straight sides, few on the arcs, and the smooth
+  // outline made through them bulged out past the pad.)
+  const dense = joined ? curvePoints(wire, 512, true) : null;
+  const ring = dense ? evenly([...dense, dense[0]], 65).slice(0, 64) : curvePoints(wire, 64, true);
   const reach = Math.max(...ring.map((p) => dist(p, info.center))) * size;
   const around = ring.map((p) => scale(sub(p, info.center), size));
   const dir = inward ? scale(info.normal, -1) : info.normal;
@@ -4028,12 +4083,12 @@ function bridgeEnd(body: Shape3D, face: Face, size: number, inward: boolean, sin
   const v = new oc.gp_Vec(-dir[0] * depth, -dir[1] * depth, -dir[2] * depth);
   move.SetTranslation(v);
   const both = move.Multiplied(t);
-  const mk = new oc.BRepBuilderAPI_Transform(oc.BRepTools.OuterWire(face.wrapped), both, true);
+  const mk = new oc.BRepBuilderAPI_Transform(wire, both, true);
   const outline = mk.Shape();
-  const mr = new oc.BRepBuilderAPI_Transform(oc.BRepTools.OuterWire(face.wrapped), t, true);
+  const mr = new oc.BRepBuilderAPI_Transform(wire, t, true);
   const rim = mr.Shape();
   for (const x of [t, at, move, v, both, mk, mr]) x.delete();
-  return { center: info.center, dir, outline, rim, depth, reach, ring: around, area: info.area * size * size };
+  return { center: info.center, dir, outline, rim, depth, reach, ring: around, area: info.area * size * size, joined: !!joined };
 }
 
 /**
@@ -4056,6 +4111,32 @@ function sweepBridge(a: BridgeEnd, b: BridgeEnd, along: (t: number) => Vec3, how
   // and the sweep went wrong without saying so - turned inside out part of the
   // way, its two halves cancelling (a solid of 128 mm3 for one of 30 000).
   const least = Math.min(a.area, b.area) * dist(a.center, b.center) * 0.15;
+  // B's outline lined up with A's as A's arrives there carried along the
+  // curve: the same way round, from the point A's first point comes to.
+  // (Starting from another corner, or going round the other way, the bridge
+  // twisted - half way round, or inside out to a solid of half a mm3.)
+  const fr = carriedFrames(along, 120);
+  const [f0, f1] = [fr[0], fr[fr.length - 1]];
+  const arrived = a.ring.map((p): Vec3 => add(scale(f1.r, dot(p, f0.r)), scale(f1.s, dot(p, f0.s))));
+  const flatten = (e: BridgeEnd, p: Vec3) => sub(p, scale(e.dir, dot(p, e.dir)));
+  let bRing = b.ring;
+  // (An outline joined across a seam is in more pieces than the face's own,
+  // and the sweep pairs them up wrongly: only the lined-up ones are used.)
+  const lined = !a.joined && !b.joined;
+  {
+    const n = b.ring.length;
+    const step = Math.max(1, Math.round(n / a.ring.length));
+    let best = Infinity;
+    for (const ring of [b.ring, [...b.ring].reverse()])
+      for (let k = 0; k < n; k++) {
+        let cost = 0;
+        for (let i = 0; i < arrived.length; i++) {
+          const d = sub(flatten(b, arrived[i]), flatten(b, ring[(k + i * step) % n]));
+          cost += dot(d, d);
+        }
+        if (cost < best) (best = cost), (bRing = [...ring.slice(k), ...ring.slice(0, k)]);
+      }
+  }
   const spine = (lead: boolean) => {
     // In from deep in A, straight out through its face; along the curve; and the same into B.
     const back = (e: BridgeEnd, rev: boolean) => {
@@ -4096,7 +4177,8 @@ function sweepBridge(a: BridgeEnd, b: BridgeEnd, along: (t: number) => Vec3, how
           mk.MakeSolid();
           let s = cast(mk.Shape()) as Shape3D;
           if (measureVolume(s) < 0) s = cast(s.wrapped.Reversed()) as Shape3D;
-          if (!shapeValid(s) || !(measureVolume(s) > least)) throw new Error("bad");
+          // (Ends that aren't flat aren't closed: a tube open at both ends.)
+          if (!shapeValid(s) || !(measureVolume(s) > least) || openEdges(s).length) throw new Error("bad");
           return s;
         } catch {
           /* the next way, or none */
@@ -4112,7 +4194,7 @@ function sweepBridge(a: BridgeEnd, b: BridgeEnd, along: (t: number) => Vec3, how
   // instead, the outline was already part way to the other face's where it
   // left its own - a square end into a small round one started inside the
   // square's edges.
-  if (exact && (a.depth > 0 || b.depth > 0)) {
+  if (exact && lined && (a.depth > 0 || b.depth > 0)) {
     const plug = (e: BridgeEnd): Shape3D => {
       const mf = new oc.BRepBuilderAPI_MakeFace(oc.TopoDS.Wire(e.rim), true);
       const v = new oc.gp_Vec(-e.dir[0] * e.depth, -e.dir[1] * e.depth, -e.dir[2] * e.depth);
@@ -4141,14 +4223,21 @@ function sweepBridge(a: BridgeEnd, b: BridgeEnd, along: (t: number) => Vec3, how
   }
   // The faces' own outlines; and, where one can't be turned into the other (a
   // square into an L: not the same number of sides, corners that don't pair
-  // up), each as one smooth closed curve through points round it.
-  const smooth = (e: BridgeEnd) => {
+  // up), each as one smooth closed curve through points round it. `flat`: laid
+  // flat across the way out of the face (a patch on a round face - a mug's
+  // side - has an outline that isn't flat, and no sweep closes on it).
+  const smooth = (e: BridgeEnd, flat = false, own = false) => {
     const base = sub(e.center, scale(e.dir, e.depth));
+    const ring = e === b && !own ? bRing : e.ring;
     // (A little inside the face's own edge: walls a hair apart from the body's make its join leave gaps.)
-    const round = e.ring.map((p) => add(base, scale(p, 0.97)));
+    const round = ring.map((p) => add(base, scale(flat ? flatten(e, p) : p, 0.97)));
     return assembleWire([makeBSplineApproximation([...round, round[0]], { tolerance: Math.max(1e-4, e.reach * 1e-3), degMax: 5, degMin: 3 })]).wrapped;
   };
-  const s = pipe(spine(true), [() => [a.outline, b.outline], () => [smooth(a), smooth(b)]]);
+  // (Faces' own outlines: tried first each the way it goes round;
+  // then lined up. An L's outline lined up with a square's that way twisted the
+  // bridge at its inward corner, and it wouldn't join.)
+  const own = lined ? [() => [a.outline, b.outline], () => [smooth(a), smooth(b, false, true)]] : [];
+  const s = pipe(spine(true), [...own, () => [smooth(a), smooth(b)], () => [smooth(a, true), smooth(b, true)]]);
   if (s) return { shape: s, exact: false };
   throw new Error(bridgeFailed(guided));
 }
