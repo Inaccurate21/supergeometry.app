@@ -42,8 +42,8 @@ Almost everything follows the same rhythm:
 2. **Turn it into a solid** - pull it up (*Extrude*), spin it around an axis
    (*Revolve*), or move it along a path (*Sweep*).
 3. **Select something and change it** - tap a face, an edge or a whole body:
-   only the tools that make sense for it appear on the left. Drag the arrow or
-   type a number.
+   its handle (an arrow, a dot) is ready to drag or type, the buttons beside
+   it hold the next likely tools, and the tool wheel only what fits it.
 4. **Every step is remembered** in *History*, so you can go back and change a
    size later - everything after it updates.
 
@@ -53,20 +53,22 @@ There's no wrong order. Undo (bottom left) is always one tap away.
 
 ## Your first part: a box with a hole
 
-1. Tap **Sketch** (left column), then tap the blue **XY** square near the
+1. Tap **Sketch** on the tool wheel, then tap the blue **XY** square near the
    middle of the screen. The view turns to look straight down at that plane.
 2. Tap **Rectangle**, tap one corner, tap the opposite corner. While you draw,
    type a number for an exact size (e.g. `40`, Tab, `30`).
 3. Tap **Circle**, tap a centre inside the rectangle, tap again for the size
    (or type `8`).
-4. Tap **Exit Sketch** (top left of the tools) - or just tap an empty spot
-   while looking at it from the side.
+4. Closing the rectangle already ended the line; tap **Exit** on the wheel -
+   or just tap an empty spot while looking at it from the side.
 5. Tap inside the rectangle (but outside the circle): that region turns blue
-   and an **arrow** appears. Drag the arrow up, or type `20`. You now have a
-   box with a round hole.
+   and an **arrow** appears. Drag the arrow up, or type `20`: drawn on a
+   plane, up makes a new body (down would cut). You now have a box with a
+   round hole.
 6. Tap the top face of the box. Drag its arrow to make it taller - the hole
    follows. Tap an edge and drag the dot **outward** for a rounded edge
-   (*fillet*) or **inward** for a bevel (*chamfer*).
+   (*fillet*) or **inward** for a bevel (*chamfer*). Tap the hole's wall:
+   **Thread** is on a button beside it.
 7. **File → Export STL** to 3D-print it.
 
 ## Second part: a vase
@@ -99,15 +101,13 @@ There's no wrong order. Undo (bottom left) is always one tap away.
   something selected, right-click shows its tools by the pointer.
 - On touch screens **every tap adds to the selection**; tap again to drop it.
 
-- **Fit** (right column) zooms so everything is on screen.
+- **Fit**: double-tap the view cube to get everything on screen.
 - **View cube** (top right): tap a face for a straight-on view (Top, Front…);
   ⟲ ⟳ at its top corners turn the view by 90°.
 - **Orbit centre** (the cube's bottom-left button): tap it, then tap a point -
   the view now turns around that point. Fit resets it.
 - **Views** (the cube's bottom-right button): standard and saved views, and
   how the view looks; tap again to close.
-- On touch screens, **press and hold a tool** to see its name in the middle
-  of the screen; let go on it to use it, slide off to cancel.
 
 ---
 
@@ -116,38 +116,23 @@ There's no wrong order. Undo (bottom left) is always one tap away.
 **Top bar** (top centre) - the project name (tap to rename), **File** (new / open / save /
 export), **Items** (a list of everything, with eyes to hide or show and
 folders to group; each kind - Bodies, Sketches, Planes & axes, Images - folds
-away under its heading, and a plane's icon shows how it was made), **More**
-(fullscreen, Help, About, support). On tablets and computers Items runs the
-full height of the screen, like History.
+away under its heading), **History**, **More** (fullscreen, Help, About,
+support).
 
-**The wheels** - the tools are on the **tool wheel**: tap a group and its
-tools fan out, tap one to use it. With something picked it shows only what
-fits the pick. Beside it the **Options** wheel holds the open tool's values
-and choices, and the **Settings** wheel (the cog) snapping, units, look and
-the numpad. They stay on the screen: on tablets and computers they start in a
-column just left of History, spaced so they don't overlap when open. Tap a
-wheel's middle to fold it to its icon and again to open it; drag it by its
-middle to put it anywhere (it's remembered).
+**Three wheels**, in a column left of History (on a phone the tool wheel
+waits folded at the left): the **tool wheel** (tap a group, its tools fan
+out, tap one), **Options** (the open tool's values and choices) and
+**Settings** (snapping, units, look, screenshot, the numpad). With something
+picked the tool wheel shows only what fits it; in a sketch it holds the
+sketch tools. Its **View** group has Section View, Measure, Variables and
+Isolate. Tap a wheel's middle to fold or open it; drag it by the middle to
+put it anywhere.
 
-**Quick buttons** - whatever you pick gets round buttons right beside it with
-the next two tools it most likely needs: a flat face Sketch and Shell, a round
-face Thread, an edge Chamfer and Move, a body Shell and Fillet, a plane Sketch,
-an image Scale; in a sketch, picked curves get Construction and Delete. They
-keep clear of the pick's own handle (a face's arrow, an edge's fillet dot, a
-gimbal) and of the wheels.
+**Quick buttons** - round buttons beside a pick with its next two likeliest
+tools: a flat face Sketch and Shell, a round face Thread, an edge Chamfer and
+Move, a body Shell and Fillet; in a sketch, Construction and Delete.
 
-**Left column** - the tools. With nothing selected you get the ones that
-*make* things (Sketch, Freeform, Extrude, Revolve, Transform, Construct,
-Insert…). With something selected you only see what can be done with it,
-in groups (picking, moving and patterns, making, combining, construction,
-colour, delete) apart with a dim line.
-
-**Right column** (middle of the right edge) - Fit, Snapping, Units & grid,
-Display mode, Screenshot, Numpad (on / off), History, and in a sketch,
-Constraints.
-
-**Bottom left** - Undo / Redo, Section View (cut the view open), Measure and
-Isolate (show only the selected bodies).
+**Bottom left** - Undo / Redo.
 
 **The tool card** - the values for whatever you're doing (sizes, counts,
 options), its own actions, and Cancel / Done, each apart with a dim line. It
@@ -166,8 +151,7 @@ straight-on view (Front, Top…) Sketch goes on the face you're looking at.
 Sketches on a face measure X / Y from the model's origin.
 
 **Drawing tools:** Line (keeps going from the last point; tap the first point
-to close - closing a shape ends the line tool, the sketch stays open, so the
-next tap turns the view or picks the shape), Arc (two ends, then the bend - or by centre), Spline (smooth curve through points;
+to close, which ends the line), Arc (two ends, then the bend - or by centre), Spline (smooth curve through points;
 *Fit* or *Control* points, or *Draw*: press and drag freehand like a pencil - the stroke
 is cleaned up into a few lines, arcs and smooth curves, corners kept, so an extrusion
 gets a handful of faces, not hundreds; end where you began to close it), Rectangle (diagonal / centre / 3 points), Circle
@@ -197,8 +181,6 @@ on along their circle), Split, Move/Rotate (gimbal, or Rotate About a tapped
 centre), Scale, Pattern (linear with an arrow you drag, or circular around a
 centre), Delete. Tools with options start with the option you used last.
 Tapping empty space finishes Offset, Move, Scale, Pattern, Rotate and Mirror.
-On phones the tool column shrinks to icons once you place a point; tap the
-tool in use to see the names again.
 
 **Select** (in a sketch): tap curves to select them, double-tap for a whole
 shape. Drag points or curves, or use the gimbal. Tap an arc or circle to type
@@ -215,13 +197,13 @@ picked stays put, the others adapt to it). Constraints are strict: one that
 contradicts those already there isn't added - remove the old one first, or
 switch **Auto constrain** off; a typed value that can't be met is refused
 rather than bending the sketch. Their marks are small and faint, a colour per
-kind, and never catch a tap meant for the drawing. Toggle the column with the
-**Constraints** button on the right.
+kind, and never catch a tap meant for the drawing. Show or hide their column
+with **More → Constraints** on the sketch's wheel.
 
 Any closed shape becomes a **region** (blue when selected) you can extrude,
 revolve, sweep or loft. Overlapping shapes split into separate regions.
-Tapping a region shows Extrude's arrow - drag it, or type a height - and
-Revolve, Sweep and Loft beside it in the column for the same shape. While the
+Tapping a region shows Extrude's arrow - drag it, or type a height - with
+Sketch and Revolve on the buttons beside it. While the
 arrow is still at 0, tapping more regions of the same sketch adds them;
 **All shapes** takes every shape at once. Double-tap a shape to open its
 sketch. A sketch stays in view until every region of it is used.
@@ -230,12 +212,9 @@ sketch. A sketch stays in view until every region of it is used.
 
 ## Making and changing solids
 
-- **Extrude** - pull a region or a face. **Operation** is Auto, New body,
-  Add, Cut or Intersect. *Auto* goes by the way you pull: a shape drawn on
-  its own (on a plane) is a new body going +, and going - cuts what it runs
-  into; a shape on a face (or the face itself) adds going out and cuts going
-  in. The option says what it does now (*Auto: Cut*, *Auto: Add*, *Auto: New
-  body*), and the Options wheel names the choice the same way. **Taper end %** sizes the far end (100 none, 0 a
+- **Extrude** - pull a region or a face. **Operation** (Auto, New body, Add,
+  Cut, Intersect): Auto goes by direction - on a plane + is a new body and -
+  a cut, on a face out adds and in cuts. **Taper end %** sizes the far end (100 none, 0 a
   point: a spire, a pyramid or a cone in one step) - type it or drag the box
   left / right. Extrude starts at the last distance.
 - **Revolve** - spin a region around an axis (a separate line, a side of a
@@ -277,8 +256,7 @@ sketch. A sketch stays in view until every region of it is used.
 - **Thread** - tap a round face or a hole's rim: a shank at the nominal size
   gets an outside thread, a hole at the tap-drill size an inside one. The
   pitch starts at the ISO coarse pitch (the card says what it makes, e.g.
-  M10 × 1.5); left-hand as an option. A free end gets a 45° lead-in
-  chamfer, so the thread starts clean.
+  M10 × 1.5); left-hand as an option; free ends get a 45° lead-in.
 - **Repair Body** - fixes an imported or broken body (gaps, bad faces,
   slivers, inside-out) without changing its shape or size.
 - **Fill to Plane** - an open freeform surface becomes a solid by filling
@@ -338,7 +316,7 @@ sketch. A sketch stays in view until every region of it is used.
   The card has New Variable and the whole list; tap Variables again to switch off.
   Type them into any field (`wall * 2`) or pick them from the **ƒx** menu
   next to a value. Change the variable later and everything using it updates.
-- The **on-screen numpad** (the keypad button in the right column - tap it
+- The **on-screen numpad** (Numpad on the Settings wheel - tap it
   on or off) replaces the system keyboard for value boxes. It's on by default
   on phones, tablets and headsets. Tapping a box selects its value, so typing
   replaces it; nothing is applied until you press ↵. After the second tap of
@@ -396,15 +374,12 @@ can't be rebuilt after a change, it's marked and the reason is shown.
   first turns the bin red, the second deletes. It goes back by itself after 3
   seconds, or at a tap anywhere else. Delete in the tools and in a tool's
   window takes one tap (Undo brings it back).
-- Tools show as icons: press and hold one to see its name.
 - With a pen, fingers are ignored while the pen touches the screen.
 - iPad / Android: **More → Fullscreen** gives the whole screen. On phones and
   tablets the app offers to be **installed on the home screen** (or More →
   Install app); on iPhone/iPad it's *Share → Add to Home Screen*.
-- The window the app opens with has a **Full screen** button. The tool card fits the widest
-  clear gap along the bottom (beside undo/redo on a phone on its side), and a
-  tool's options open beside a column of tools instead of over it.
-- Fit frames the model in the part of the screen the columns and bars leave
+- The window the app opens with has a **Full screen** button.
+- Fit frames the model in the part of the screen the wheels and bars leave
   free.
 - Meta Quest: open the site in the Quest browser; buttons and pick distances
   are bigger, and the numpad is on.
@@ -451,7 +426,7 @@ OpenCascade (via replicad) running in a Web Worker; the UI is plain DOM over a
 three.js view. Units are millimetres internally; the display unit is a setting.
 
 **Interaction model.**
-- Nothing selected → the left column shows creation tools: Sketch, Freeform,
+- Nothing selected → the tool wheel shows creation tools: Sketch, Freeform,
   Extrude, Revolve, Sweep, Loft, Shell, Transform ▸ (Move/Rotate, Scale,
   Translate, Mirror, Rotate Around Axis, Patterns), Boolean ▸ (Union,
   Subtract, Intersect), Construct ▸ (planes, axes), Insert ▸ (variables,
@@ -464,7 +439,7 @@ three.js view. Units are millimetres internally; the display unit is a setting.
   Revolve / Sweep / Loft.
 - Every operation is a *feature* in History; editing a feature replays
   everything after it.
-- Values: type while dragging, or in the bottom panel; expressions and
+- Values: type while dragging, or on the Options wheel; expressions and
   variables are accepted everywhere a number is.
 
 **Project file (`.super`, JSON).**
