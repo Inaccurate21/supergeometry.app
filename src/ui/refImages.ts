@@ -192,7 +192,8 @@ export class RefImages {
     const s = win.el.style;
     s.left = `${Math.round(win.x)}px`;
     s.top = `${Math.round(win.y)}px`;
-    s.width = `${Math.round(win.w)}px`;
+    // (Minimized: just as wide as its tabs and the three buttons.)
+    s.width = win.min ? "" : `${Math.round(win.w)}px`;
     s.height = win.min ? "" : `${Math.round(win.h)}px`;
   }
 
