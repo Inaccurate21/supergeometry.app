@@ -35,7 +35,7 @@ type Pick = { kind: "vert"; i: number } | { kind: "edge"; e: [number, number] } 
  * Re-made from `base` on every slider move; the next tap or step keeps it.
  */
 type Live =
-  | { kind: "shape"; prim: "box" | "cylinder" | "sphere"; size: Vec3; rows: number }
+  | { kind: "shape"; prim: "box" | "cylinder" | "sphere" | "torus"; size: Vec3; rows: number }
   /** A new flat surface on the plane picked: its width, depth and faces in the card. */
   | { kind: "sheet"; size: [number, number]; rows: number; at: Vec3; x: Vec3; y: Vec3; n: Vec3 }
   | { kind: "sweep"; base: Cage; face: number; steps: number; length: number; bend: number; taper: number; size: number }
@@ -271,8 +271,9 @@ export class FreeformTool implements Tool {
     // A new box, cylinder or sphere: its size and rows in the card first.
     if (!this.existing && this.primKind && this.primKind !== "plane") {
       const prim = this.primKind;
-      this.live = { kind: "shape", prim, size: [40, 40, 40], rows: prim === "sphere" ? 2 : 2 };
-      this.cage = shapeCage(prim, [40, 40, 40], 2);
+      const size: Vec3 = prim === "torus" ? [40, 40, 12] : [40, 40, 40];
+      this.live = { kind: "shape", prim, size, rows: 2 };
+      this.cage = shapeCage(prim, size, 2);
     }
     this.rebuild();
     // A new shape inside another body (or a flat surface, which you'll want to place first): move it as a whole first.
@@ -760,7 +761,11 @@ export class FreeformTool implements Tool {
         { type: "number", label: round ? "Diameter" : "Width", value: l.size[0], kind: "length", min: 0.01, onInput: (v) => (this.setLive({ size: round ? [v, v, l.prim === "sphere" ? v : l.size[2]] : [v, l.size[1], l.size[2]] }), this.frameSoon()) },
       ];
       if (l.prim === "box") out.push({ type: "number", label: "Depth", value: l.size[1], kind: "length", min: 0.01, onInput: (v) => (this.setLive({ size: [l.size[0], v, l.size[2]] }), this.frameSoon()) });
-      if (l.prim !== "sphere") {
+      // A ring: how thick its tube is, and how many faces round the tube.
+      if (l.prim === "torus") {
+        out.push({ type: "number", label: "Thickness", value: l.size[2], kind: "length", min: 0.01, onInput: (v) => (this.setLive({ size: [l.size[0], l.size[1], Math.min(v, l.size[0] * 0.98)] }), this.frameSoon()) });
+        out.push({ type: "slider", label: "Rows", value: l.rows, min: 2, max: 6, step: 1, onInput: (v) => this.setLive({ rows: v }) });
+      } else if (l.prim !== "sphere") {
         out.push({ type: "number", label: "Height", value: l.size[2], kind: "length", min: 0.01, onInput: (v) => (this.setLive({ size: [l.size[0], l.size[1], v] }), this.frameSoon()) });
         out.push({ type: "slider", label: l.prim === "box" ? "Faces" : "Rows", value: l.rows, min: 1, max: 8, step: 1, onInput: (v) => this.setLive({ rows: v }) });
       }

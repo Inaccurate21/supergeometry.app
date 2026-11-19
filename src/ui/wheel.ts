@@ -138,7 +138,7 @@ const RANK = [
   "subtract", "union", "intersect", "split",
   "move", "mirror", "pattern", "scale", "translate", "rotate",
   "plane", "axis", "proje",
-  "ff-box", "ff-cylinder", "ff-sphere", "ff-plane", "faceFreeform", "connect",
+  "ff-box", "ff-cylinder", "ff-sphere", "ff-torus", "ff-plane", "faceFreeform", "connect",
   "measure", "section", "variables", "insert", "bim",
 ];
 const rankOf = (id: string) => {
@@ -162,7 +162,7 @@ const SLOTS: Record<string, string[]> = {
   modify: ["fillet", "chamfer", "shell", "offsetFace", "offsetEdge", "thread", "wrap", "fix", "replace"],
   construct: ["plane", "axis"],
   transform: ["move", "circular", "mirror", "linear", "scale", "translate", "rotate", "align"],
-  freeform: ["ff-box", "ff-cylinder", "ff-sphere", "ff-plane", "faceFreeform", "connect", "editFreeform"],
+  freeform: ["ff-box", "ff-cylinder", "ff-sphere", "ff-torus", "ff-plane", "faceFreeform", "connect", "editFreeform"],
 };
 /**
  * The top place's: something picked, what it offers first; nothing picked, the

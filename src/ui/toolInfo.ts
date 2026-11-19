@@ -66,6 +66,7 @@ const MODEL: Record<string, string> = {
   "ff-box": "A freeform box you shape by pulling its points.",
   "ff-cylinder": "A freeform cylinder you shape by pulling its points.",
   "ff-sphere": "A freeform sphere you shape by pulling its points.",
+  "ff-torus": "A freeform ring you shape by pulling its points.",
   "ff-plane": "A freeform sheet you shape by pulling its points.",
   faceFreeform: "Turn a face into a freeform surface to shape by hand.",
   editFreeform: "Shape this freeform body again.",

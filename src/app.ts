@@ -1104,9 +1104,9 @@ export class App implements AppContext {
         label: "Freeform",
         icon: "freeform",
         children: [
-          ...(["box", "sphere", "cylinder", "plane"] as const).map((k) => ({
+          ...(["box", "sphere", "cylinder", "torus", "plane"] as const).map((k) => ({
             id: `ff-${k}`,
-            label: { box: "Box", sphere: "Sphere", cylinder: "Cylinder", plane: "Surface (plane)" }[k],
+            label: { box: "Box", sphere: "Sphere", cylinder: "Cylinder", torus: "Torus", plane: "Surface" }[k],
             icon: "freeform" as const,
             run: () => this.setTool(new FreeformTool(this, { primitive: k })),
           })),

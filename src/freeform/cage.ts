@@ -13,7 +13,7 @@ export interface Cage {
   faces: [number, number, number, number][];
 }
 
-export type CagePrimitive = "box" | "plane" | "cylinder" | "sphere";
+export type CagePrimitive = "box" | "plane" | "cylinder" | "sphere" | "torus";
 
 // ------------------------------------------------------------- primitives
 
@@ -96,6 +96,32 @@ export function cylinderCage(d = 40, h = 40, rows = 2, at: Vec3 = [0, 0, 0]): Ca
 }
 
 /**
+ * A ring (a torus) lying on `at`: `d` across the outside, `t` thick (its
+ * tube), 8 faces round the ring and 2·rows round the tube (4 at least).
+ * Every point has four faces round it, so it comes out smooth all over.
+ */
+export function torusCage(d = 40, t = 12, rows = 2, at: Vec3 = [0, 0, 0]): Cage {
+  const N = 8;
+  const M = Math.max(4, 2 * Math.round(rows));
+  const R = Math.max(0.01, (d - t) / 2);
+  // A cage a little bigger round the tube than the tube: subdivision shrinks it.
+  const r = (t / 2) * (M <= 4 ? 1.3 : 1.12);
+  const verts: Vec3[] = [];
+  for (let i = 0; i < N; i++)
+    for (let j = 0; j < M; j++) {
+      const a = (i / N) * Math.PI * 2;
+      const b = (j / M) * Math.PI * 2;
+      const w = R + Math.cos(b) * r;
+      verts.push([at[0] + Math.cos(a) * w, at[1] + Math.sin(a) * w, at[2] + t / 2 + Math.sin(b) * r]);
+    }
+  const id = (i: number, j: number) => (i % N) * M + (j % M);
+  const faces: Cage["faces"] = [];
+  // (Wound so the normals point out of the tube.)
+  for (let i = 0; i < N; i++) for (let j = 0; j < M; j++) faces.push([id(i, j), id(i + 1, j), id(i + 1, j + 1), id(i, j + 1)]);
+  return { verts, faces };
+}
+
+/**
  * Close an 8-point rim with a 2×2 grid of quads: its corners are rim points
  * 1, 3, 5, 7, its edge midpoints rim 0, 2, 4, 6, and a new centre point.
  */
@@ -120,6 +146,7 @@ function capGrid(verts: Vec3[], faces: Cage["faces"], R: number, N: number, z: n
 export function shapeCage(kind: Exclude<CagePrimitive, "plane">, size: Vec3, rows = 2): Cage {
   const r = Math.max(1, Math.round(rows));
   if (kind === "box") return boxCage(size, r);
+  if (kind === "torus") return torusCage(size[0], size[2], r);
   if (kind === "sphere") {
     const c = sphereCage(size[0]);
     return { faces: c.faces, verts: c.verts.map((v) => [v[0], (v[1] * size[1]) / size[0], (v[2] * size[2]) / size[0]] as Vec3) };
@@ -140,6 +167,8 @@ export function primitiveCage(kind: CagePrimitive, at: Vec3 = [0, 0, 0]): Cage {
       return cylinderCage(40, 40, 2, at);
     case "sphere":
       return sphereCage(40, at);
+    case "torus":
+      return torusCage(40, 12, 2, at);
   }
 }
 
