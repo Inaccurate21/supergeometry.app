@@ -154,7 +154,14 @@ export class MeasureTool implements Tool {
     if (s.kind === "face") {
       const f = b.faces[s.face];
       const pts = facePoints(b, s.face);
-      const rows = [{ name: `Surface area · ${niceType(f.type)}`, value: fmtArea(f.area), at: f.center }];
+      const rows: Row[] = [{ name: `Surface area · ${niceType(f.type)}`, value: fmtArea(f.area), at: f.center }];
+      // A round face (a shaft, a hole): its diameter, pinned as a line straight across it.
+      if (f.round) {
+        const r = f.round.r;
+        const across = acrossCylinder(b, s.face, r, f.round.hole, f.center);
+        rows.push({ name: f.round.hole ? "Diameter · hole" : "Diameter", value: `Ø ${fmtLen(2 * r)}`, at: across?.mid ?? f.center, ...(across ? { a: across.a, b: across.b } : {}) });
+        rows.push({ name: "Radius", value: `R ${fmtLen(r)}`, at: across?.b ?? f.center, ...(across ? { a: across.mid, b: across.b } : {}) });
+      }
       return { rows, anchor: f.center, points: pts, dir: f.plane ? f.normal : undefined };
     }
     if (s.kind === "edge") {
@@ -211,6 +218,44 @@ function edgePoints(b: BodyMesh, edge: number): Vec3[] {
   return out;
 }
 
+/**
+ * A line straight across a round face, through its axis, level with the
+ * middle of the face: its ends on the surface (null where the face's own
+ * normals can't tell the axis).
+ */
+function acrossCylinder(b: BodyMesh, face: number, r: number, hole: boolean, center: Vec3): { a: Vec3; b: Vec3; mid: Vec3 } | null {
+  const g = b.faceGroups.find((x) => x.face === face);
+  if (!g || !g.count) return null;
+  const at = (i: number): { p: Vec3; n: Vec3 } => {
+    const v = b.indices[i] * 3;
+    return { p: [b.positions[v], b.positions[v + 1], b.positions[v + 2]], n: [b.normals[v], b.normals[v + 1], b.normals[v + 2]] };
+  };
+  const first = at(g.start);
+  // The surface's normals all stand square to the axis: two far apart give it.
+  let axis: Vec3 | null = null;
+  let best = 0.2;
+  for (let i = g.start; i < g.start + g.count; i++) {
+    const c = cross(first.n, at(i).n);
+    const l = len(c);
+    if (l > best) {
+      best = l;
+      axis = [c[0] / l, c[1] / l, c[2] / l];
+    }
+  }
+  if (!axis) return null;
+  // (A hole's surface faces its axis, a shaft's away from it.)
+  const k = hole ? r : -r;
+  const onAxis: Vec3 = [first.p[0] + first.n[0] * k, first.p[1] + first.n[1] * k, first.p[2] + first.n[2] * k];
+  const t = dot(sub(center, onAxis), axis);
+  const mid: Vec3 = [onAxis[0] + axis[0] * t, onAxis[1] + axis[1] * t, onAxis[2] + axis[2] * t];
+  const side = dot(first.n, axis);
+  const u0: Vec3 = [first.n[0] - axis[0] * side, first.n[1] - axis[1] * side, first.n[2] - axis[2] * side];
+  const ul = len(u0);
+  if (ul < 1e-9) return null;
+  const u: Vec3 = [u0[0] / ul, u0[1] / ul, u0[2] / ul];
+  return { a: [mid[0] - u[0] * r, mid[1] - u[1] * r, mid[2] - u[2] * r], b: [mid[0] + u[0] * r, mid[1] + u[1] * r, mid[2] + u[2] * r], mid };
+}
+
 function closestPair(a: Vec3[], b: Vec3[]): { d: number; p: Vec3; q: Vec3 } {
   let best = { d: Infinity, p: a[0], q: b[0] };
   const step = (n: number) => Math.max(1, Math.floor(n / 600));
@@ -255,5 +300,5 @@ function fmtVolume(mm3: number): string {
 }
 
 function niceType(t: string): string {
-  return t.toLowerCase().replace(/_/g, " ").replace("bspline", "free-form");
+  return t.toLowerCase().replace(/_/g, " ").replace("bspline", "free-form").replace("cylindre", "cylinder");
 }

@@ -261,6 +261,8 @@ const SECTOR = 1;
 const CELL = 100;
 
 const notSep = (it: ToolItem) => !it.id.startsWith("---");
+/** A column holding only the open tool's way out (Exit Measure). */
+const onlyExit = (items: ToolItem[]) => items.length > 0 && items.every((t) => t.id === "exit");
 const kidsOf = (it: ToolItem) => usable(it.children ?? []).filter(notSep);
 /** A tap on a tool with kinds (Rectangle: Center, Diagonal, 3 Points) opens them straight away, the one used last lit. */
 const opens = (it: ToolItem) => kidsOf(it).length > 0;
@@ -650,6 +652,9 @@ export class Wheel implements WheelHandle {
       // (Another tool open - Measure, Section View, Variables: no column of its own shows, so the wheel is up even with no window.)
       const has = this.on && (this.host.ui.panelOpen || (toolsLayout === null && usable(this.host.ui.shown().column).length > 0)) && !typing && this.content().sectors.length > 0;
       document.body.classList.toggle("wheel-options", has);
+      // (A tool whose column is only its Exit - Measure: no wheel, and the column stays out of sight too;
+      // Esc, a tap on empty space or its lit button in View close it.)
+      document.body.classList.toggle("wheel-bare", this.on && !has && toolsLayout === null && !this.host.ui.panelOpen && onlyExit(usable(this.host.ui.shown().column).filter(notSep)));
       if (!has) return this.hide();
     }
     if (!this.on || !this.layout) return this.hide();
@@ -829,6 +834,8 @@ export class Wheel implements WheelHandle {
     // Another tool open (not the selection, a sketch or a freeform, whose wheel has their own):
     // its column (Exit Measure…) is on this wheel too, as the column itself steps aside.
     const own = toolsLayout === null ? usable(ui.shown().column).filter(notSep) : [];
+    // (Nothing but the tool's own way out - Measure, with its results card: no wheel for that alone.)
+    if (!ui.panelContent() && onlyExit(own)) return { sectors: [], pick: "" };
     const p = ui.panelContent() ?? (own.length ? { title: "", items: [], actions: [] as ToolItem[], done: undefined, cancel: undefined } : null);
     if (!p) return { sectors: [], pick: "" };
     let k = 0;

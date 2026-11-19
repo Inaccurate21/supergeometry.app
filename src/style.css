@@ -5565,7 +5565,9 @@ html[data-screen="phone"] .bim-props {
 body.wheel-covers #toolbar,
 body.wheel-covers #bottom-left,
 body.wheel-options #toolbar,
-body.wheel-options #bottom-left {
+body.wheel-options #bottom-left,
+body.wheel-bare #toolbar,
+body.wheel-bare #bottom-left {
   display: none !important;
 }
 /* With the wheel on, no right column: its lists and switches (snapping, units,
