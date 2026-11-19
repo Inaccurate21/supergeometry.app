@@ -838,6 +838,7 @@ export class FreeformTool implements Tool {
     this.remember();
     this.cage = deleteFaces(this.cage, faces);
     this.picks = [];
+    this.hovered = null;
     this.rebuild();
     this.selectionChanged();
     this.panelHint();
@@ -1565,14 +1566,16 @@ export class FreeformTool implements Tool {
     const seg = (ps: Pick[]) =>
       ps.flatMap((p) => {
         const V = this.cage.verts;
-        if (p.kind === "edge") return [...V[p.e[0]], ...V[p.e[1]]];
+        // (A pick of a part the cage no longer has - a face just deleted: nothing to mark.)
+        if (p.kind === "edge") return V[p.e[0]] && V[p.e[1]] ? [...V[p.e[0]], ...V[p.e[1]]] : [];
         if (p.kind === "face") {
           const f = this.cage.faces[p.f];
+          if (!f) return [];
           return f.flatMap((i, k) => [...V[i], ...V[f[(k + 1) % 4]]]);
         }
         return [];
       });
-    const pts = (ps: Pick[]) => ps.flatMap((p) => (p.kind === "vert" ? [...this.cage.verts[p.i]] : []));
+    const pts = (ps: Pick[]) => ps.flatMap((p) => (p.kind === "vert" && this.cage.verts[p.i] ? [...this.cage.verts[p.i]] : []));
     setLines(this.marks, seg(this.picks));
     setPositions(this.markDots, pts(this.picks));
     const h = this.hovered ? [this.hovered] : [];
@@ -1580,7 +1583,7 @@ export class FreeformTool implements Tool {
     setPositions(this.hoverDots, pts(h));
     // Picked faces filled (two triangles each).
     const fill = this.picks.flatMap((p) => {
-      if (p.kind !== "face") return [];
+      if (p.kind !== "face" || !this.cage.faces[p.f]) return [];
       const [a, b, c, d] = this.cage.faces[p.f].map((i) => this.cage.verts[i]);
       return [...a, ...b, ...c, ...a, ...c, ...d];
     });
@@ -1699,6 +1702,7 @@ export class FreeformTool implements Tool {
     if (doomed.size >= this.cage.faces.length) return this.app.ui.toast("At least one face has to stay");
     this.cage = deleteFaces(this.cage, [...doomed]);
     this.picks = [];
+    this.hovered = null;
     this.rebuild();
     this.selectionChanged();
     this.app.ui.toast("The shape is no longer closed: give it a Thickness to make a solid, or Done for a surface.");
