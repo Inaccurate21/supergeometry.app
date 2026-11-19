@@ -581,25 +581,19 @@ export class SelectTool implements Tool {
    * What the tool armed by this selection does, and how to use it right
    * away (drag its handle, or just type the value). Other tools: the list.
    */
+  /** What the pick is ready for, in one line: its handle, then the other tools (the round buttons beside it when there are). */
   private armedHint(): string {
-    const quick = this.quick ? " The round buttons beside it are the likeliest next tools." : "";
-    return this.pickHint() + quick;
-  }
-
-  private pickHint(): string {
     const sel = this.app.selection;
     const first = sel[0];
     const n = sel.length;
-    const touch = isTouchDevice;
-    const more = touch ? "tap" : "click";
-    if (first.kind === "profile") return `Extrude: drag the arrow or type a height. ${cap(more)} more shapes to add them, or pick another tool.`;
-    if (first.kind === "face" && n === 1 && offsettable(this.app.view.body(first.body)?.faces[first.face]?.type) && !this.freeformOf(first.body)) {
-      return "Offset Face: drag the arrow or type a size to move the face in or out. Or pick another tool.";
-    }
-    if (first.kind === "face" && n === 2 && sel[1].kind === "face") return "The distance between the two faces is shown. Pick a tool for them.";
-    if (first.kind === "edge" && !this.freeformOf(first.body)) return `Fillet: drag the dot or type a radius to round ${n > 1 ? "the edges" : "the edge"}. ${cap(more)} more edges to add them.`;
-    if (first.kind === "body") return `Move/Rotate: drag the arrows or the arcs. ${cap(more)} another body to add it.`;
-    return `${n} ${label(first, n)} selected. Pick a tool for ${n > 1 ? "them" : "it"}, or ${more} more to add.`;
+    const tap = isTouchDevice ? "tap" : "click";
+    const or = this.quick ? `or ${tap} a button beside it` : "or pick a tool";
+    if (first.kind === "profile") return `Drag the arrow to extrude, ${or}.`;
+    if (first.kind === "face" && n === 1 && offsettable(this.app.view.body(first.body)?.faces[first.face]?.type) && !this.freeformOf(first.body)) return `Drag the arrow to move the face, ${or}.`;
+    if (first.kind === "face" && n === 2 && sel[1].kind === "face") return "The distance between the faces is shown. Pick a tool for them.";
+    if (first.kind === "edge" && !this.freeformOf(first.body)) return `Drag the dot to round ${n > 1 ? "the edges" : "the edge"}, ${or}.`;
+    if (first.kind === "body") return `Drag the arrows or arcs to move it, ${or}.`;
+    return this.quick ? `${cap(tap)} a button beside it, or pick a tool on the wheel.` : `Pick a tool for ${n > 1 ? "them" : "it"}, or ${tap} more to add.`;
   }
 
   /** Called by the app when a top-level tool needs a selection first. */

@@ -199,14 +199,10 @@ export class ExtrudeOp extends FeatureOp<ExtrudeFeature> {
     // (A bin drafted 5 came out narrowing to the top: which way a sign leans wasn't said.)
     if (this.feature.draft) return `Draft ${Math.abs(this.feature.draft)}°: the sides lean ${this.feature.draft > 0 ? "in" : "out"} towards the far end - type ${this.feature.draft > 0 ? "a minus angle to lean them out" : "a plus angle to lean them in"}.`;
     if (this.feature.symmetric) return "Symmetric: the distance goes each way from the shape - type half the whole width.";
-    // (Auto goes by the way it is pulled: the guide says which way does what.)
-    if (this.feature.mode === "auto" && this.feature.byDirection) {
-      return this.feature.target || this.feature.source.kind === "face"
-        ? "Drag the arrow or type a distance: out (+) adds to the body, in (-) cuts into it."
-        : "Drag the arrow or type a distance: up (+) makes a new body, down (-) cuts what it runs into.";
-    }
-    if (this.feature.mode === "auto") return "Drag the arrow or type a distance to make it 3D. A negative distance cuts into the body.";
-    return "Drag the arrow or type a distance to make it 3D.";
+    // (Auto goes by the way it is pulled: which way does what.)
+    if (this.feature.mode !== "auto") return "Drag the arrow or type a distance.";
+    if (!this.feature.byDirection) return "Drag the arrow or type a distance; - cuts.";
+    return this.feature.target || this.feature.source.kind === "face" ? "Drag the arrow or type a distance: out adds, in cuts." : "Drag the arrow or type a distance: + a new body, - a cut.";
   }
 
   protected items(): PanelItem[] {
