@@ -1270,6 +1270,43 @@ export class Viewport {
   /** Set while the pointer only hovers: picking skips the near-miss search that taps get. */
   hovering = false;
 
+  /**
+   * Under the pointer, the section's own cut face (the hatched cap, where it
+   * is drawn): the point on it, or null where the tap lands on anything else
+   * (a face in front of the cut, empty space, past a body's outline).
+   */
+  cutAt(x: number, y: number): Vec3 | null {
+    const clip = this.clip;
+    if (!clip) return null;
+    this.setRay(x, y);
+    const ray = this.raycaster.ray;
+    const at = ray.intersectPlane(clip, new Vector3());
+    if (!at) return null;
+    const d = at.distanceTo(ray.origin);
+    const near = this.cam.distance * 1e-4;
+    const front = this.raycaster.intersectObjects(this.visibleBodies().map((b) => b.mesh), false).find((h) => clip.distanceToPoint(h.point) >= 0);
+    if (front && front.distance < d - near) return null;
+    // Inside a body there: from the cut on along the ray, its surface is crossed an odd number of times.
+    const from = new Raycaster(at.clone().addScaledVector(ray.direction, near), ray.direction.clone());
+    for (const b of this.visibleBodies()) {
+      if (!b.cap.visible) continue;
+      const m = b.mesh.material as MeshStandardMaterial;
+      const side = m.side;
+      m.side = DoubleSide;
+      const hits = from.intersectObject(b.mesh, false);
+      m.side = side;
+      // (A ray through a seam between two triangles meets both: counted once.)
+      let n = 0;
+      let last = -Infinity;
+      for (const h of hits) {
+        if (h.distance - last > near) n++;
+        last = h.distance;
+      }
+      if (n % 2 === 1) return at.toArray() as Vec3;
+    }
+    return null;
+  }
+
   /** Pick what's under the pointer. Edges and curves win within the tolerance. */
   /**
    * The face of every body under the point at the nearest depth: more than one

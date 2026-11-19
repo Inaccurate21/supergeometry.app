@@ -70,6 +70,8 @@ export interface WheelHandle {
   takeDismissed(): boolean;
   /** Folded to just its button now. */
   readonly tucked: boolean;
+  /** Asked to show what it holds now (a tap on a section's cut: Add Plane, Flip...): folded, it unfolds. */
+  unfold(): void;
   /** The guide points at the wheel ("pick a tool on the wheel"): folded, its button pulses. (Anything on it pulsing - the next step - does that too.) */
   beckon(on: boolean): void;
 }
@@ -638,6 +640,8 @@ export class Wheel implements WheelHandle {
       document.body.classList.toggle("wheel-ui", this.on);
       // (While another tool is open it stands in for nothing: the tool's own column and bar stay.)
       document.body.classList.toggle("wheel-covers", this.on && (this.layout === "model" || this.layout === "sketch" || this.layout === "freeform"));
+      // (A freeform shape's wheel holds all its card offers: the card stays out of sight.)
+      document.body.classList.toggle("wheel-freeform", this.on && this.layout === "freeform");
     }
     if (this.kind === "options") {
       // Up only while the open tool has a window with something to set; the window itself then stays out of sight.
@@ -1101,10 +1105,10 @@ export class Wheel implements WheelHandle {
   }
 
   /**
-   * A freeform shape's wheel: what its card offers, by what it does, each
+   * A freeform shape's wheel: all its card offers, by what it does, each
    * group in the same place every time (greyed, saying why, while nothing
    * picked fits it) - Done at the top, Select all and Cancel a tap each. The
-   * values to type stay on the Options wheel.
+   * values to type are on the Options wheel; the card itself stays out of sight.
    */
   private freeformContent(): { sectors: Sector[]; pick: string } {
     const p = this.host.ui.panelContent();
@@ -1150,18 +1154,18 @@ export class Wheel implements WheelHandle {
     const group = (id: string, label: string, icon: IconName, why: string): Sector => ({ id, label, icon, cells: cells[id], why: cells[id].length ? undefined : why, mark: false, kinds: cells[id].length > 0 });
     const sectors: Sector[] = [];
     if (p.done) sectors.push({ id: "done", label: "Done", icon: "check", cells: [], item: { id: "ff-done", label: "Done", icon: "check", shortcut: "Enter", run: p.done }, mark: true });
-    // (Shape's tools - Extrude face, Inset, Add detail... - and the rest (More)
-    // are the window's: the wheel doesn't say them all again.)
-    // Delete Face a tap (greyed with no faces picked); filling and bridging holes are the window's.
+    // Shape: what changes the picked faces and edges - Delete face first, then
+    // Extrude face, Inset, Add detail..., filling and bridging holes.
+    cells.shape = [...(deleteFace ? [{ item: deleteFace }] : []), ...cells.shape, ...cells.holes];
     sectors.push(
-      deleteFace
-        ? { id: "deleteFace", label: "Delete face", icon: "trash", cells: [], item: deleteFace, mark: false }
-        : { id: "deleteFace", label: "Delete face", icon: "trash", cells: [], why: "Pick faces to delete them", mark: false },
+      group("shape", "Shape", "freeform", "Pick faces or edges to change the shape"),
       group("move", "Move", "move", "Pick points, edges or faces to move them"),
       group("symmetry", "Symmetry", "mirror", "Not while the shape is being placed or set up"),
       group("solid", "Solid", "shell", "A closed shape is solid already"),
     );
     if (selectAll) sectors.push({ id: "select", label: "Select all", icon: "selectAll", cells: [], item: selectAll, mark: false });
+    // More: the rest of the card (Cells across, Hide the frame...).
+    if (cells.more.length) sectors.push(group("more", "More", "more", ""));
     if (p.cancel) sectors.push({ id: "cancel", label: "Cancel", icon: "close", cells: [], item: { id: "ff-cancel", label: "Cancel", icon: "close", shortcut: "Esc", run: p.cancel }, mark: false });
     return { sectors, pick: "" };
   }
@@ -1376,6 +1380,10 @@ export class Wheel implements WheelHandle {
       this.stack = r.stack;
       this.itemsChanged();
     }
+  }
+
+  unfold(): void {
+    if (this.on && this.layout && this.kept && this.up && this.isFolded) this.fold(false);
   }
 
   toggle(x: number, y: number, opts: WheelOpen = {}): void {

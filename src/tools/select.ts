@@ -23,6 +23,7 @@ import { OffsetEdgeOp } from "./offsetEdge";
 import { faceFreeformTool } from "./faceFreeform";
 import { AxisOp, bodyCenter as centerOf, ConnectOp, EdgeOp, ExtrudeOp, FillToPlaneOp, ImageOp, LoftOp, MoveFaceOp, PlaneMoveOp, PlaneOp, planeAxes, ReplaceFaceOp, ScaleFaceOp, ScaleOp, ScaleRefOp, RevolveOp, ShellOp, SplitOp, SweepOp, TransformOp } from "./ops";
 import { SketchTool, type SketchKind } from "./sketch";
+import { SectionTool, type SectionHost } from "./section";
 import { BooleanOp } from "./booleanOp";
 import { pickColor } from "../ui/colorPicker";
 import { BimTool } from "../bim/bimTool";
@@ -86,6 +87,12 @@ export class SelectTool implements Tool {
       return this.app.setHover(null);
     }
     this.app.view.canvas.style.cursor = "";
+    // Over the section's cut face: a tap there brings the cut's arrow and buttons.
+    if (this.onCut(p)) {
+      this.app.view.canvas.style.cursor = "pointer";
+      this.lastHover = null;
+      return this.app.setHover(null);
+    }
     const hit = this.pickAt(p);
     this.lastHover = { x: p.x, y: p.y, hit };
     this.app.setHover(hitToSel(hit));
@@ -154,7 +161,18 @@ export class SelectTool implements Tool {
   /** Chosen from the list of overlapping faces: the next tap's hit. */
   private chosenHit: ReturnType<SelectTool["pickAt"]> | null = null;
 
+  /** On the section's cut face (with nothing waiting for a pick): a tap there is the section's. */
+  private onCut(p: ToolPointer): boolean {
+    return !this.pending && !!(this.app as AppContext & Partial<SectionHost>).section && !!this.app.view.cutAt(p.x, p.y);
+  }
+
   tap(p: ToolPointer, count: number): void {
+    // The cut face of a section: its arrow to move the cut, and its buttons (Add Plane, Flip...).
+    if (!p.add && this.onCut(p)) {
+      this.app.wheel.takeDismissed();
+      this.app.setSelection([]);
+      return this.app.setTool(new SectionTool(this.app as AppContext & SectionHost, true));
+    }
     const wheel = this.app.wheel;
     if (!wheel.on) return void this.pick(p, count);
     // The tool wheel: the tap picks as ever, then the wheel comes up round it

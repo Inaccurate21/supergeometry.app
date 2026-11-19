@@ -5,6 +5,7 @@ import type { ToolPointer } from "../view/input";
 import { DragTyping } from "./dragTyping";
 import { axisDrag, Handle } from "./handles";
 import { hitToSel, type AppContext, type Tool } from "./tool";
+import type { WheelHandle } from "../ui/wheel";
 
 export interface SectionState {
   plane: PlaneDef;
@@ -21,6 +22,8 @@ export interface SectionState {
 export interface SectionHost extends AppContext {
   section: SectionState | null;
   setSection(s: SectionState | null): void;
+  /** The wheel of the open tool's options (Add Plane, Flip...). */
+  readonly optionsWheel?: WheelHandle;
 }
 
 /** The plane the view is cut with (offset and flip applied). */
@@ -35,17 +38,26 @@ export class SectionTool implements Tool {
   private handle: Handle | null = null;
   private dragging: { from: ToolPointer; o0: number } | null = null;
 
-  constructor(private app: SectionHost) {}
+  /** show: opened by a tap on the cut itself - its options come up unfolded, at hand. */
+  constructor(
+    private app: SectionHost,
+    private show = false,
+  ) {}
 
   enter(): void {
+    this.live = true;
     this.app.ui.setTools([{ id: "exit", label: "Exit Section", icon: "exit", shortcut: "Esc", run: () => this.app.setTool(null) }]);
     // The view tools stay, this one lit and pulsing (tap it again to close it).
     this.app.ui.setBottom(this.app.bottomTools());
     if (this.app.section) this.showControls();
     else this.askForPlane();
+    if (this.show && this.app.section) setTimeout(() => this.live && this.app.optionsWheel?.unfold());
   }
 
+  private live = false;
+
   exit(): void {
+    this.live = false;
     this.handle?.dispose();
     this.handle = null;
     this.app.view.setOriginPlanesVisible(false);
@@ -107,7 +119,7 @@ export class SectionTool implements Tool {
           },
         },
         { type: "button", label: "Normal to Section", icon: "normal", onClick: () => this.lookAtCut() },
-        { type: "button", label: "Place Plane", icon: "plane", onClick: () => this.placePlane() },
+        { type: "button", label: "Add Plane", icon: "plane", onClick: () => this.placePlane() },
       ],
       actions: [{ id: "delete", label: "Delete Section", icon: "trash", run: () => (this.app.setSection(null), this.handle?.dispose(), (this.handle = null), this.askForPlane()) }],
       onDone: () => this.app.setTool(null),

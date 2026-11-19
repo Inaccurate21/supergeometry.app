@@ -5682,7 +5682,8 @@ body.items-open #items-btn {
 body.wheel-ui.panel-empty #panel {
   display: none;
 }
-body.wheel-options:not(.panel-shown) #panel:not(:has(.text-input)) {
+body.wheel-options:not(.panel-shown) #panel:not(:has(.text-input)),
+body.wheel-freeform:not(.panel-shown) #panel:not(:has(.text-input)) {
   display: none !important;
 }
 /* (Touches on it are never the page panning: the <svg>s themselves say so, not only their shapes.) */

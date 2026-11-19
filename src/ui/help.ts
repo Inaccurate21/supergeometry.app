@@ -100,7 +100,7 @@ const SECTIONS: { title: string; intro?: string; items: Entry[] }[] = [
     title: "Undo, and View on the tool wheel",
     items: [
       { icon: "undo", name: "Undo / Redo", text: "Step back and forward (Ctrl Z / Ctrl Y)." },
-      { icon: "section", name: "Section View", text: "Cut the view open to see inside - the cut shows as a solid face with a thick outline; tap again to hide it (it's remembered). Place Plane in its card puts a construction plane where the cut is." },
+      { icon: "section", name: "Section View", text: "Cut the view open to see inside - the cut shows as a solid face with a thick outline; tap again to hide it (it's remembered). With a cut on, tap the cut face itself: its arrow comes up to move the cut, and its buttons on the Options wheel - Add Plane puts a construction plane where the cut is, Flip, Section only, 2D section." },
       { icon: "measure", name: "Measure", text: "Distances, angles and sizes between anything you tap; pin them to keep them on screen." },
       { icon: "variable", name: "Variables", text: "Named sizes like wall = 3, to use in any field (wall * 2). Tap to switch on: a tag shows where each acts on the model (↔ length, ∠ angle, # number). Tap a tag to type its value or a formula, or drag the value - the model follows; lines show what it's made from and what uses it. Tap again to switch off." },
       { icon: "isolate", name: "Isolate", text: "Show only the selected bodies (and sketches drawn on their faces - tap a shape on one to extrude, offset... it); tap again to show everything." },
