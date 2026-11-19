@@ -132,7 +132,7 @@ export class App implements AppContext {
         return b ? [this.store.doc.names?.[id] ?? b.name ?? "Body"] : [];
       });
     setupRightColumn(this.ui, this.view, this.store, (u) => this.setUnits(u), isolatedNames);
-    // VR: only where a headset can open it (its own browser, or a PC with one connected). A viewer: the model as a real thing in your room.
+    // VR only in a headset's own browser (never on a computer, headset connected or not). A viewer: the model as a real thing in your room.
     // On a phone or tablet it's AR: the model in the room through the camera.
     const handheld = isTouchDevice && !isHeadset;
     const vr: VRMode = (this.vr = new VRMode({
@@ -159,7 +159,7 @@ export class App implements AppContext {
       },
       onExit: () => this.view.xrMode(false),
     }));
-    // In the top bar, where it's seen: on a headset always, elsewhere when a headset can be used.
+    // In the top bar, where it's seen, in a headset; under More on a phone or tablet (when its browser can show AR); never on a computer.
     const vrBtn = document.getElementById("vr-btn")!;
     if (handheld) {
       vrBtn.textContent = "Enter AR";
@@ -169,11 +169,13 @@ export class App implements AppContext {
       vrBtn.addEventListener("click", () => (document.getElementById("more-menu")!.hidden = true));
       document.getElementById("more-menu")!.prepend(vrBtn);
     }
-    const checkVR = () => void vrSupported(handheld).then((ok) => (vrBtn.hidden = !ok && !isHeadset));
-    checkVR();
-    (navigator as Navigator & { xr?: EventTarget }).xr?.addEventListener("devicechange", checkVR);
+    const checkVR = () => void vrSupported(handheld).then((ok) => (vrBtn.hidden = !isHeadset && !(handheld && ok)));
+    if (isTouchDevice) {
+      checkVR();
+      (navigator as Navigator & { xr?: EventTarget }).xr?.addEventListener("devicechange", checkVR);
+    } else vrBtn.remove();
     vrBtn.addEventListener("click", async () => {
-      if (!(await vrSupported(handheld))) return this.ui.toast(handheld ? "This browser can't show AR - try Chrome" : "This browser can't open VR here - open superGeometry.app in the headset's own browser (not an installed app window)");
+      if (!(await vrSupported(handheld))) return this.ui.toast(handheld ? "This browser can't show AR - try Chrome" : "This browser can't open VR here - open superGeometry.app in the headset's own browser");
       vr.enter().catch((e: unknown) => this.ui.toast(`${handheld ? "AR" : "VR"} didn't start: ${e instanceof Error ? e.message : e}`));
     });
     this.pinLayer = new PinLayer(this.view);
