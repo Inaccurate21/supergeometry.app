@@ -99,6 +99,23 @@ export function measureVolume(s: Measurable): number {
   }
 }
 
+/**
+ * The volume roughly (OpenCascade's plain measure, a percent or so out on
+ * curved sweeps): enough to tell a solid's sign, or that it isn't empty. The
+ * exact measure of a mug handle's sweep took 3.5 s each time, asked twice for
+ * every way tried.
+ */
+export function roughVolume(s: Measurable): number {
+  const oc = getOC();
+  const q = new oc.GProp_GProps();
+  try {
+    oc.BRepGProp.VolumeProperties(s.wrapped, q, false, false, false);
+    return q.Mass();
+  } finally {
+    q.delete();
+  }
+}
+
 // Faces swept from a curve (an extruded or revolved spline, and offsets of
 // them) are integrated by OpenCascade over the whole sweep at one fineness,
 // blind to the curve's own pieces: the side of an extruded closed spline
@@ -235,55 +252,118 @@ function faceSums(f: Face, R: Vec3, size: number): Sums {
     }
     const r = new Float64Array(8);
     const tot = new Float64Array(8);
-    // The outline's pieces each cut in ko, the inner sums' in ki.
-    const sums = (ko: number, ki: number): Sums => {
-      // ∫ from w0 to w, at the other parameter o, of each sum's integrand.
-      const inner = (w: number, o: number) => {
-        r.fill(0);
-        const ws = pieces(w0, w, joints, ki);
-        for (let i = 0; i + 1 < ws.length; i++) {
-          const h = (ws[i + 1] - ws[i]) / 2;
-          const c = (ws[i + 1] + ws[i]) / 2;
-          for (const [x, wt] of GAUSS) {
-            if (alongV) g.Normal(o, c + h * x, p, n);
-            else g.Normal(c + h * x, o, p, n);
-            const nx = n.X();
-            const ny = n.Y();
-            const nz = n.Z();
-            const X = p.X();
-            const Y = p.Y();
-            const Z = p.Z();
-            const dx = X - R[0];
-            const dy = Y - R[1];
-            const dz = Z - R[2];
-            const wh = wt * h;
-            const a = Math.hypot(nx, ny, nz) * wh;
-            r[0] += a;
-            r[1] += a * X;
-            r[2] += a * Y;
-            r[3] += a * Z;
-            r[4] += ((dx * nx + dy * ny + dz * nz) / 3) * wh;
-            r[5] += ((dx * dx) / 2) * nx * wh;
-            r[6] += ((dy * dy) / 2) * ny * wh;
-            r[7] += ((dz * dz) / 2) * nz * wh;
-          }
-        }
+    // Both ways each piece is one Gauss pass, checked against its two
+    // halves' and halved again only where they differ, to a tenth of the
+    // millionth (a slow stretch - a blade's trailing edge - doesn't make
+    // every other piece finer: halving all of them, again and again, the
+    // jet's sixteen blade faces took 4 s each and still hadn't agreed).
+    // A first rough pass (five points a piece) sets the scale.
+    // (Each half held to half the tolerance - but never below a thousandth
+    // of it, and no more than a budget of points a face: where the sums can't
+    // settle - rounding, a pole - halving the tolerance on and on split every
+    // piece to the bottom, 2^24 of them, and a lofted grid never finished.)
+    let rough = true;
+    let tolArea = Infinity;
+    let budget = 100000;
+    const gauss = (wa: number, wb: number, o: number) => {
+      budget--;
+      const out = new Float64Array(8);
+      const h = (wb - wa) / 2;
+      const c = (wb + wa) / 2;
+      for (const [x, wt] of GAUSS) {
+        if (alongV) g.Normal(o, c + h * x, p, n);
+        else g.Normal(c + h * x, o, p, n);
+        const nx = n.X();
+        const ny = n.Y();
+        const nz = n.Z();
+        const X = p.X();
+        const Y = p.Y();
+        const Z = p.Z();
+        const dx = X - R[0];
+        const dy = Y - R[1];
+        const dz = Z - R[2];
+        const wh = wt * h;
+        const a = Math.hypot(nx, ny, nz) * wh;
+        out[0] += a;
+        out[1] += a * X;
+        out[2] += a * Y;
+        out[3] += a * Z;
+        out[4] += ((dx * nx + dy * ny + dz * nz) / 3) * wh;
+        out[5] += ((dx * dx) / 2) * nx * wh;
+        out[6] += ((dy * dy) / 2) * ny * wh;
+        out[7] += ((dz * dz) / 2) * nz * wh;
+      }
+      return out;
+    };
+    const refine = (whole: Float64Array, wa: number, wb: number, o: number, tolA: number, depth: number) => {
+      const m = (wa + wb) / 2;
+      const l = gauss(wa, m, o);
+      const rr = gauss(m, wb, o);
+      if ((Math.abs(l[0] + rr[0] - whole[0]) <= tolA && Math.abs(l[4] + rr[4] - whole[4]) <= tolA * size) || depth >= 20 || budget <= 0) {
+        for (let j = 0; j < 8; j++) r[j] += l[j] + rr[j];
+        return;
+      }
+      const half = Math.max(tolA / 2, floor);
+      refine(l, wa, m, o, half, depth + 1);
+      refine(rr, m, wb, o, half, depth + 1);
+    };
+    // ∫ from w0 to w, at the other parameter o, of each sum's integrand.
+    let floor = 0;
+    const inner = (w: number, o: number) => {
+      r.fill(0);
+      const ws = pieces(w0, w, joints, 1);
+      const parts: Float64Array[] = [];
+      let scale = 0;
+      for (let i = 0; i + 1 < ws.length; i++) {
+        const got = gauss(ws[i], ws[i + 1], o);
+        parts.push(got);
+        scale += Math.abs(got[0]);
+      }
+      if (rough) {
+        for (const got of parts) for (let j = 0; j < 8; j++) r[j] += got[j];
         return r;
-      };
+      }
+      const span = Math.abs(w - w0) || 1;
+      const tol = scale * EPS * 0.1;
+      floor = tol * 1e-3;
+      for (let i = 0; i + 1 < ws.length; i++) refine(parts[i], ws[i], ws[i + 1], o, (tol * Math.abs(ws[i + 1] - ws[i])) / span, 0);
+      return r;
+    };
+    type Curve2d = (typeof edges)[number]["c"];
+    const piece = (c: Curve2d, sign: number, a: number, b: number) => {
+      const out = new Float64Array(8);
+      const h = (b - a) / 2;
+      const m = (b + a) / 2;
+      for (const [x, wt] of GAUSS) {
+        c.D1(m + h * x, q, d);
+        const dOther = alongV ? d.X() : d.Y();
+        if (dOther === 0) continue;
+        const got = alongV ? inner(q.Y(), q.X()) : inner(q.X(), q.Y());
+        const f2 = sign * dOther * wt * h;
+        for (let j = 0; j < 8; j++) out[j] += got[j] * f2;
+      }
+      return out;
+    };
+    const add = (whole: Float64Array, c: Curve2d, sign: number, a: number, b: number, tolA: number, depth: number) => {
+      const m = (a + b) / 2;
+      const l = piece(c, sign, a, m);
+      const rr = piece(c, sign, m, b);
+      if ((Math.abs(l[0] + rr[0] - whole[0]) <= tolA && Math.abs(l[4] + rr[4] - whole[4]) <= tolA * size) || depth >= 24 || budget <= 0) {
+        for (let j = 0; j < 8; j++) tot[j] += l[j] + rr[j];
+        return;
+      }
+      const half = Math.max(tolA / 2, tolArea * 1e-4);
+      add(l, c, sign, a, m, half, depth + 1);
+      add(rr, c, sign, m, b, half, depth + 1);
+    };
+    const sums = (): Sums => {
       tot.fill(0);
       for (const { c, sign, t0, t1, joints: tj } of edges) {
-        const ts = pieces(t0, t1, tj, ko);
+        const ts = pieces(t0, t1, tj, 1);
+        const span = Math.abs(t1 - t0) || 1;
         for (let i = 0; i + 1 < ts.length; i++) {
-          const h = (ts[i + 1] - ts[i]) / 2;
-          const m = (ts[i + 1] + ts[i]) / 2;
-          for (const [x, wt] of GAUSS) {
-            c.D1(m + h * x, q, d);
-            const dOther = alongV ? d.X() : d.Y();
-            if (dOther === 0) continue;
-            const got = alongV ? inner(q.Y(), q.X()) : inner(q.X(), q.Y());
-            const f2 = sign * dOther * wt * h;
-            for (let j = 0; j < 8; j++) tot[j] += got[j] * f2;
-          }
+          const share = Math.abs(ts[i + 1] - ts[i]) / span / edges.length;
+          add(piece(c, sign, ts[i], ts[i + 1]), c, sign, ts[i], ts[i + 1], tolArea * share, 0);
         }
       }
       // (Which way round the outline runs depends on the face's own way
@@ -291,23 +371,14 @@ function faceSums(f: Face, R: Vec3, size: number): Sums {
       const s = tot[0] < 0 ? -1 : 1;
       return { area: s * tot[0], m: [s * tot[1], s * tot[2], s * tot[3]], vol: s * tot[4], mv: [s * tot[5], s * tot[6], s * tot[7]] };
     };
-    // Each way halved on its own, while halving it still changes the sums
-    // (one way is often cut fine already, by a spline's many pieces).
-    const same = (a: Sums, b: Sums) => Math.abs(a.area - b.area) <= EPS * b.area && Math.abs(a.vol - b.vol) <= EPS * b.area * size;
-    let ko = 1;
-    let ki = 1;
-    let last = sums(ko, ki);
-    for (let round = 0; round < 6; round++) {
-      const finerIn = sums(ko, ki * 2);
-      const finerOut = sums(ko * 2, ki);
-      const inOk = same(last, finerIn);
-      const outOk = same(last, finerOut);
-      if (inOk && outOk) return finerIn;
-      if (!inOk) ki *= 2;
-      if (!outOk) ko *= 2;
-      last = inOk ? finerOut : outOk ? finerIn : sums(ko, ki);
-    }
-    return last;
+    // (A face an offset closed to nothing - 1e-15 mm² - adds nothing: held
+    // to a tenth of a millionth of its own no area, it never settled, 3 s each
+    // in a split box's shell.)
+    const first = sums();
+    if (Math.abs(first.area) < size * size * 1e-12) return first;
+    tolArea = Math.max(Math.abs(first.area), size * size * 1e-6) * EPS * 0.1;
+    rough = false;
+    return sums();
   } finally {
     for (const e of edges) e.c.delete();
     ex.delete();

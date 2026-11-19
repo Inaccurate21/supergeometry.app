@@ -70,7 +70,7 @@ export { shapeValid } from "./health";
 import { applyPlan, boundaryEdges, cachedPlan, deleteFaces, isClosed, selfCrossings, subdivide } from "../freeform/cage";
 import { useSafeBooleans, withoutInternals } from "./safeBooleans";
 import { useReleases } from "./release";
-import { areaProperties, measureArea as trueArea, measureVolume, normalOnEdge, surfaceAt, volumeProperties } from "./ocFree";
+import { areaProperties, measureArea as trueArea, measureVolume, normalOnEdge, roughVolume, surfaceAt, volumeProperties } from "./ocFree";
 import { binarySTL, faceTriangles, meshEdgeLines, meshFaces, meshOff, type FaceMesh } from "./meshing";
 import { loftInLine } from "./loftAlign";
 import { railLoft } from "./loftRails";
@@ -1437,7 +1437,10 @@ async function apply(f: Feature, ctx: Ctx): Promise<void> {
           return false;
         }
       };
-      const good = (s: Shape3D | null): s is Shape3D => hollowed(s) && shapeValid(s) && openEdges(s).length <= gaps && fine(s) && wallsStand(body, s, kept, t) && hollowInside(body, s, kept, t);
+      // (The quick checks first: measuring the volume of a way that came out
+      // wrong took 6.6 s in a split box's shell, the hair-thin faces that
+      // turned it down a fifth of a second.)
+      const good = (s: Shape3D | null): s is Shape3D => !!s && shapeValid(s) && openEdges(s).length <= gaps && fine(s) && hollowed(s) && wallsStand(body, s, kept, t) && hollowInside(body, s, kept, t);
       // The ways there are, in turn: in one step (no face picked: that gives
       // only the inner core back - a battery case came out solid); hollowed
       // with an offset copy of the body, the openings cut through (many-faced
@@ -1464,16 +1467,18 @@ async function apply(f: Feature, ctx: Ctx): Promise<void> {
         () => shellByOffset(body, faces, t, true),
       ];
       let out: Shape3D | null = null;
-      let rough: Shape3D | null = null;
+      // (Hollow, but torn or broken: put right below, if nothing better comes -
+      // the first of them, found only then: its volume can be slow to measure.)
+      const tried: Shape3D[] = [];
       for (const way of ways) {
         const made = way();
         if (good(made)) {
           out = made;
           break;
         }
-        // (Hollow, but torn or broken: put right below, if nothing better comes.)
-        if (hollowed(made)) rough ??= made;
+        if (made) tried.push(made);
       }
+      const rough = out ? null : (tried.find((m) => hollowed(m)) ?? null);
       if (!out && rough) {
         // Put right as any edit's result is - and then held to the same: a
         // broken shell "repaired" came out sound and a sixth too light, the
@@ -2866,18 +2871,144 @@ function wallsStand(body: Shape3D, shell: Shape3D, kept: Face[], t: number): boo
     const each = Math.max(1, Math.min(6, Math.floor(600 / kept.length)));
     const every = Math.ceil(kept.length / 600);
     const at: Vec3[] = [];
+    // (Each told by a segment out through the face it is behind, to just past it: outside both.)
+    const past: Vec3[] = [];
     for (const [i, g] of kept.entries()) {
       if (i % every) continue;
-      for (const { p, n } of spotsOn(body, g, each)) at.push(sub(p, scale(n, t / 2)));
+      for (const { p, n } of spotsOn(body, g, each)) {
+        at.push(sub(p, scale(n, t / 2)));
+        past.push(add(p, scale(n, t / 50)));
+      }
     }
     if (!at.length) return true;
-    const inBody = insideOf(body, at);
-    const inShell = insideOf(shell, at.filter((_, k) => inBody[k]));
+    const inBody = insideAlong(body, at, past, true);
+    const keep = at.map((_, k) => k).filter((k) => inBody[k]);
+    const inShell = insideAlong(shell, keep.map((k) => at[k]), keep.map((k) => past[k]));
     return inShell.every(Boolean);
   } catch {
     // Can't tell: the usual checks speak for it.
     return true;
   }
+}
+
+/**
+ * Which of the points are inside the solid, each told by a short segment from
+ * it to a point known to be outside (just past the face the point sits
+ * behind): inside when the segment crosses the solid's boundary an odd number
+ * of times. All the segments go into one section with the solid, which only
+ * looks at the faces near each one - where measuring each point's distance to
+ * the whole solid (insideOf) took 50 s for a guitar's shelled body. A segment
+ * the section can't tell about (it runs along a face, or a crossing lands on
+ * one of its ends) is asked the slow way.
+ */
+function insideAlong(s: Shape3D, from: Vec3[], to: Vec3[], sound = false): boolean[] {
+  const oc = getOC();
+  const out: (boolean | undefined)[] = from.map(() => undefined);
+  const size = sizeOf(s);
+  const tol = Math.max(1e-6, size * 1e-6);
+  // ...and each one again the other way, right out of the solid: a sound
+  // solid gives both the same answer. (A shell whose walls ran into each
+  // other kept a pocket's face with no wall behind it - air on both sides:
+  // the short way through it counted it, and said "inside".)
+  // (Out the shortest way, square to the nearest side of its box: through
+  // the middle of a guitar's body every ray crossed so many faces that this
+  // took as long as asking each point the slow way.)
+  const [lo, hi] = s.boundingBox.bounds;
+  const margin = size * 0.01 + 1e-3;
+  const back = from.map((a): Vec3 => {
+    let best = Infinity;
+    let end: Vec3 = a;
+    for (let k = 0; k < 3; k++)
+      for (const [edge, way] of [[lo[k], -1], [hi[k], 1]] as const) {
+        const d = way * (edge - a[k]);
+        if (d < best) {
+          best = d;
+          end = [...a] as Vec3;
+          end[k] = edge + way * margin;
+        }
+      }
+    return end;
+  });
+  const n = from.length;
+  // (A solid known to be sound - a step's input, checked when it was made - needs only the short way.)
+  const ends = sound ? to : [...to, ...back];
+  const segs = (sound ? from : [...from, ...from]).map((a, i) => ({ a, b: ends[i], d: sub(ends[i], a), l: Math.hypot(...sub(ends[i], a)) }));
+  const usable = segs.map((g) => g.l > 10 * tol);
+  const lines = segs.filter((_, i) => usable[i]).map((g) => makeLine(g.a, g.b));
+  if (lines.length) {
+    const sec = new oc.BRepAlgoAPI_Section();
+    const progress = new oc.Message_ProgressRange();
+    const args = new oc.NCollection_List_TopoDS_Shape();
+    const tools = new oc.NCollection_List_TopoDS_Shape();
+    const comp = makeCompound(lines) as unknown as Shape3D;
+    try {
+      args.Append(comp.wrapped);
+      tools.Append(s.wrapped);
+      sec.SetArguments(args);
+      sec.SetTools(tools);
+      sec.SetNonDestructive(true);
+      sec.Build(progress);
+      if (sec.IsDone()) {
+        const made = cast(sec.Shape());
+        // Where each segment crosses: its parameter along it (0 at the point, 1 outside).
+        const hits: number[][] = segs.map(() => []);
+        const bad = segs.map(() => false);
+        const onto = (p: Vec3): number[] => {
+          const at: number[] = [];
+          segs.forEach((g, i) => {
+            if (!usable[i]) return;
+            const u = dot(sub(p, g.a), g.d) / (g.l * g.l);
+            if (u < -1e-9 || u > 1 + 1e-9) return;
+            const off = sub(p, add(g.a, scale(g.d, u)));
+            if (Math.hypot(...off) < tol * 10) at.push(i, u);
+          });
+          return at;
+        };
+        // (A segment lying along a face comes back as an edge: that one can't be told by counting.)
+        for (const e of "edges" in made ? made.edges : []) {
+          const at = onto(e.pointAt(0.5).toTuple() as Vec3);
+          for (let k = 0; k < at.length; k += 2) bad[at[k]] = true;
+        }
+        const ex = new oc.TopExp_Explorer(made.wrapped, oc.TopAbs_ShapeEnum.TopAbs_VERTEX, oc.TopAbs_ShapeEnum.TopAbs_SHAPE);
+        const pts: Vec3[] = [];
+        for (; ex.More(); ex.Next()) {
+          const item = ex.Current();
+          const q = oc.BRep_Tool.Pnt(oc.TopoDS.Vertex(item));
+          pts.push([q.X(), q.Y(), q.Z()]);
+          q.delete();
+          item.delete();
+        }
+        ex.delete();
+        for (const p of pts) {
+          const at = onto(p);
+          for (let k = 0; k < at.length; k += 2) {
+            const [i, u] = [at[k], at[k + 1]];
+            // On an end: the point itself on the boundary, or the outside point not outside.
+            if (u * segs[i].l < tol * 10 || (1 - u) * segs[i].l < tol * 10) bad[i] = true;
+            // (The same crossing twice: two faces meeting there.)
+            else if (!hits[i].some((w) => Math.abs(w - u) * segs[i].l < tol * 10)) hits[i].push(u);
+          }
+        }
+        for (let i = 0; i < n; i++) {
+          const j = sound ? i : i + n;
+          if (usable[i] && usable[j] && !bad[i] && !bad[j] && hits[i].length % 2 === hits[j].length % 2) out[i] = hits[i].length % 2 === 1;
+        }
+      }
+    } catch {
+      // (Asked the slow way below.)
+    } finally {
+      sec.delete();
+      progress.delete();
+      args.delete();
+      tools.delete();
+    }
+  }
+  const left = from.map((_, i) => i).filter((i) => out[i] === undefined);
+  if (left.length) {
+    const slow = insideOf(s, left.map((i) => from[i]));
+    left.forEach((i, k) => (out[i] = slow[k]));
+  }
+  return out as boolean[];
 }
 
 /**
@@ -2942,6 +3073,7 @@ function hollowInside(body: Shape3D, shell: Shape3D, kept: Face[], t: number): b
     if (!skin.length) return true;
     const every = Math.ceil(kept.length / 40);
     const at: Vec3[] = [];
+    const past: Vec3[] = [];
     // (One measurer for each skin, asked about every spot: one made for each
     // spot kept what it worked out about the whole skin, for good - release.ts.)
     const oc = getOC();
@@ -2964,13 +3096,15 @@ function hollowInside(body: Shape3D, shell: Shape3D, kept: Face[], t: number): b
         }
         if (near < 2.1 * t) continue;
         at.push(q);
+        past.push(add(p, scale(n, t / 50)));
       }
     } finally {
       for (const d of far) d.delete();
     }
     if (!at.length) return true;
-    const inBody = insideOf(body, at);
-    return !insideOf(shell, at.filter((_, k) => inBody[k])).some(Boolean);
+    const inBody = insideAlong(body, at, past, true);
+    const keep = at.map((_, k) => k).filter((k) => inBody[k]);
+    return !insideAlong(shell, keep.map((k) => at[k]), keep.map((k) => past[k])).some(Boolean);
   } catch {
     // Can't tell: the usual checks speak for it.
     return true;
@@ -4349,9 +4483,11 @@ function sweepBridge(a: BridgeEnd, b: BridgeEnd, along: (t: number) => Vec3, how
           if (!mk.IsDone()) throw new Error("sweep");
           mk.MakeSolid();
           let s = cast(mk.Shape()) as Shape3D;
-          if (measureVolume(s) < 0) s = cast(s.wrapped.Reversed()) as Shape3D;
+          // (Its sign and that it isn't empty: the rough measure tells both.)
+          const v = roughVolume(s);
+          if (v < 0) s = cast(s.wrapped.Reversed()) as Shape3D;
           // (Ends that aren't flat aren't closed: a tube open at both ends.)
-          if (!shapeValid(s) || !(measureVolume(s) > least) || openEdges(s).length) throw new Error("bad");
+          if (!shapeValid(s) || !(Math.abs(v) > least) || openEdges(s).length) throw new Error("bad");
           return s;
         } catch {
           /* the next way, or none */
