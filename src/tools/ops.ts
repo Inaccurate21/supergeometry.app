@@ -744,7 +744,7 @@ export class EdgeOp extends FeatureOp<EdgeFeature> {
     // A face: all the edges round it (a nut's top, its six edges in one tap) -
     // or, all of them picked already, none of them.
     if (hit.kind === "face") {
-      const refs = edgesOfFace(this.app, hit.body, hit.face).flatMap((k) => edgeRefOf(this.app, { body: hit.body, edge: k }) ?? []);
+      const refs = edgesOfFace(this.app, hit.body, hit.face).filter((k) => !this.app.view.body(hit.body)?.edges[k]?.seam).flatMap((k) => edgeRefOf(this.app, { body: hit.body, edge: k }) ?? []);
       const at = (r: EdgeRef) => this.feature.edges.findIndex((e) => e.body === r.body && Math.hypot(...sub(e.mid, r.mid)) < 1e-6);
       if (!refs.length) return;
       if (refs.every((r) => at(r) >= 0)) this.feature.edges = this.feature.edges.filter((e) => !refs.some((r) => r.body === e.body && Math.hypot(...sub(e.mid, r.mid)) < 1e-6));
@@ -760,6 +760,10 @@ export class EdgeOp extends FeatureOp<EdgeFeature> {
     if (hit.kind !== "edge") return;
     const info = this.app.view.body(hit.body)?.edges[hit.edge];
     if (!info) return;
+    // A seam: the line where a round face starts and ends, the same face
+    // either side - nothing there to round. (Picked, it broke the step: "an
+    // edge it was built on is gone", and a tap again didn't take it out.)
+    if (info.seam) return this.app.ui.toast("That line is a seam - where a round face starts and ends, no corner there to " + (this.feature.type === "chamfer" ? "chamfer" : "round") + ". Tap a real edge.");
     const i = this.feature.edges.findIndex((e) => e.body === hit.body && Math.hypot(...sub(e.mid, info.mid)) < 1e-6);
     if (i >= 0) this.dropWithKin(i);
     else {

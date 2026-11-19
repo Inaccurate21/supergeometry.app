@@ -265,6 +265,14 @@ export class SelectTool implements Tool {
       s = { kind: "body", body: s.body };
       this.app.setSelection([s]);
     }
+    // Fillet or Chamfer waiting, and a round face's seam tapped: nothing to
+    // round there - said, and still waiting (it took the wait, and the next
+    // edge tapped was only picked: a fillet's dot on a chamfer).
+    if (this.pending && /^(Fillet|Chamfer)$/.test(this.pending.label) && s.kind === "edge" && this.app.view.body(s.body)?.edges[s.edge]?.seam) {
+      this.app.setSelection([]);
+      this.app.ui.toast("That line is a seam - where a round face starts and ends, no corner there to round or chamfer. Tap a real edge.");
+      return true;
+    }
     if (this.pending && this.pending.accepts.includes(s.kind)) {
       const run = this.pending.run;
       this.pending = null;

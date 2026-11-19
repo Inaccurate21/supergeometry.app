@@ -909,10 +909,16 @@ export class App implements AppContext {
   private pickedEdges(): EdgeRef[] {
     const out: EdgeRef[] = [];
     const have = (r: EdgeRef) => out.some((e) => e.body === r.body && Math.hypot(e.mid[0] - r.mid[0], e.mid[1] - r.mid[1], e.mid[2] - r.mid[2]) < 1e-6);
+    // (A round face's seam - the same face either side - is nothing to round:
+    // picked, the step broke with "an edge it was built on is gone".)
+    const seam = (body: string, k: number) => !!this.view.body(body)?.edges[k]?.seam;
+    let seams = 0;
     for (const s of this.selection) {
-      const refs = s.kind === "edge" ? [edgeRefOf(this, s)] : s.kind === "face" ? edgesOfFace(this, s.body, s.face).map((k) => edgeRefOf(this, { body: s.body, edge: k })) : [];
+      if (s.kind === "edge" && seam(s.body, s.edge)) seams++;
+      const refs = s.kind === "edge" ? (seam(s.body, s.edge) ? [] : [edgeRefOf(this, s)]) : s.kind === "face" ? edgesOfFace(this, s.body, s.face).filter((k) => !seam(s.body, k)).map((k) => edgeRefOf(this, { body: s.body, edge: k })) : [];
       for (const r of refs) if (r && !have(r)) out.push(r);
     }
+    if (seams) this.ui.toast("That line is a seam - where a round face starts and ends, no corner there to round or chamfer. Tap a real edge.");
     return out;
   }
 

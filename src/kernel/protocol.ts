@@ -35,6 +35,8 @@ export interface EdgeInfo {
   curves?: string[];
   /** The steps its faces used to be put down to, where that differs (see FaceInfo.was). */
   was?: string[];
+  /** Where a round face meets itself (one face on both sides): drawn, but nothing to round or chamfer. */
+  seam?: boolean;
 }
 
 export interface BodyMesh {
