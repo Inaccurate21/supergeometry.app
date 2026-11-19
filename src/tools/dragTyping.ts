@@ -83,9 +83,21 @@ export class DragTyping {
     (this.boxEl.querySelector(".dim-unit") as HTMLElement).textContent = unit;
     if (document.activeElement !== this.boxInput) this.boxInput!.value = value.replace(/\s*(mm|cm|m|in|ft|°|")$/, "").replace(/^×/, "");
     const r = this.app.view.canvas.getBoundingClientRect();
-    this.boxEl.style.left = `${Math.round(r.left + p.x + 22)}px`;
-    this.boxEl.style.top = `${Math.round(r.top + p.y + 16)}px`;
     this.boxEl.hidden = false;
+    // Below right of the finger - or left of it / above it where that runs off
+    // the screen (a face pushed out at a phone's right edge had its box at
+    // x 387 on a 375 screen: there, but not to be tapped).
+    const w = this.boxEl.offsetWidth;
+    const h = this.boxEl.offsetHeight;
+    const M = 8;
+    let x = r.left + p.x + 22;
+    let y = r.top + p.y + 16;
+    if (x + w > innerWidth - M) x = r.left + p.x - 22 - w;
+    if (y + h > innerHeight - M) y = r.top + p.y - 16 - h;
+    x = Math.max(M, Math.min(x, innerWidth - M - w));
+    y = Math.max(M, Math.min(y, innerHeight - M - h));
+    this.boxEl.style.left = `${Math.round(x)}px`;
+    this.boxEl.style.top = `${Math.round(y)}px`;
     this.app.ui.setLabel(0, 0, null);
   }
 

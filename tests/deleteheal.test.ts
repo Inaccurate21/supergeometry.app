@@ -162,11 +162,13 @@ run("one chamfer of a ring of chamfers round the top: delete it", () => {
   return [clean(out) && V(out) > V(b) && out.faces.length <= b.faces.length, `vol ${V(b).toFixed(1)} → ${V(out).toFixed(1)}, faces ${b.faces.length} → ${out.faces.length}`];
 });
 
+// (The hole 0.2 clear of the top and the side: at z 17 it touched the top along a line, and
+// the part without the fillet was itself pinched there.)
 run("fillet next to a hole (the hole cuts into it): delete the fillet", () => {
   const f0 = (box() as any).fillet(5, (e: any) => e.inDirection("Y").containsPoint([20, 0, 20])) as Shape3D;
-  const b = (f0 as any).cut(makeCylinder(3, 60, [16, -30, 17], [0, 1, 0])) as Shape3D;
+  const b = (f0 as any).cut(makeCylinder(3, 60, [16.8, -30, 16.8], [0, 1, 0])) as Shape3D;
   const fil = b.faces.find((f: Face) => Math.abs((cylinderOf(f)?.r ?? 0) - 5) < 1e-6)!;
-  const want = V((box() as any).cut(makeCylinder(3, 60, [16, -30, 17], [0, 1, 0])));
+  const want = V((box() as any).cut(makeCylinder(3, 60, [16.8, -30, 16.8], [0, 1, 0])));
   const out = deleteFace(b, fil);
   return [clean(out) && near(V(out), want, 1e-4), `vol ${V(out).toFixed(3)} want ${want.toFixed(3)}`];
 });

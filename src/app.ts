@@ -610,9 +610,13 @@ export class App implements AppContext {
           ? `⚠ ${this.store.problems[0]}`
           : null,
     );
-    const errs = r.errors.map((e) => e.featureId + e.message).join();
+    // (Steps of the project only: one being tried - a Delete Face its
+    // neighbours can't close - isn't in History, and says why itself.)
+    const ids = new Set(this.store.features.map((f) => f.id));
+    const failed = r.errors.filter((e) => ids.has(e.featureId));
+    const errs = failed.map((e) => e.featureId + e.message).join();
     if (errs && errs !== this.shownErrors && this.tool === this.selectTool) {
-      this.ui.toast(`${r.errors.length} step${r.errors.length > 1 ? "s" : ""} failed to rebuild - see History`, "error");
+      this.ui.toast(`${failed.length} step${failed.length > 1 ? "s" : ""} failed to rebuild - see History`, "error");
     }
     this.shownErrors = errs;
   }
@@ -1722,6 +1726,9 @@ export class App implements AppContext {
     // The id and the document change together: an autosave due meanwhile went to the old project.
     this.projectId = id;
     this.projectKept = kept;
+    // The last one's rebuild, if it is still going, is no use now: dropped, not waited for
+    // (opening a small project while a guitar was still being built took the guitar's 90 s).
+    if (this.kernel.running) this.kernel.stop();
     this.store.openDoc(doc);
     // A new one starts from the default view (not looking up from below, as the last was left).
     if (!doc.features.length) this.view.cam.iso();

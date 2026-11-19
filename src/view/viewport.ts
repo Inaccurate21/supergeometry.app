@@ -1402,8 +1402,20 @@ export class Viewport {
     if (bodies && edges) {
       // Over a face, an edge has to be nearer to win (else small faces are
       // hard to hit between their edges when zoomed out).
-      const edge = this.pickEdge(x, y, faceHit ? Math.max(5, edgeTolPx * 0.6) : edgeTolPx, faceDist);
-      if (edge) return edge;
+      const near: { d: number; point: Vector3 }[] = [];
+      const edge = this.pickEdge(x, y, faceHit ? Math.max(5, edgeTolPx * 0.6) : edgeTolPx, faceDist, near);
+      // Over a face, the finger between two edges about as near either side -
+      // the middle of a narrow strip (a 3 mm round, 21 px across, tapped in
+      // its middle, gave one of its edges every time): the strip is meant.
+      const strip = () => {
+        const q = near[0] && this.toScreen(near[0].point);
+        if (!q) return false;
+        return near.slice(1).some((o) => {
+          const r = this.toScreen(o.point);
+          return !!r && o.d < near[0].d * 1.5 + 1 && (q[0] - x) * (r[0] - x) + (q[1] - y) * (r[1] - y) < 0;
+        });
+      };
+      if (edge && !(faceHit && strip())) return edge;
     }
     if (faceHit && faceHit.faceIndex != null) {
       const body = faceHit.object.userData.body as string;
@@ -1527,7 +1539,8 @@ export class Viewport {
     return hit ? { kind: "vertex", body: hit.body, vertex: hit.vertex, point: hit.p.toArray() as Vec3 } : null;
   }
 
-  private pickEdge(x: number, y: number, tolPx: number, faceDist: number): PickHit | null {
+  /** The edge nearest the pointer (within tolPx, not hidden); `near` gets the nearest few, the nearest first. */
+  private pickEdge(x: number, y: number, tolPx: number, faceDist: number, near?: { d: number; point: Vector3 }[]): PickHit | null {
     // The nearest point of each edge near the pointer.
     const per = new Map<string, { d: number; body: string; edge: number; point: Vector3; depth: number }>();
     const a = new Vector3();
@@ -1569,7 +1582,9 @@ export class Viewport {
     // behind a thin wall through). Two on the same pixels (a frame's front
     // and back edge, seen from straight above): the one nearer the eye - the
     // tap just off the face took the hidden one under it.
-    const best = [...per.values()].sort((p, q) => (Math.abs(p.d - q.d) < 1 ? p.depth - q.depth : p.d - q.d)).slice(0, 6).find((c) => this.uncovered(c.point));
+    const sorted = [...per.values()].sort((p, q) => (Math.abs(p.d - q.d) < 1 ? p.depth - q.depth : p.d - q.d)).slice(0, 6);
+    const best = sorted.find((c) => this.uncovered(c.point));
+    if (near && best) for (const c of sorted) if (c === best || (c.d > best.d && this.uncovered(c.point))) near.push({ d: c.d, point: c.point });
     this.setRay(x, y);
     return best ? { kind: "edge", body: best.body, edge: best.edge, point: best.point.toArray() as Vec3 } : null;
   }

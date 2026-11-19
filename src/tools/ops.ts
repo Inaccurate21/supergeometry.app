@@ -239,7 +239,7 @@ export class ExtrudeOp extends FeatureOp<ExtrudeFeature> {
         (m) => this.setMode(m),
         () => this.render(),
         false,
-        () => this.autoEffect(),
+        () => (this.shownEffect = this.autoEffect()),
       ),
       // Every shape in the sketch at once (a scale, lettering: hundreds of them,
       // far too many to tap) - holes stay holes.
@@ -450,6 +450,7 @@ export class ExtrudeOp extends FeatureOp<ExtrudeFeature> {
   }
 
   exit(): void {
+    this.exited = true;
     this.handle.dispose();
     this.dim?.dispose();
     this.ops?.dispose();
@@ -574,11 +575,23 @@ export class ExtrudeOp extends FeatureOp<ExtrudeFeature> {
     return into && this.app.view.bodyList.length ? "Cut" : "New body";
   }
 
+  /** What the Operation row says Auto does, as it was last drawn. */
+  private shownEffect = "";
+  private exited = false;
+
   private setDistance(d: number): void {
-    const was = this.autoEffect();
     this.feature.distance = d;
-    // Auto now does the other thing (dragged through the shape's plane): the Operation says so.
-    if (this.feature.mode === "auto" && this.autoEffect() !== was) queueMicrotask(() => this.render());
+    // Auto now does the other thing (dragged through the shape's plane, or
+    // typed below 0): the Operation says so. (Against what it says, not the
+    // distance before: the box writes the value in first - -8 typed for a
+    // pocket cut it, the Operation still said "Auto: Add".)
+    // (Typed in the window's own box: once it's left - drawn again now, the
+    // window would be rebuilt under the finger, the box with what's typed gone.)
+    if (this.feature.mode === "auto" && this.autoEffect() !== this.shownEffect) {
+      const typing = document.activeElement instanceof HTMLElement && document.activeElement.closest("#panel") ? document.activeElement : null;
+      if (typing) typing.addEventListener("blur", () => !this.exited && this.render(), { once: true });
+      else queueMicrotask(() => this.render());
+    }
     this.app.ui.updatePanelValues([d]);
     this.dim?.setValue(this.shown());
     this.update();
@@ -838,8 +851,15 @@ export class EdgeOp extends FeatureOp<EdgeFeature> {
     if (!hit) return this.done();
     // A face: all the edges round it (a nut's top, its six edges in one tap) -
     // or, all of them picked already, none of them.
+    // (What this step's own preview made - a round's border, where it runs
+    // out onto a face - isn't an edge of the body it rounds: a block's top,
+    // tapped with three of its upright edges picked, brought in the three
+    // corner arcs of their rounds as edges to round too.)
+    const own = (steps?: string[]) => !!steps?.includes(this.feature.id);
     if (hit.kind === "face") {
-      const refs = edgesOfFace(this.app, hit.body, hit.face).filter((k) => !this.app.view.body(hit.body)?.edges[k]?.seam).flatMap((k) => edgeRefOf(this.app, { body: hit.body, edge: k }) ?? []);
+      const refs = edgesOfFace(this.app, hit.body, hit.face)
+        .filter((k) => !this.app.view.body(hit.body)?.edges[k]?.seam)
+        .flatMap((k) => edgeRefOf(this.app, { body: hit.body, edge: k }) ?? []);
       const at = (r: EdgeRef) => this.feature.edges.findIndex((e) => e.body === r.body && Math.hypot(...sub(e.mid, r.mid)) < 1e-6);
       if (!refs.length) return;
       // The face tapped again, as its preview shows it - its edges rounded
@@ -859,7 +879,7 @@ export class EdgeOp extends FeatureOp<EdgeFeature> {
       else {
         // (Not a picked edge's rounded border, as the preview shows it: the
         // face beside a picked edge brought it in as an edge of its own.)
-        const kin = withCircleKin(this.app, refs.filter((r) => at(r) < 0 && this.roundedInto(r) < 0));
+        const kin = withCircleKin(this.app, refs.filter((r) => at(r) < 0 && this.roundedInto(r) < 0 && !own(r.steps)));
         this.groupKin(kin);
         for (const r of kin) if (at(r) < 0) this.feature.edges.push(r);
       }
@@ -873,6 +893,7 @@ export class EdgeOp extends FeatureOp<EdgeFeature> {
     // A seam: the line where a round face starts and ends, the same face
     // either side - nothing there to round. (Picked, it broke the step: "an
     // edge it was built on is gone", and a tap again didn't take it out.)
+    if (own(info.steps)) return;
     if (info.seam) return this.app.ui.toast("That line is a seam - where a round face starts and ends, no corner there to " + (this.feature.type === "chamfer" ? "chamfer" : "round") + ". Tap a real edge.");
     const i = this.feature.edges.findIndex((e) => e.body === hit.body && Math.hypot(...sub(e.mid, info.mid)) < 1e-6);
     if (i >= 0) this.dropWithKin(i);
