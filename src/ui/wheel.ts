@@ -1003,8 +1003,17 @@ export class Wheel implements WheelHandle {
       .map((item, k) => ({ item, k }))
       .sort((x, y) => rankOf(x.item.id) - rankOf(y.item.id) || x.k - y.k)
       .map(({ item }) => item);
+    // A place that opens kinds (Plane) lists only those without a place of their own here:
+    // Offset Plane, Midplane... sat on the ring and again under Plane.
+    const own = new Set(ring.filter((c) => c.off === undefined).map((c) => ALIAS[c.item.id] ?? c.item.id));
+    const trimmed = ring.map((c): Cell => {
+      const kids = c.item.children;
+      if (c.off !== undefined || !kids?.length) return c;
+      const left = kids.filter((k) => !own.has(ALIAS[k.id] ?? k.id));
+      return left.length && left.length < kids.length ? { ...c, item: { ...c.item, children: left } } : c;
+    });
     // (Never in a greyed place: that one's tool would be somewhere else whenever it is on.)
-    return [...ring, ...extras.map((item): Cell => ({ item }))];
+    return [...trimmed, ...extras.map((item): Cell => ({ item }))];
   }
 
   /**
