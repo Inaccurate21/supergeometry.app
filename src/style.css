@@ -6380,3 +6380,24 @@ circle.wheel-plate {
   background-color: rgba(21, 22, 26, 0.75);
   border-top-left-radius: 8px;
 }
+/* Over the page: held or dragged, it moves the window (the page itself never says what the pointer does). Off while a page is in use. */
+.web-grab {
+  position: absolute;
+  inset: 0;
+  display: none;
+  cursor: grab;
+  touch-action: none;
+}
+.web-grab.on {
+  display: block;
+}
+/* A video's: the strip along its bottom is the player's own (seek, volume, full screen). */
+.web-grab.video {
+  bottom: 52px;
+}
+.web-win.lifted {
+  box-shadow: 0 0 0 2px var(--accent), 0 16px 40px rgba(0, 0, 0, 0.55);
+}
+.web-win.lifted .web-grab {
+  cursor: grabbing;
+}

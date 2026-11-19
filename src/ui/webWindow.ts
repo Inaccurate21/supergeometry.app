@@ -34,7 +34,7 @@ const REFUSE = [
 ];
 
 /** What the window shows for what was typed: a page, or why it can't (and what to do instead). */
-export function pageFor(text: string): { src: string; shown: string } | { refuse: string; shown: string; open?: string } {
+export function pageFor(text: string): { src: string; shown: string; video?: "youtube" | "vimeo" } | { refuse: string; shown: string; open?: string } {
   let t = text.trim();
   if (!t) return { refuse: "Type a page's address, or paste a video's link (YouTube, Vimeo).", shown: "" };
   if (!/^[a-z][a-z0-9+.-]*:/i.test(t)) {
@@ -56,8 +56,9 @@ export function pageFor(text: string): { src: string; shown: string } | { refuse
   if (yt && /^[\w-]{6,}$/.test(yt)) {
     const start = parseInt(u.searchParams.get("t") ?? u.searchParams.get("start") ?? "", 10);
     const list = u.searchParams.get("list");
-    const q = new URLSearchParams({ autoplay: "1", rel: "0", ...(start > 0 ? { start: String(start) } : {}), ...(list ? { list } : {}) });
-    return { src: `https://www.youtube.com/embed/${yt}?${q}`, shown: u.href };
+    // (enablejsapi: a tap on the window plays or pauses it from here.)
+    const q = new URLSearchParams({ autoplay: "1", rel: "0", enablejsapi: "1", origin: location.origin, ...(start > 0 ? { start: String(start) } : {}), ...(list ? { list } : {}) });
+    return { src: `https://www.youtube.com/embed/${yt}?${q}`, shown: u.href, video: "youtube" };
   }
   if (host.endsWith("youtube.com"))
     return {
@@ -66,7 +67,7 @@ export function pageFor(text: string): { src: string; shown: string } | { refuse
       open: u.href,
     };
   const vimeo = host === "vimeo.com" ? u.pathname.match(/^\/(\d+)/)?.[1] : null;
-  if (vimeo) return { src: `https://player.vimeo.com/video/${vimeo}?autoplay=1`, shown: u.href };
+  if (vimeo) return { src: `https://player.vimeo.com/video/${vimeo}?autoplay=1`, shown: u.href, video: "vimeo" };
   if (REFUSE.some((h) => host === h || host.endsWith(`.${h}`))) return { refuse: `${host} won't show its pages inside another page.`, shown: u.href, open: u.href };
   return { src: u.href, shown: u.href };
 }
@@ -87,6 +88,12 @@ export class WebWindow {
   private note!: HTMLElement;
   private address!: HTMLInputElement;
   private fold!: HTMLButtonElement;
+  /** Over the page: a press held (or dragged) there moves the window - the page itself never tells this one what the pointer does. */
+  private grab!: HTMLElement;
+  /** A video player shown (a tap plays or pauses it, a double tap fills the screen), and whether it is playing. */
+  private video: "youtube" | "vimeo" | null = null;
+  private playing = true;
+  private wired = false;
   private s: Saved = { url: "", x: 0, y: 0, w: 0, h: 0, min: false, open: false };
 
   constructor() {
@@ -166,12 +173,15 @@ export class WebWindow {
     frame.setAttribute("sandbox", "allow-scripts allow-same-origin allow-forms allow-popups allow-popups-to-escape-sandbox allow-presentation");
     const note = document.createElement("div");
     note.className = "web-note";
-    body.append(frame, note);
+    const grab = document.createElement("div");
+    grab.className = "web-grab";
+    body.append(frame, grab, note);
     const grip = document.createElement("div");
     grip.className = "ref-grip";
     el.append(bar, body, grip);
     layer.append(el);
-    Object.assign(this, { el, frame, note, address, fold });
+    Object.assign(this, { el, frame, note, address, fold, grab });
+    this.holdToMove(grab);
 
     el.addEventListener("pointerdown", () => el.style.setProperty("--z", "999"), true);
     reload.addEventListener("click", () => this.s.url && this.go(this.s.url));
@@ -210,6 +220,9 @@ export class WebWindow {
       this.note.hidden = true;
       this.frame.hidden = false;
       this.frame.src = p.src;
+      this.video = p.video ?? null;
+      this.playing = true;
+      this.arm(true);
     } else {
       this.frame.hidden = true;
       this.frame.removeAttribute("src");
@@ -258,6 +271,113 @@ export class WebWindow {
     st.top = `${Math.round(s.y)}px`;
     st.width = `${Math.round(s.w)}px`;
     st.height = s.min ? "" : `${Math.round(s.h)}px`;
+  }
+
+  /**
+   * The layer over the page: pressed and dragged, or held, the window moves
+   * with the pointer. A tap on a video plays or pauses it, two fill the screen
+   * with it (the strip along its bottom is the player's own: seek, volume...).
+   * A tap on a page lets it be used (the layer steps aside) until the pointer
+   * is back on the model or anything else here.
+   */
+  private holdToMove(grab: HTMLElement): void {
+    let lastTap = 0;
+    let tapTimer = 0;
+    grab.addEventListener("pointerdown", (e) => {
+      if (e.button !== 0) return;
+      e.preventDefault();
+      const start = { x: e.clientX, y: e.clientY, dx: e.clientX - this.s.x, dy: e.clientY - this.s.y };
+      grab.setPointerCapture(e.pointerId);
+      let moving = false;
+      const lift = () => {
+        if (moving) return;
+        moving = true;
+        this.el?.classList.add("moving", "lifted");
+      };
+      const hold = window.setTimeout(lift, 350);
+      const move = (m: PointerEvent) => {
+        if (!moving && Math.hypot(m.clientX - start.x, m.clientY - start.y) < 8) return;
+        lift();
+        this.s.x = m.clientX - start.dx;
+        this.s.y = m.clientY - start.dy;
+        this.fit();
+      };
+      const up = (u: PointerEvent) => {
+        clearTimeout(hold);
+        grab.removeEventListener("pointermove", move);
+        grab.removeEventListener("pointerup", up);
+        grab.removeEventListener("pointercancel", up);
+        this.el?.classList.remove("moving", "lifted");
+        if (moving) return this.save();
+        if (u.type !== "pointerup") return;
+        // A tap.
+        if (!this.video) return this.arm(false);
+        const now = performance.now();
+        clearTimeout(tapTimer);
+        if (now - lastTap < 300) {
+          lastTap = 0;
+          return this.fullScreen();
+        }
+        lastTap = now;
+        tapTimer = window.setTimeout(() => this.playPause(), 300);
+      };
+      grab.addEventListener("pointermove", move);
+      grab.addEventListener("pointerup", up);
+      grab.addEventListener("pointercancel", up);
+    });
+    this.frame.addEventListener("load", () => {
+      // (Asked to say what it is doing.)
+      if (this.video === "youtube") this.tell({ event: "listening" });
+      if (this.video === "vimeo") for (const value of ["play", "pause", "ended"]) this.tell({ method: "addEventListener", value });
+    });
+    // (The page-wide listeners once, however often the window is opened again.)
+    if (this.wired) return;
+    this.wired = true;
+    // Back on anything else here (the model, a button, the window's bar): the layer is back over the page.
+    const back = (e: Event) => {
+      if (!this.el || this.grab.classList.contains("on")) return;
+      if (!this.el.querySelector(".web-body")!.contains(e.target as Node)) this.arm(true);
+    };
+    window.addEventListener("pointerdown", back, true);
+    window.addEventListener("pointermove", back, true);
+    // What the player says it is doing (paused from its own controls: the next tap plays it).
+    window.addEventListener("message", (e) => {
+      if (!this.el || e.source !== this.frame.contentWindow) return;
+      let d: { event?: string; info?: { playerState?: number } } | null = null;
+      try {
+        d = typeof e.data === "string" ? JSON.parse(e.data) : e.data;
+      } catch {
+        return;
+      }
+      if (d?.event === "infoDelivery" && typeof d.info?.playerState === "number") this.playing = d.info.playerState === 1 || d.info.playerState === 3;
+      if (d?.event === "play" || d?.event === "playing") this.playing = true;
+      if (d?.event === "pause" || d?.event === "ended") this.playing = false;
+    });
+  }
+
+  /** The layer over the page on (taps there are this window's), or stepped aside (taps go to the page). A video's is always on. */
+  private arm(on: boolean): void {
+    this.grab.classList.toggle("on", on || !!this.video);
+    this.grab.classList.toggle("video", !!this.video);
+  }
+
+  private tell(msg: object): void {
+    const origin = this.video === "vimeo" ? "https://player.vimeo.com" : "https://www.youtube.com";
+    // (YouTube's player answers only what comes on its "widget" channel.)
+    this.frame.contentWindow?.postMessage(this.video === "youtube" ? JSON.stringify({ ...msg, id: 1, channel: "widget" }) : msg, origin);
+  }
+
+  private playPause(): void {
+    const play = !this.playing;
+    if (this.video === "youtube") this.tell({ event: "command", func: play ? "playVideo" : "pauseVideo", args: [] });
+    else if (this.video === "vimeo") this.tell({ method: play ? "play" : "pause" });
+    this.playing = play;
+  }
+
+  /** The video over the whole screen (Esc, or the player's own button, brings it back). */
+  private fullScreen(): void {
+    if (document.fullscreenElement) void document.exitFullscreen();
+    else void this.frame.requestFullscreen?.().catch(() => {});
   }
 
   /** Moved with a press on the bar (not on its box or buttons). While moving, the page doesn't take the pointer. */
