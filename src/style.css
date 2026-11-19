@@ -6034,13 +6034,21 @@ circle.wheel-plate {
   border-radius: var(--radius);
   box-shadow: 0 10px 32px rgba(0, 0, 0, 0.45);
   overflow: hidden;
-  /* Its own stacking (the windows' order among themselves), all of it over everything else. */
+  /* Its own stacking: what is in it stays in it. */
   isolation: isolate;
   -webkit-user-select: none;
   user-select: none;
 }
-body > .ref-win {
-  z-index: calc(200 + var(--z, 0));
+/* Over the model (and the measurements pinned on it), under every button, wheel and panel. */
+#ref-layer {
+  position: fixed;
+  inset: 0;
+  z-index: 3;
+  pointer-events: none;
+}
+#ref-layer > .ref-win {
+  z-index: var(--z, 0);
+  pointer-events: auto;
 }
 .ref-bar {
   display: flex;

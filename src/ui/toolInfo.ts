@@ -71,7 +71,7 @@ const MODEL: Record<string, string> = {
   image: "A picture on a plane in the model, to trace over.",
   file: "Import a STEP, STL, OBJ, 3MF, DXF or SVG file.",
   project: "Add the steps of another .super project to this one.",
-  refImage: "A picture in its own window over everything, to look at while you model.",
+  refImage: "A picture in its own window over the model, to look at while you model.",
   bim: "Materials, a technical sheet and drawings for the project.",
   bimMaterials: "A real material for each body (and from it, its mass).",
   bimSheet: "Parts list, masses and data of the project.",

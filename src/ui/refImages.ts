@@ -1,5 +1,6 @@
 // Reference images: pictures to look at while modelling (a drawing, a photo
-// of the part), each in a window over everything else. A window is dragged by
+// of the part), each in a window over the model - under the buttons, the
+// wheels and the panels, so moving it about never hides them. A window is dragged by
 // its top bar or its picture, resized from its corner, minimized to its bar
 // (then dragged by its tabs) and closed. More
 // pictures in one window are tabs along its top; a tab dragged out of the bar
@@ -69,6 +70,13 @@ export class RefImages {
   private last: Win | null = null;
   private saveTimer = 0;
   private z = 0;
+  /** Where the windows are: over the model, under every button (a window moved about never hides them). */
+  private readonly layer = (() => {
+    const d = div("");
+    d.id = "ref-layer";
+    document.body.append(d);
+    return d;
+  })();
 
   constructor(private toast: (text: string, kind?: "info" | "error") => void) {
     void this.load();
@@ -129,7 +137,7 @@ export class RefImages {
     const grip = div("ref-grip");
     body.append(img);
     el.append(bar, body, grip);
-    document.body.append(el);
+    this.layer.append(el);
     const win: Win = { el, bar, tabs, img, refs, active, min, ...at };
     this.wins.push(win);
 
