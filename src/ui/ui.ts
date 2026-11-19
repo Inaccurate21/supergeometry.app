@@ -43,6 +43,8 @@ export interface ToolItem {
   startsDefault?: string;
   /** Still being tried out: a BETA tag on it. */
   beta?: boolean;
+  /** On the wheel, a tap opens a box by it to type a number into (`run` is what a column or menu does instead). */
+  value?: { now: string; put(v: number): void };
   run?(): void;
 }
 

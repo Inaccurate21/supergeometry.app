@@ -33,6 +33,8 @@ import { materialOf } from "../bim/materials";
 import { bodiesOf, edgeRefOf, faceRefOf, hitToSel, oppositeFace, sameSel, sourceFrame, sourcesOf, viewMenu, type AppContext, type Sel, type Tool } from "./tool";
 
 const SOON = "Coming soon";
+/** How see-through an opacity is, as the Transparency list names it ("40%"). */
+const seeThrough = (opacity: number) => `${Math.round((1 - opacity) * 100)}%`;
 
 /**
  * The default tool. Tap things to select them; the selection decides which
@@ -1042,8 +1044,8 @@ export class SelectTool implements Tool {
         id: "opacity",
         label: "Transparency",
         icon: "color",
-        sub: BODY_OPACITY.find((o) => o.value === ((app.store.doc.opacity ?? {})[bodies[0]] ?? 1))?.name ?? "Solid",
-        children: BODY_OPACITY.map((o, i) => ({
+        sub: BODY_OPACITY.find((o) => o.value === ((app.store.doc.opacity ?? {})[bodies[0]] ?? 1))?.name ?? seeThrough((app.store.doc.opacity ?? {})[bodies[0]] ?? 1),
+        children: [...BODY_OPACITY.map((o, i): ToolItem => ({
           id: `opacity-${i}`,
           label: o.name,
           icon: "color",
@@ -1056,6 +1058,34 @@ export class SelectTool implements Tool {
               d.opacity = op;
             }),
         })),
+        // Any amount: typed in, as how see-through (40 = 40%).
+        ((): ToolItem => {
+          const now = (app.store.doc.opacity ?? {})[bodies[0]] ?? 1;
+          const custom = !BODY_OPACITY.some((o) => o.value === now);
+          const put = (pct: number) =>
+            app.store.commit((d) => {
+              const v = Math.round(Math.min(95, Math.max(0, pct))) / 100;
+              const op = { ...(d.opacity ?? {}) };
+              for (const b of bodies) if (v <= 0) delete op[b];
+              else op[b] = 1 - v;
+              d.opacity = op;
+            });
+          const typed = String(Math.round((1 - now) * 100));
+          return {
+            id: "opacity-custom",
+            label: "Custom…",
+            icon: "numpad",
+            ...(custom ? { sub: seeThrough(now) } : {}),
+            active: custom,
+            value: { now: typed, put },
+            run: async () => {
+              const r = await app.ui.dialog("Custom transparency", [{ key: "pct", label: "Transparency (%)", value: typed }]);
+              const v = r ? parseFloat(r.pct) : NaN;
+              if (Number.isFinite(v)) put(v);
+            },
+          };
+        })(),
+        ],
       },
       { id: "delete", label: "Delete", icon: "trash", shortcut: "Del", run: () => this.deleteBodies(bodies) },
     ];

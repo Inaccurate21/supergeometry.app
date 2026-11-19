@@ -1699,6 +1699,8 @@ export class Wheel implements WheelHandle {
   }
 
   private run(item: ToolItem): void {
+    // A number to type (a custom transparency): its box comes up by the wheel.
+    if (item.value) return this.typeValue(item.label.replace(/…$/, ""), item.value.now, "number", item.value.put);
     // A switch or a choice on the Settings wheel is set right there: the fan stays, showing it set.
     if (item.id.startsWith("opt-") && !item.id.endsWith("-more")) {
       item.run?.();
