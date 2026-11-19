@@ -1132,7 +1132,8 @@ export class SketchTool implements Tool {
       ...(fresh ? [{ id: "replane", label: "Other plane", icon: "plane", run: () => this.choosePlane() } as ToolItem] : []),
       { id: "---1", label: "", icon: "line" },
       t("select", "Select", "pointer", "V"),
-      t("line", "Line", "line", "L"),
+      // An empty sketch with no drawing tool on: Line is the next step (it, and Draw round it, pulse).
+      t("line", "Line", "line", "L", { pulse: !this.entities.length && this.kind === "select" }),
       t("arc", "Arc", "arc", "A", { sub: memory.arc === "center" ? "Center" : "3 Points", children: variant("arc", "arc", [["3pt", "3 Points"], ["center", "Center"]]) }),
       t("spline", "Spline", "spline", "I", { sub: memory.spline === "fit" ? "Fit" : memory.spline === "draw" ? "Draw" : "Control", children: variant("spline", "spline", [["fit", "Fit points"], ["control", "Control points"], ["draw", "Draw (freehand)"]]) }),
       t("rect", "Rectangle", "rect", "R", { sub: { diagonal: "Diagonal", center: "Center", "3pt": "3 Points" }[memory.rect], children: variant("rect", "rect", [["center", "Center"], ["diagonal", "Diagonal"], ["3pt", "3 Points"]]) }),
@@ -1282,8 +1283,21 @@ export class SketchTool implements Tool {
   }
 
   private setHint(extra?: string): void {
-    const hint = this.phase === "plane" ? "Tap a plane or a flat face to draw on." : extra ?? this.stepHint() ?? hintOf(this.kind);
+    const hint = this.phase === "plane" ? "Tap a plane or a flat face to draw on." : extra ?? this.stepHint() ?? this.journeyHint() ?? hintOf(this.kind);
     this.app.ui.setHint(hint);
+  }
+
+  /**
+   * The first shape on its way, step by step, saying what pulses: Line on
+   * an empty sketch, then Exit once a shape is closed.
+   */
+  private journeyHint(): string | undefined {
+    const wheel = document.body.classList.contains("wheel-ui");
+    if (this.exitPulse && this.kind === "select") return wheel ? "Shape closed. Tap Exit (pulsing on the wheel) to leave the sketch - then pull the shape into 3D." : "Shape closed. Tap Exit Sketch (pulsing) - then pull the shape into 3D.";
+    if (this.entities.length) return undefined;
+    if (this.kind === "select") return wheel ? "Tap Draw (pulsing on the wheel): Line is ready - tap points, and end on the first one to close the shape." : "Tap Line (pulsing), then tap points - end on the first one to close the shape.";
+    if (this.kind === "line" && !this.pts.length) return "Line is on: tap points on the grid, and end on the first one to close the shape.";
+    return undefined;
   }
 
   /**
@@ -3287,6 +3301,8 @@ export class SketchTool implements Tool {
     // Done drawing, most likely: Exit Sketch pulses (until the next thing is drawn).
     this.exitPulse = true;
     this.updateMenu();
+    // (And the guide says so: Exit, pulsing, is next.)
+    this.setHint();
   }
 
   /** Exit Sketch pulsing: a shape was just closed, nothing drawn since. */

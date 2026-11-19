@@ -66,6 +66,8 @@ export interface AppContext {
   /** A sketch's curves plus the outline of the face it sits on (what regions are made of). */
   sketchCurves(id: string): SketchEntity[];
   mainTools(): ToolItem[];
+  /** The first model on its way: a shape drawn, nothing solid yet - Extrude is the next step (it pulses). */
+  firstShape(): boolean;
   bottomTools(): ToolItem[];
   /** Pin a measurement in 3D (saved with the project). */
   addPin(pin: PinDef): void;

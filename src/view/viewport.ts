@@ -174,6 +174,10 @@ export class Viewport {
   private axesGroup: Object3D;
   private bodies = new Map<string, BodyView>();
   private profileMeshes: Mesh[] = [];
+  /** Closed shapes of the sketches on show, ready to pull into 3D. */
+  get profileCount(): number {
+    return this.profileMeshes.length;
+  }
   private curveLines: { sketch: string; entity: string; pts: Vector3[] }[] = [];
   private planeMeshes: Mesh[] = [];
   private axisLines: { id: string; a: Vector3; b: Vector3 }[] = [];

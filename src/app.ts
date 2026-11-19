@@ -71,7 +71,8 @@ export class App implements AppContext {
   readonly view: Viewport;
   readonly ui = new UI();
   /** The tool wheel: the tools in a ring round the pointer (the only way to them). */
-  readonly wheel = new Wheel({ ui: this.ui, mainTools: () => this.mainTools() });
+  // (Folded or unfolded: the guide says what to tap - the pulsing button, or the tool on the wheel.)
+  readonly wheel = new Wheel({ ui: this.ui, mainTools: () => this.mainTools(), onFold: () => this.tool === this.selectTool && this.selectTool.refresh() });
   /** The Settings wheel: always on the screen while the wheel is on (folded to its cog unless opened). */
   readonly settingsWheel = new Wheel({ ui: this.ui, mainTools: () => [] }, "settings");
   /** The Options wheel: the open tool's window as a wheel, up while there is one (folded to its icon unless opened). */
@@ -926,6 +927,10 @@ export class App implements AppContext {
     return out;
   }
 
+  firstShape(): boolean {
+    return !this.result?.bodies.length && this.view.profileCount > 0;
+  }
+
   mainTools(): ToolItem[] {
     const wait = (label: string, accepts: Sel["kind"][], run: () => void) => () => {
       this.selectTool.waitFor(label, accepts, run);
@@ -944,7 +949,8 @@ export class App implements AppContext {
         label: "Create",
         icon: "extrude",
         children: [
-          { id: "extrude", label: "Extrude", icon: "extrude", run: wait("Extrude", ["profile", "face"], () => src() && this.setTool(new ExtrudeOp(this, src()!))) },
+          // (The first shape drawn, nothing solid yet: this is the next step, it pulses.)
+          { id: "extrude", label: "Extrude", icon: "extrude", pulse: this.firstShape(), run: wait("Extrude", ["profile", "face"], () => src() && this.setTool(new ExtrudeOp(this, src()!))) },
           { id: "revolve", label: "Revolve", icon: "revolve", run: wait("Revolve", ["profile", "face"], () => src() && this.setTool(new RevolveOp(this, src()!))) },
           { id: "sweep", label: "Sweep", icon: "sweep", run: wait("Sweep", ["profile", "face"], () => src() && this.setTool(new SweepOp(this, src()!))) },
           { id: "loft", label: "Loft", icon: "loft", run: wait("Loft", ["profile", "face"], () => this.setTool(new LoftOp(this, sourcesOf(this, this.selection).flatMap((s): ExtrudeSource[] => (s.kind === "profile" ? s.regions.map((r) => ({ ...s, regions: [r] })) : [s])), this.selection))) },

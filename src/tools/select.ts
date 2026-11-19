@@ -65,6 +65,7 @@ export class SelectTool implements Tool {
     this.live = false;
     // Another tool started: a tool that was waiting for a pick (Plane's Offset Plane) waits no more.
     this.pending = null;
+    this.app.wheel.beckon(false);
     this.app.wheel.cover(false);
     this.clearHandle();
     this.app.ui.setHint(null);
@@ -510,6 +511,8 @@ export class SelectTool implements Tool {
     this.app.view.clearHelpers([]);
     const sel = this.app.selection;
     const items = sel.length ? this.actions() : this.app.mainTools();
+    // Nothing picked, nothing waiting: the guide points at the wheel - folded, its button pulses.
+    this.app.wheel.beckon(!sel.length && !this.pending);
     this.app.ui.setTools(items);
     this.app.ui.setBottom(this.app.bottomTools());
     // (First the quick buttons: the guide says when there are some.)
@@ -520,9 +523,15 @@ export class SelectTool implements Tool {
         : sel.length === 0
           ? this.app.wheel.on
             ? this.app.wheel.kept
-              ? this.app.store.features.length
-                ? "Pick a tool on the wheel, or tap the model: the wheel shows what the pick offers."
-                : "Sketch, on the wheel, is where to start: draw a shape, then pull it into 3D."
+              ? this.app.firstShape()
+                ? `Your shape is ready: tap it and drag its arrow up - or tap Extrude (pulsing, in Create)${this.app.wheel.tucked ? " on the tools button's wheel" : ""}, then the shape.`
+                : this.app.store.features.length
+                  ? this.app.wheel.tucked
+                    ? "Pick a tool on the wheel (the pulsing tools button), or tap the model: the wheel shows what the pick offers."
+                    : "Pick a tool on the wheel, or tap the model: the wheel shows what the pick offers."
+                  : this.app.wheel.tucked
+                    ? "Tap the pulsing tools button, then Sketch: draw a shape, then pull it into 3D."
+                    : "Sketch (pulsing, on the wheel) is where to start: draw a shape, then pull it into 3D."
               : this.app.store.features.length
                 ? "Tap the model to pick part of it, or an empty spot for the tool wheel."
                 : "Tap an empty spot for the tool wheel, then Sketch: draw a shape and pull it into 3D."
@@ -744,7 +753,7 @@ export class SelectTool implements Tool {
       { id: "patl", label: "Pattern – Linear", icon: "patternLinear", run: inSketch("patternLinear") },
       { id: "patc", label: "Pattern – Circular", icon: "patternCircular", run: inSketch("patternCircular") },
       // Starts at the last distance used (the preview shows at once: Enter keeps it).
-      { id: "extrude", label: "Extrude", icon: "extrude", shortcut: "E", active: true, run: () => src && app.setTool(new ExtrudeOp(app, src, undefined, "auto", { distance: 0 })) },
+      { id: "extrude", label: "Extrude", icon: "extrude", shortcut: "E", active: true, pulse: app.firstShape(), run: () => src && app.setTool(new ExtrudeOp(app, src, undefined, "auto", { distance: 0 })) },
       { id: "axis", label: "Axis – Perp. to Face", icon: "axis", run: () => frame && app.setTool(new AxisOp(app, frame.base, frame.normal)) },
       { id: "plane", label: "Plane – Offset", icon: "plane", run: () => plane && app.setTool(new PlaneOp(app, plane, undefined)) },
       { id: "text", label: "Text", icon: "text", run: inSketch("text") },

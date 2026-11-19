@@ -68,6 +68,10 @@ export interface WheelHandle {
   close(): void;
   /** Did the press now being handled close an open wheel? (A tap on an empty spot then only closes it.) */
   takeDismissed(): boolean;
+  /** Folded to just its button now. */
+  readonly tucked: boolean;
+  /** The guide points at the wheel ("pick a tool on the wheel"): folded, its button pulses. (Anything on it pulsing - the next step - does that too.) */
+  beckon(on: boolean): void;
 }
 
 export interface WheelOpen {
@@ -81,6 +85,8 @@ export interface WheelOpen {
 export interface WheelHost {
   readonly ui: UI;
   mainTools(): ToolItem[];
+  /** Folded to its button, or whole again. */
+  onFold?(): void;
 }
 
 interface Metrics {
@@ -255,6 +261,8 @@ const kidsOf = (it: ToolItem) => usable(it.children ?? []).filter(notSep);
 /** A tap on a tool with kinds (Rectangle: Center, Diagonal, 3 Points) opens them straight away, the one used last lit. */
 const opens = (it: ToolItem) => kidsOf(it).length > 0;
 const marked = (cells: Cell[]) => cells.some((c) => !!c.item.active || !!c.item.pulse);
+/** The next step is in here: a tool of it (or a kind of one) pulses. */
+const pulsing = (items: ToolItem[]): boolean => items.some((it) => !!it.pulse || pulsing(kidsOf(it)));
 const clamp = (v: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, v));
 
 /** Everything a ring shows, as text: the same again needs no drawing again. */
@@ -505,7 +513,11 @@ export class Wheel implements WheelHandle {
     this.root.hidden = true;
     this.tip.hidden = true;
     this.hubEl.setAttribute("class", "wheel-hub");
-    this.hubSvg.append(this.hubEl);
+    // (A ring behind the button that swells and fades: the next step is on the wheel.)
+    const halo = document.createElementNS(SVG, "circle");
+    halo.setAttribute("class", "wheel-halo");
+    halo.setAttribute("r", "26");
+    this.hubSvg.append(halo, this.hubEl);
     this.hubBox.append(this.hubSvg, this.grip);
     this.fanBox.append(this.fanSvg, this.fanItems);
     this.ringBox.append(this.ringSvg, this.ringItems);
@@ -547,7 +559,7 @@ export class Wheel implements WheelHandle {
     const history = document.getElementById("history");
     if (history) new ResizeObserver(settle).observe(history);
     this.root.addEventListener("contextmenu", (e) => e.preventDefault());
-    if (kind === "tools") host.ui.onTools = () => this.itemsChanged();
+    if (kind === "tools") host.ui.onTools = () => (this.beck(), this.itemsChanged());
     // (The tool's window opened, closed or changed: the Options wheel comes, goes, or shows what it holds now.)
     if (kind === "tools") host.ui.onPanel = () => this.layout === "freeform" && this.itemsChanged();
     if (kind === "options") {
@@ -579,6 +591,26 @@ export class Wheel implements WheelHandle {
     return !!this.layout && this.kept && this.folded[this.layout];
   }
 
+  get tucked(): boolean {
+    return this.isFolded;
+  }
+
+  /** The guide says to pick a tool on the wheel. */
+  private wanted = false;
+
+  beckon(on: boolean): void {
+    if (this.wanted === on) return;
+    this.wanted = on;
+    this.beck();
+  }
+
+  /** Folded with the next step on it (or the guide pointing at it): its button pulses. */
+  private beck(): void {
+    if (this.kind !== "tools") return;
+    const next = !!this.layout && pulsing(this.host.ui.shown().column);
+    this.root.classList.toggle("beckon", this.wanted || next);
+  }
+
   cover(layout: "model" | "sketch" | "freeform" | false, extras?: WheelExtras): void {
     if (this.kind !== "tools") return;
     const next = layout || null;
@@ -591,6 +623,7 @@ export class Wheel implements WheelHandle {
     if (!extras) this.extras = null;
     this.loadSpots();
     this.sync();
+    this.beck();
   }
 
   /** The column steps aside while the wheel stands in for it; a kept wheel is up whenever there is something for it to show. */
@@ -707,8 +740,10 @@ export class Wheel implements WheelHandle {
   /** Folded to just the middle (the handle), or whole again. */
   private fold(on: boolean): void {
     if (!this.layout) return;
+    const was = this.folded[this.layout];
     this.folded[this.layout] = on;
     this.root.classList.toggle("folded", on);
+    if (was !== on) queueMicrotask(() => this.host.onFold?.());
     if (on) this.shut();
     if (!on && this.layout === "settings") {
       // (Unfolded: the lists as they are now - the settings may have changed from elsewhere since.)
@@ -1462,7 +1497,9 @@ export class Wheel implements WheelHandle {
       const mid = this.midOf(i);
       const dim = !s.cells.length && !s.item;
       const own = !inner && (s.id === OWN || (this.layout === "sketch" && s.id === "exit"));
-      const p = path(`wheel-cell wheel-sector${dim ? " dim" : ""}${own ? " own" : ""}${s.on ? " on" : ""}`, wedge(m.r0, m.r1, mid - step / 2, mid + step / 2, 3));
+      // The next step: its piece pulses (a group: one of its tools is it).
+      const next = s.item ? !!s.item.pulse : pulsing(s.cells.map((c) => c.item));
+      const p = path(`wheel-cell wheel-sector${dim ? " dim" : ""}${own ? " own" : ""}${s.on ? " on" : ""}${next ? " pulse" : ""}`, wedge(m.r0, m.r1, mid - step / 2, mid + step / 2, 3));
       this.ringSvg.append(p);
       const rm = (m.r0 + m.r1) / 2 + 3;
       if (s.kinds) this.ringSvg.append(...tab(m.r1, mid, `${dim ? " dim" : ""}${s.on ? " on" : ""}`));
@@ -1489,7 +1526,7 @@ export class Wheel implements WheelHandle {
     }
     this.fanEls = this.fan.map((c) => {
       const it = c.item;
-      const p = path(`wheel-cell${it.active ? " on" : ""}`, wedge(c.r0, c.r1, c.a0, c.a1));
+      const p = path(`wheel-cell${it.active ? " on" : ""}${pulsing([it]) ? " pulse" : ""}`, wedge(c.r0, c.r1, c.a0, c.a1));
       this.fanSvg.append(p);
       const rm = (c.r0 + c.r1) / 2;
       const mid = (c.a0 + c.a1) / 2;
