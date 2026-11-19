@@ -463,7 +463,7 @@ export interface FreeformEditFeature extends FeatureBase {
   type: "freeformEdit";
   /** The freeform / Freeform Face step it edits. */
   target: string;
-  patch: Partial<Pick<FreeformFeature, "cage" | "surface" | "thickness" | "thickSide" | "symmetry">> & { grid?: number };
+  patch: Partial<Pick<FreeformFeature, "cage" | "surface" | "thickness" | "thickSide" | "symmetry">> & { grid?: number; more?: FaceRef[] };
 }
 
 /**

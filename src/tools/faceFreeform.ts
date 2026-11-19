@@ -5,6 +5,7 @@
 // edges, and the rest of the body, don't move.
 
 import type { FaceFreeformFeature, FaceRef, Vec3 } from "../doc/types";
+import { editedStep } from "../doc/freeformEdits";
 import { facesNormal } from "../freeform/faceGrid";
 import { faceStepNormal, FreeformTool, layFaceCage, type EditKeep } from "./freeform";
 import { faceRefOf, type AppContext, type Sel, type Tool } from "./tool";
@@ -43,6 +44,26 @@ function joined(faces: [Vec3, Vec3, Vec3][][]): boolean {
     }
   }
   return reached.size === sets.length;
+}
+
+/**
+ * A Freeform Face step (as its edits leave it) whose surface on the picked
+ * faces' body shares an edge with them, and that surface's triangles.
+ */
+function touchedStep(app: AppContext, picked: Extract<Sel, { kind: "face" }>[]): { step: FaceFreeformFeature; tris: [Vec3, Vec3, Vec3][] } | null {
+  const body = picked[0].body;
+  if (picked.some((p) => p.body !== body)) return null;
+  const faces = app.view.body(body)?.faces ?? [];
+  const mine = new Set(picked.map((p) => p.face));
+  const steps = [...new Set(faces.flatMap((f, k) => (f.step && !mine.has(k) ? [f.step] : [])))];
+  const pickedTris = picked.map((p) => faceTriangles(app, body, p.face));
+  for (const id of steps) {
+    const s = editedStep<FaceFreeformFeature>(app.store.features, id);
+    if (s?.type !== "faceFreeform" || s.face.body !== body) continue;
+    const tris = faces.flatMap((f, k) => (f.step === id && !mine.has(k) ? faceTriangles(app, body, k) : []));
+    if (tris.length && joined([tris, ...pickedTris])) return { step: s, tris };
+  }
+  return null;
 }
 
 /** The face most like a saved one (facing the same way, its middle nearest), or -1. */
@@ -89,6 +110,23 @@ export function faceFreeformTool(app: AppContext, face: Extract<Sel, { kind: "fa
   const tris = picked.flatMap((s) => faceTriangles(app, s.body, s.face));
   // Several faces: they must touch, one after another (a grid can't jump a gap).
   if (more.length && !joined(picked.map((s) => faceTriangles(app, s.body, s.face)))) return (app.ui.toast("Pick faces that touch each other - side by side, sharing an edge"), null);
+  // Touching a surface a Freeform Face step made on the same body: that step
+  // grows to take these faces in - one surface, no edge where they meet (an
+  // Edit Freeform step in History: delete it and they are apart again).
+  const grow = touchedStep(app, picked);
+  if (grow) {
+    const s = grow.step;
+    const all: FaceRef[] = [...(s.more ?? []), ...(refs as FaceRef[])];
+    const feature: FaceFreeformFeature = { ...structuredClone(s), more: all };
+    const both = [...grow.tris, ...tris];
+    // (Laid over the surface as it is shaped now and the new faces: what was shaped stays so, near enough.)
+    const laid = layFaceCage(both, s.face.center, faceStepNormal(feature), Math.max(5, s.grid ?? 5), true);
+    if (!laid) return (app.ui.toast("These faces won't take one grid with the freeform beside them (seen together they fold back over each other)"), null);
+    feature.cage = laid.cage;
+    feature.grid = laid.n;
+    app.ui.toast(`Joined to ${s.name}: one smooth surface`);
+    return new FreeformTool(app, { face: { feature, existing: true, tris: both } });
+  }
   const normal = more.length ? facesNormal([ref.normal, ...more.map((m) => m.normal)]) : ref.normal;
   const laid = layFaceCage(tris, ref.center, normal, 5, more.length > 0);
   if (!laid) return (app.ui.toast(more.length ? "These faces won't take one grid (seen together they fold back over each other) - pick fewer" : "This face's outline won't take a grid (too small, or too odd a shape)"), null);

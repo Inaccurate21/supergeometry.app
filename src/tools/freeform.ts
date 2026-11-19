@@ -593,7 +593,7 @@ export class FreeformTool implements Tool {
   private previewFace(): void {
     const draft = this.faceDraft();
     let list = [...this.app.store.features];
-    if (this.face?.existing) list = this.withEdit(draft.id, { cage: draft.cage, grid: draft.grid });
+    if (this.face?.existing) list = this.withEdit(draft.id, { cage: draft.cage, grid: draft.grid, ...(draft.more ? { more: draft.more } : {}) });
     else list.push(draft);
     void this.app.preview(list).then((r) => {
       if (!r || this.gone) return;
@@ -1632,7 +1632,7 @@ export class FreeformTool implements Tool {
       }
       const f = this.faceDraft();
       // A new step that shapes nothing: no step at all.
-      if (this.face.existing) this.saveEdit(f.id, { cage: f.cage, grid: f.grid });
+      if (this.face.existing) this.saveEdit(f.id, { cage: f.cage, grid: f.grid, ...(f.more ? { more: f.more } : {}) });
       else if (!this.flat() || f.more?.length) this.app.store.add(f); // (several faces: made one smooth surface even as laid)
       this.app.setTool(null);
       return f.face.body;
