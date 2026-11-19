@@ -1,6 +1,6 @@
 // Variables switched on (like Section View): the tags show in the view, and a
 // card with New Variable and the whole list. Tapping the view leaves the card;
-// the tags stay until Variables is tapped again (or Turn Off).
+// the tags stay until Variables is tapped again (or switched off in the card).
 
 import { createVariable, editVariables } from "../io/insert";
 import type { AppContext, Tool } from "./tool";
@@ -8,6 +8,10 @@ import type { AppContext, Tool } from "./tool";
 export interface VariablesHost extends AppContext {
   /** Variables off: the tags go, and this card. */
   variablesOff(): void;
+  /** The tags shown on the model (Variables on). */
+  readonly varsOn: boolean;
+  /** The tags on or off, the card staying. */
+  showVariables(on: boolean): void;
 }
 
 export class VariablesTool implements Tool {
@@ -30,8 +34,10 @@ export class VariablesTool implements Tool {
       items: [
         { type: "button", label: "New Variable", icon: "variableNew", primary: !n, onClick: () => void createVariable(this.app).then(() => this.showCard()) },
         ...(n ? [{ type: "button" as const, label: `All Variables (${n})`, icon: "variable" as const, onClick: () => void editVariables(this.app).then(() => this.showCard()) }] : []),
+        // On / off a tap each way: the tags on the model go and come back, the card stays.
+        { type: "toggle", label: "Variables", value: this.app.varsOn, onChange: (v) => (this.app.showVariables(v), this.showCard()) },
       ],
-      actions: [{ id: "off", label: "Turn Off", icon: "close", run: () => this.app.variablesOff() }],
+      actions: [],
       onDone: () => this.leave(),
     });
   }
@@ -47,7 +53,7 @@ export class VariablesTool implements Tool {
    * over nothing - it's off then.
    */
   private leave(): void {
-    if (this.app.store.doc.variables.length) this.app.setTool(null);
+    if (this.app.store.doc.variables.length && this.app.varsOn) this.app.setTool(null);
     else this.app.variablesOff();
   }
 

@@ -888,7 +888,9 @@ export class Wheel implements WheelHandle {
       const s = sectors.pop()!;
       more.unshift(...(s.item ? [{ item: s.item }] : s.cells));
     }
-    if (more.length) sectors.push({ id: "more", label: "More", icon: "more", cells: more, mark: false });
+    // (Just one thing under More: it takes More's place itself.)
+    if (more.length === 1) sectors.push({ id: `one-${more[0].item.id}`, label: more[0].item.label, icon: more[0].item.icon, cells: kidsOf(more[0].item).map((c) => ({ item: c })), item: opens(more[0].item) ? undefined : more[0].item, on: more[0].item.active, mark: false });
+    else if (more.length) sectors.push({ id: "more", label: "More", icon: "more", cells: more, mark: false });
     // Only values to set (a new shape's size): each its own place on the ring, a tap to type it -
     // not one lone Values group on a whole ring.
     if (!sectors.length && valueCells.length <= 8) for (const c of valueCells) sectors.push({ id: c.item.id, label: c.item.label, icon: c.item.icon, cells: [], item: c.item, mark: false });

@@ -521,6 +521,14 @@ export class App implements AppContext {
     this.setTool(new VariablesTool(this));
   }
 
+  /** The tags on or off, the card staying (its On switch). */
+  showVariables(on: boolean): void {
+    this.varsOn = on;
+    if (on) this.showVariableTags();
+    this.varTags.setVisible(on);
+    this.refreshTools();
+  }
+
   variablesOff(): void {
     this.varsOn = false;
     this.varTags.setVisible(false);
