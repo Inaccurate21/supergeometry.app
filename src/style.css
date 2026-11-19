@@ -5996,6 +5996,11 @@ circle.wheel-plate {
   cursor: pointer;
   -webkit-tap-highlight-color: transparent;
 }
+/* The choice in use (an extrude's Add, Cut...). */
+.quick-action.on {
+  background: var(--accent);
+  border-color: #b9d4ff;
+}
 .quick-action:hover,
 .quick-action:active {
   background: #2a57a3;

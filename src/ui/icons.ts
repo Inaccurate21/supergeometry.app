@@ -95,6 +95,7 @@ export const icons = {
   minimize: svg('<path d="M6 13h12"/>'),
   restore: svg('<rect x="5" y="6" width="14" height="12" rx="1.5"/><path d="M5 9.5h14"/>'),
   refImage: svg('<rect x="3" y="5" width="18" height="15" rx="1.5"/><path d="M3 8.5h18"/><circle cx="8.5" cy="12.5" r="1.4"/><path d="M21 18l-5-4.5-7 6.5"/>'),
+  newBody: svg('<rect x="3.5" y="9" width="11" height="11" rx="1"/><path d="M18 3v6M15 6h6"/>'),
   wrench: svg('<path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.8-3.8a6 6 0 0 1-7.9 7.9l-6.9 6.9a2.1 2.1 0 0 1-3-3l6.9-6.9a6 6 0 0 1 7.9-7.9z"/>'),
   tools: svg('<path d="M14 7l3-3 3 3-3 3M4 20l9-9"/><path d="M5 4l4 4-2 2-4-4z"/>'),
   section: svg('<path d="M4 8l8-4 8 4v8l-8 4-8-4z"/><path d="M4 12h16" stroke-dasharray="2 2"/>'),

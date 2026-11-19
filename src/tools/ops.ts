@@ -6,7 +6,8 @@ import { fillEdgeKey } from "../doc/types";
 import { defaultPitch, threadLabel } from "../kernel/threads";
 import type { AxisFeature, AxisRef, ConnectFeature, EdgeFeature, EdgeRef, ExtrudeFeature, ExtrudeSource, FaceRef, FillFeature, FillToPlaneFeature, ImageFeature, LoftFeature, MoveFaceFeature, PathRef, PlaneDef, PlaneFeature, ReplaceFaceFeature, RevolveFeature, ScaleFaceFeature, ShellFeature, SketchFeature, SplitFeature, SweepFeature, TransformFeature, Vec3 } from "../doc/types";
 import { FRONT, GROUND, RIGHT, add, cross, dot, len, norm, niceStep, patternSpacing, roundSig, scale, sub, xDirFor } from "../geom";
-import type { PanelItem } from "../ui/ui";
+import type { PanelItem, ToolItem } from "../ui/ui";
+import { QuickActions } from "./quickActions";
 import { evaluate, fmtLen } from "../units";
 import type { ToolPointer } from "../view/input";
 import { FeatureOp, type Slot } from "./featureOp";
@@ -164,6 +165,7 @@ export class ExtrudeOp extends FeatureOp<ExtrudeFeature> {
       focus: this.opts.typed !== undefined,
     });
     this.onDraftChanged();
+    this.showOps();
   }
 
   /** The value the widget shows: total thickness or offset. */
@@ -229,23 +231,12 @@ export class ExtrudeOp extends FeatureOp<ExtrudeFeature> {
           this.setHint();
           this.render();
           this.update();
+          this.showOps();
         },
       },
       modeChoice(
         () => this.feature.mode,
-        (m) => {
-          this.feature.mode = m;
-          // Through all with no way picked yet: a cut goes into the body.
-          if (this.feature.extent === "through" && !this.throughFlipped) this.feature.distance = this.throughInto(m) ? -1 : 1;
-          // A new body from a face (a spire on a tower): its own height is what's typed,
-          // not the total through the body - 68 typed came out 102 down into the tower.
-          if (m === "new" && this.measure === "total") {
-            this.measure = "offset";
-            this.dim?.setMode("offset");
-            this.dim?.setValue(this.shown());
-          }
-          this.update();
-        },
+        (m) => this.setMode(m),
         () => this.render(),
         false,
         () => this.autoEffect(),
@@ -275,6 +266,62 @@ export class ExtrudeOp extends FeatureOp<ExtrudeFeature> {
         },
       },
     ];
+  }
+
+  private setMode(m: Mode): void {
+    this.feature.mode = m;
+    // Through all with no way picked yet: a cut goes into the body.
+    if (this.feature.extent === "through" && !this.throughFlipped) this.feature.distance = this.throughInto(m) ? -1 : 1;
+    // A new body from a face (a spire on a tower): its own height is what's typed,
+    // not the total through the body - 68 typed came out 102 down into the tower.
+    if (m === "new" && this.measure === "total") {
+      this.measure = "offset";
+      this.dim?.setMode("offset");
+      this.dim?.setValue(this.shown());
+    }
+    this.update();
+    this.showOps();
+  }
+
+  /**
+   * From a body's face (pushed or pulled, or a sketch drawn on it): what it can
+   * do, as round buttons beside the face on the far side from the arrow - out,
+   * Add or New body; in, Cut, Intersect or New body. The one it does now is
+   * lit; a tap makes it that. Made again only when the way or the choice changes.
+   */
+  private ops: QuickActions | null = null;
+  private opsSig = "";
+
+  private showOps(): void {
+    const f = this.feature;
+    const fromFace = (f.source.kind === "face" || !!f.target) && (f.extent ?? "distance") === "distance" && !f.symmetric;
+    const out = f.distance >= 0;
+    const now = f.mode === "auto" ? ({ Add: "join", Cut: "cut", "New body": "new" } as Record<string, Mode>)[this.autoEffect()] ?? "auto" : f.mode;
+    const sig = fromFace && f.distance !== 0 ? `${out}|${now}` : "";
+    if (sig === this.opsSig) return;
+    this.opsSig = sig;
+    this.ops?.dispose();
+    this.ops = null;
+    if (!sig) return;
+    const pick = (m: Mode) => () => {
+      this.setMode(m);
+      this.setHint();
+      this.render();
+    };
+    const items: ToolItem[] = (
+      out
+        ? [
+            { id: "join", label: "Add", icon: "union" },
+            { id: "new", label: "New body", icon: "newBody" },
+          ]
+        : [
+            { id: "cut", label: "Cut", icon: "subtract" },
+            { id: "intersect", label: "Intersect", icon: "intersect" },
+            { id: "new", label: "New body", icon: "newBody" },
+          ]
+    ).map((it) => ({ ...it, icon: it.icon as ToolItem["icon"], active: it.id === now, run: pick(it.id as Mode) }));
+    const n = this.frame.normal;
+    this.ops = QuickActions.of(this.app.view, items, this.frame.base, { facing: out ? n : [-n[0], -n[1], -n[2]], hideBack: false });
   }
 
   /**
@@ -340,6 +387,7 @@ export class ExtrudeOp extends FeatureOp<ExtrudeFeature> {
     this.onDraftChanged();
     this.render();
     this.update();
+    this.showOps();
   }
 
   /** Up to: any face of a body (flat or round), or a plane. */
@@ -404,6 +452,9 @@ export class ExtrudeOp extends FeatureOp<ExtrudeFeature> {
   exit(): void {
     this.handle.dispose();
     this.dim?.dispose();
+    this.ops?.dispose();
+    this.ops = null;
+    this.opsSig = "";
     this.app.view.setGhost(false);
     super.exit();
   }
@@ -531,6 +582,7 @@ export class ExtrudeOp extends FeatureOp<ExtrudeFeature> {
     this.app.ui.updatePanelValues([d]);
     this.dim?.setValue(this.shown());
     this.update();
+    this.showOps();
   }
 
   protected onDraftChanged(): void {

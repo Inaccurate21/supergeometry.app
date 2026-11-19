@@ -61,6 +61,11 @@ export class QuickActions {
     return picked.length ? new QuickActions(view, picked, at, place) : null;
   }
 
+  /** These very buttons (a tool's own choices, the one in use lit), beside `at`. */
+  static of(view: Viewport, items: ToolItem[], at: Vec3, place: QuickPlace = {}): QuickActions {
+    return new QuickActions(view, items, at, place);
+  }
+
   private readonly facing?: Vec3;
 
   private constructor(
@@ -73,7 +78,7 @@ export class QuickActions {
     this.box.className = "quick-actions";
     for (const it of items) {
       const b = document.createElement("button");
-      b.className = "quick-action";
+      b.className = it.active ? "quick-action on" : "quick-action";
       b.title = it.shortcut ? `${it.label} (${it.shortcut})` : it.label;
       b.setAttribute("aria-label", it.label);
       const icon = icons[it.icon as keyof typeof icons];
@@ -126,7 +131,10 @@ export class QuickActions {
       [s[0] - g - hw, s[1]],
       [s[0] + g + hw, s[1]],
     ].map((p) => clampToFree(p as [number, number], hw, hh));
-    const [x, y] = spots.find(([x, y]) => !wheels.some((w) => hits(w, x, y, hw + 4, hh + 4))) ?? spots[0];
+    // (Nor under a value box on the model - an extrude's distance, beside its arrow.)
+    const boxes = [...document.querySelectorAll<HTMLElement>(".dim-widget")].map((b) => b.getBoundingClientRect()).filter((r) => r.width > 0);
+    const clear = ([x, y]: [number, number]) => !wheels.some((w) => hits(w, x, y, hw + 4, hh + 4)) && !boxes.some((r) => x + hw + 6 > r.left && x - hw - 6 < r.right && y + hh + 6 > r.top && y - hh - 6 < r.bottom);
+    const [x, y] = spots.find(clear) ?? spots[0];
     this.box.style.transform = `translate(${Math.round(x - hw)}px, ${Math.round(y - hh)}px)`;
   }
 
