@@ -1126,7 +1126,9 @@ export class Wheel implements WheelHandle {
       const ring = this.placed(spec.tools.flatMap((id) => byId.get(id) ?? []), spec.tools, why, known);
       for (const id of spec.tools) if (byId.has(id)) placed.add(id);
       const cells = ring.filter((x) => x.off === undefined);
-      sectors.push({ id: spec.id, label: spec.label, icon: spec.icon, cells, ring, mark: false });
+      // Draw with no drawing tool on starts Line as it opens: tap Draw, then draw point to point (another kind on its ring takes over).
+      const line = spec.id === "draw" && !cells.some((c) => c.item.active) ? byId.get("line") : undefined;
+      sectors.push({ id: spec.id, label: spec.label, icon: spec.icon, cells, ring, mark: false, starts: line });
     }
     // More: what isn't named above (Other plane, a tool added since), then the bottom bar's (the line
     // type, Normal to Sketch) and the constraints column on or off. (Settings are on their own wheel.)
