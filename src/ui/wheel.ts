@@ -1160,7 +1160,15 @@ export class Wheel implements WheelHandle {
       else cells.more.push({ item: a });
     }
     // (A group with options to choose from has the tab outside the ring, as the tools wheel's do.)
-    const group = (id: string, label: string, icon: IconName, why: string): Sector => ({ id, label, icon, cells: cells[id], why: cells[id].length ? undefined : why, mark: false, kinds: cells[id].length > 0 });
+    const group = (id: string, label: string, icon: IconName, why: string): Sector => {
+      const one = cells[id].length === 1 ? cells[id][0].item : undefined;
+      // Just one thing in it: that thing in the group's place - a tap runs it (or opens its kinds: Cells across).
+      if (one) {
+        const kids = kidsOf(one);
+        return { id, label: one.label, icon: one.icon, cells: kids.map((c) => ({ item: c })), item: kids.length ? undefined : one, on: one.active, mark: false, kinds: kids.length > 0 };
+      }
+      return { id, label, icon, cells: cells[id], why: cells[id].length ? undefined : why, mark: false, kinds: cells[id].length > 0 };
+    };
     const sectors: Sector[] = [];
     if (p.done) sectors.push({ id: "done", label: "Done", icon: "check", cells: [], item: { id: "ff-done", label: "Done", icon: "check", shortcut: "Enter", run: p.done }, mark: true });
     // Shape: what changes the picked faces and edges - Delete face first, then
