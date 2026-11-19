@@ -1094,10 +1094,15 @@ export class Wheel implements WheelHandle {
     const opt = (label: string, run: () => void, on?: boolean, sub?: string, icon?: IconName): ToolItem => ({ id: `opt-ff-${k++}`, label, icon: icon ?? iconNameFor(label) ?? (on ? "check" : "options"), sub, active: on, run });
     const act = (label: string, run: () => void, icon?: IconName): ToolItem => ({ id: `ff-${k++}`, label, icon: icon ?? iconNameFor(label) ?? "freeform", run });
     const cells: Record<string, Cell[]> = { shape: [], holes: [], move: [], symmetry: [], solid: [], more: [] };
+    let deleteFace: ToolItem | undefined;
     const choice = (it: Extract<PanelItem, { type: "choice" }>) => it.options.map((o): Cell => ({ item: opt(o.label, () => it.onChange(o.id), o.id === it.value) }));
     for (const it of p.items) {
       if (it.type === "button") {
-        const to = /^(Extrude face|Inset|Extend surface|Add edge loop|Bridge faces)/.test(it.label) ? "shape" : /^(Fill hole|Bridge holes|Connect edges|Delete face)/.test(it.label) ? "holes" : /^Fill to a plane/.test(it.label) ? "solid" : "more";
+        if (/^Delete face/.test(it.label)) {
+          deleteFace = act(it.label, it.onClick, "trash");
+          continue;
+        }
+        const to = /^(Extrude face|Inset|Extend surface|Add edge loop|Bridge faces)/.test(it.label) ? "shape" : /^(Fill hole|Bridge holes|Connect edges)/.test(it.label) ? "holes" : /^Fill to a plane/.test(it.label) ? "solid" : "more";
         cells[to].push({ item: act(it.label, it.onClick, it.icon) });
       } else if (it.type === "choice") {
         const ids = it.options.map((o) => o.id);
@@ -1121,13 +1126,17 @@ export class Wheel implements WheelHandle {
       else if (a.id === "refine") cells.shape.push({ item: a });
       else cells.more.push({ item: a });
     }
-    const group = (id: string, label: string, icon: IconName, why: string): Sector => ({ id, label, icon, cells: cells[id], why: cells[id].length ? undefined : why, mark: false });
+    // (A group with options to choose from has the tab outside the ring, as the tools wheel's do.)
+    const group = (id: string, label: string, icon: IconName, why: string): Sector => ({ id, label, icon, cells: cells[id], why: cells[id].length ? undefined : why, mark: false, kinds: cells[id].length > 0 });
     const sectors: Sector[] = [];
     if (p.done) sectors.push({ id: "done", label: "Done", icon: "check", cells: [], item: { id: "ff-done", label: "Done", icon: "check", shortcut: "Enter", run: p.done }, mark: true });
     // (Shape's tools - Extrude face, Inset, Add detail... - and the rest (More)
     // are the window's: the wheel doesn't say them all again.)
+    // Delete Face a tap (greyed with no faces picked); filling and bridging holes are the window's.
     sectors.push(
-      group("holes", "Holes", "fill", "Pick a hole's rim, two borders, or faces"),
+      deleteFace
+        ? { id: "deleteFace", label: "Delete face", icon: "trash", cells: [], item: deleteFace, mark: false }
+        : { id: "deleteFace", label: "Delete face", icon: "trash", cells: [], why: "Pick faces to delete them", mark: false },
       group("move", "Move", "move", "Pick points, edges or faces to move them"),
       group("symmetry", "Symmetry", "mirror", "Not while the shape is being placed or set up"),
       group("solid", "Solid", "shell", "A closed shape is solid already"),
