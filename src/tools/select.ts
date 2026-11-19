@@ -635,7 +635,7 @@ export class SelectTool implements Tool {
     const ff = ffBody ? this.freeformOf(ffBody) : undefined;
     // Editing a copy: it becomes its own freeform first (unless it is linked).
     const own = () => this.ownFreeform(ffBody) ?? ff!;
-    if (ff?.type === "freeform") head.push({ id: "editFreeform", label: "Edit Freeform", icon: "freeform", shortcut: "F2", run: () => this.editFreeform(own()) });
+    if (ff?.type === "freeform") head.push({ id: "editFreeform", label: "Edit Freeform", icon: "editFreeform", shortcut: "F2", run: () => this.editFreeform(own()) });
     // Border edges of open freeforms (one surface or two): connect them with new faces.
     const edgeSel = sel.filter((x): x is Extract<Sel, { kind: "edge" }> => x.kind === "edge");
     if (edgeSel.length >= 2 && edgeSel.length === sel.length) {
@@ -644,7 +644,7 @@ export class SelectTool implements Tool {
         const f = this.freeformOf(b);
         return !!f && !isClosed(f.cage);
       });
-      if (open && bodies.length <= 2) head.push({ id: "connect", label: "Connect", icon: "loft", sub: bodies.length === 2 ? "Join the two surfaces" : "New faces between the edges", run: () => this.connectEdges(edgeSel) });
+      if (open && bodies.length <= 2) head.push({ id: "connect", label: "Connect", icon: "connect", sub: bodies.length === 2 ? "Join the two surfaces" : "New faces between the edges", run: () => this.connectEdges(edgeSel) });
     }
     // An open freeform (faces deleted, or a surface): close a hole, or give it a thickness.
     if (ff?.type === "freeform" && !isClosed(ff.cage)) {
@@ -774,7 +774,7 @@ export class SelectTool implements Tool {
     const axis = info?.round && one ? roundAxis(app, s.body, s.face) : null;
     // A face a Freeform Face step made: that step opens again to reshape it.
     const shaped = info?.step ? app.store.find(info.step) : undefined;
-    const editFree: ToolItem[] = shaped?.type === "faceFreeform" && one ? [{ id: "editFreeform", label: "Edit Freeform", icon: "freeform", active: true, beta: true, run: () => app.editStep(shaped.id) }] : [];
+    const editFree: ToolItem[] = shaped?.type === "faceFreeform" && one ? [{ id: "editFreeform", label: "Edit Freeform", icon: "editFreeform", active: true, beta: true, run: () => app.editStep(shaped.id) }] : [];
     // What only a flat face can take (a sketch, an extrude, a plane on it) isn't
     // offered for a round or curved one at all, the way the body's tools aren't
     // offered for an edge: only what the face can do is listed.
@@ -801,9 +801,9 @@ export class SelectTool implements Tool {
       { id: "plane", label: "Plane – Offset", icon: "plane", ...needFlat, run: () => info?.plane && app.setTool(new PlaneOp(app, info.plane, faceRefOf(app, s)!)) },
       { id: "loft", label: "Loft", icon: "loft", ...needFlat, run: () => app.setTool(new LoftOp(app, sourcesOf(app, sel).flatMap(splitRegions), sel)) },
       // The face made smooth: a grid of points over it to pull out or push in; its edges stay put.
-      { id: "faceFreeform", label: "Freeform Face", icon: "freeform", beta: true, ...needFlat, run: () => { const t = faceFreeformTool(app, s); if (t) app.setTool(t); } },
+      { id: "faceFreeform", label: "Freeform Face", icon: "faceFreeform", beta: true, ...needFlat, run: () => { const t = faceFreeformTool(app, s); if (t) app.setTool(t); } },
       // A smooth freeform bridge between two faces (the second tapped next when one is picked).
-      { id: "connect", label: "Connect", icon: "freeform", beta: true, disabled: sel.length > 2, why: "Needs two faces", run: () => app.setTool(new ConnectOp(app, sel)) },
+      { id: "connect", label: "Connect", icon: "connect", beta: true, disabled: sel.length > 2, why: "Needs two faces", run: () => app.setTool(new ConnectOp(app, sel)) },
       { id: "split", label: "Split Body", icon: "split", disabled: !flat || app.view.bodyList.length < 2, why: "Needs another body to split", run: () => this.splitWith(info!.plane!, s.body) },
       { id: "revolve", label: "Revolve", icon: "revolve", ...needFlat, run: () => src && app.setTool(new RevolveOp(app, src)) },
       { id: "sweep", label: "Sweep", icon: "sweep", ...needFlat, run: () => src && app.setTool(new SweepOp(app, src)) },

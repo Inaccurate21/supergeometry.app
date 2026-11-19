@@ -1107,7 +1107,7 @@ export class App implements AppContext {
           ...(["box", "sphere", "cylinder", "torus", "plane"] as const).map((k) => ({
             id: `ff-${k}`,
             label: { box: "Box", sphere: "Sphere", cylinder: "Cylinder", torus: "Torus", plane: "Surface" }[k],
-            icon: "freeform" as const,
+            icon: ({ box: "ffBox", sphere: "ffSphere", cylinder: "ffCylinder", torus: "ffTorus", plane: "ffSurface" } as const)[k],
             run: () => this.setTool(new FreeformTool(this, { primitive: k })),
           })),
           // A flat face of a body made smooth (its edges stay put).
@@ -1115,7 +1115,7 @@ export class App implements AppContext {
             id: "faceFreeform",
             beta: true,
             label: "Freeform Face",
-            icon: "freeform" as const,
+            icon: "faceFreeform" as const,
             sub: "a face of a body",
             run: wait("Freeform Face (tap a flat face)", ["face"], () => {
               const s = this.selection[0];
@@ -1125,7 +1125,7 @@ export class App implements AppContext {
             }),
           },
           // A smooth bridge between two faces.
-          { id: "connect", label: "Connect", icon: "freeform" as const, sub: "two faces", beta: true, run: () => this.setTool(new ConnectOp(this, this.selection.filter((s) => s.kind === "face").slice(0, 2))) },
+          { id: "connect", label: "Connect", icon: "connect" as const, sub: "two faces", beta: true, run: () => this.setTool(new ConnectOp(this, this.selection.filter((s) => s.kind === "face").slice(0, 2))) },
         ],
       },
       {
