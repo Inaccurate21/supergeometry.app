@@ -27,6 +27,10 @@ interface Win {
   w: number;
   h: number;
   min: boolean;
+  /** The picture zoomed in its window: how much, and moved how far from the middle (px). */
+  zoom: { k: number; x: number; y: number };
+  /** Fingers on the picture now (two pinch it: the window stops moving). */
+  fingers: number;
 }
 
 interface Saved {
@@ -46,6 +50,8 @@ const BAR = 34;
 /** Where a window is among the others (higher: in front). */
 const zOf = (w: Win) => +(w.el.style.getPropertyValue("--z") || 0);
 const MIN_W = 160;
+/** As far as a picture zooms in its window. */
+const MAX_ZOOM = 12;
 const MIN_H = 120;
 
 const div = (cls: string) => {
@@ -138,7 +144,7 @@ export class RefImages {
     body.append(img);
     el.append(bar, body, grip);
     this.layer.append(el);
-    const win: Win = { el, bar, tabs, img, refs, active, min, ...at };
+    const win: Win = { el, bar, tabs, img, refs, active, min, ...at, zoom: { k: 1, x: 0, y: 0 }, fingers: 0 };
     this.wins.push(win);
 
     el.addEventListener("pointerdown", () => this.front(win), true);
@@ -150,8 +156,10 @@ export class RefImages {
     });
     close.addEventListener("click", () => this.closeTab(win, win.active, true));
     this.dragBy(bar, win, (e) => !(e.target as HTMLElement).closest("button, .ref-tab"));
-    // (The picture itself is a handle too: the bar is a small target, a finger's especially.)
-    this.dragBy(body, win, () => true);
+    // (The picture itself is a handle too: the bar is a small target, a finger's
+    // especially. Zoomed in, it moves the picture in its window instead.)
+    this.zoomBy(body, win);
+    this.dragBy(body, win, () => win.zoom.k <= 1 && win.fingers < 2);
     this.resizeBy(grip, win);
     // (A double click on the bar minimizes or restores it, as the button does.)
     bar.addEventListener("dblclick", (e) => {
@@ -182,7 +190,11 @@ export class RefImages {
       }),
     );
     const ref = win.refs[win.active];
-    if (ref && win.img.getAttribute("src") !== ref.src) win.img.src = ref.src;
+    if (ref && win.img.getAttribute("src") !== ref.src) {
+      win.img.src = ref.src;
+      // (Another picture: it starts whole again.)
+      this.zoomTo(win, 1, 0, 0);
+    }
     this.fit(win);
   }
 
@@ -237,6 +249,8 @@ export class RefImages {
       const dy = e.clientY - win.y;
       handle.setPointerCapture(e.pointerId);
       const move = (m: PointerEvent) => {
+        // (A second finger came down on the picture: a pinch, not a move.)
+        if (win.fingers > 1) return up();
         win.x = m.clientX - dx;
         win.y = m.clientY - dy;
         this.fit(win);
@@ -251,6 +265,90 @@ export class RefImages {
       handle.addEventListener("pointerup", up);
       handle.addEventListener("pointercancel", up);
     });
+  }
+
+  /**
+   * The picture zoomed in its window: the mouse wheel zooms about the pointer,
+   * two fingers pinch (and move it as they go); zoomed in, one finger or the
+   * mouse moves it about. A double click or double tap shows it whole again.
+   */
+  private zoomBy(body: HTMLElement, win: Win): void {
+    // Where a point of the window is, from the middle of the picture's box.
+    const rel = (cx: number, cy: number) => {
+      const r = body.getBoundingClientRect();
+      return { x: cx - r.left - r.width / 2, y: cy - r.top - r.height / 2 };
+    };
+    // Zoomed to k about a point p (from the middle): the point under p stays under it.
+    const about = (k: number, p: { x: number; y: number }) => {
+      const z = win.zoom;
+      const f = clamp(k, 1, MAX_ZOOM) / z.k;
+      this.zoomTo(win, z.k * f, p.x - (p.x - z.x) * f, p.y - (p.y - z.y) * f);
+    };
+    body.addEventListener(
+      "wheel",
+      (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        // (A trackpad's pinch comes as a wheel with Ctrl, in small steps.)
+        const step = e.deltaMode === 1 ? e.deltaY * 16 : e.deltaY;
+        about(win.zoom.k * Math.exp(-step * (e.ctrlKey ? 0.01 : 0.0015)), rel(e.clientX, e.clientY));
+      },
+      { passive: false },
+    );
+    body.addEventListener("dblclick", () => this.zoomTo(win, 1, 0, 0));
+    const down = new Map<number, { x: number; y: number }>();
+    let pinch: { d: number; k: number; m: { x: number; y: number }; z: { x: number; y: number } } | null = null;
+    let pan: { x: number; y: number; zx: number; zy: number } | null = null;
+    const start = () => {
+      const [a, b] = [...down.values()];
+      pan = null;
+      pinch = null;
+      if (a && b) {
+        const m = rel((a.x + b.x) / 2, (a.y + b.y) / 2);
+        pinch = { d: Math.max(1, Math.hypot(a.x - b.x, a.y - b.y)), k: win.zoom.k, m, z: { x: win.zoom.x, y: win.zoom.y } };
+      } else if (a && win.zoom.k > 1) pan = { x: a.x, y: a.y, zx: win.zoom.x, zy: win.zoom.y };
+    };
+    body.addEventListener("pointerdown", (e) => {
+      if (e.pointerType === "mouse" && e.button !== 0) return;
+      try {
+        body.setPointerCapture(e.pointerId);
+      } catch {
+        /* (a pointer already gone) */
+      }
+      down.set(e.pointerId, { x: e.clientX, y: e.clientY });
+      win.fingers = down.size;
+      start();
+    });
+    body.addEventListener("pointermove", (e) => {
+      if (!down.has(e.pointerId)) return;
+      down.set(e.pointerId, { x: e.clientX, y: e.clientY });
+      if (pinch) {
+        const [a, b] = [...down.values()];
+        const k = clamp((pinch.k * Math.hypot(a.x - b.x, a.y - b.y)) / pinch.d, 1, MAX_ZOOM);
+        const m = rel((a.x + b.x) / 2, (a.y + b.y) / 2);
+        // The point first between the fingers stays between them.
+        const f = k / pinch.k;
+        this.zoomTo(win, k, m.x - (pinch.m.x - pinch.z.x) * f, m.y - (pinch.m.y - pinch.z.y) * f);
+      } else if (pan) this.zoomTo(win, win.zoom.k, pan.zx + e.clientX - pan.x, pan.zy + e.clientY - pan.y);
+    });
+    const up = (e: PointerEvent) => {
+      if (!down.delete(e.pointerId)) return;
+      win.fingers = down.size;
+      start();
+    };
+    body.addEventListener("pointerup", up);
+    body.addEventListener("pointercancel", up);
+  }
+
+  /** The picture at zoom k, moved (x, y) from the middle - kept so some of it is always in the window. */
+  private zoomTo(win: Win, k: number, x: number, y: number): void {
+    k = clamp(k, 1, MAX_ZOOM);
+    const w = (win.img.offsetWidth * k) / 2;
+    const h = (win.img.offsetHeight * k) / 2;
+    win.zoom = k <= 1.001 ? { k: 1, x: 0, y: 0 } : { k, x: clamp(x, -w, w), y: clamp(y, -h, h) };
+    const z = win.zoom;
+    win.img.style.transform = z.k === 1 ? "" : `translate(${z.x}px, ${z.y}px) scale(${z.k})`;
+    win.el.classList.toggle("zoomed", z.k > 1);
   }
 
   private resizeBy(grip: HTMLElement, win: Win): void {
