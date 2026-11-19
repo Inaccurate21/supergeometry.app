@@ -5905,37 +5905,58 @@ circle.wheel-plate {
 .wheel-type-unit {
   opacity: 0.7;
 }
+/* What the pointed-at button of a wheel is and does: in the middle of the screen, as a held tool's name was. */
 .wheel-tip {
-  position: absolute;
+  position: fixed;
+  left: 50%;
+  top: 38%;
+  transform: translate(-50%, -50%);
+  z-index: 60;
   display: flex;
+  flex-direction: column;
   align-items: center;
-  gap: 7px;
-  white-space: nowrap;
-  padding: 5px 9px;
-  border-radius: 7px;
-  background: rgba(20, 22, 26, 0.96);
+  gap: 6px;
+  width: max-content;
+  max-width: min(420px, calc(100vw - 32px));
+  padding: 12px 20px;
+  border-radius: 14px;
+  background: rgba(20, 22, 26, 0.86);
   border: 1px solid var(--line);
-  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.4);
-  color: var(--text);
-  font-size: 12.5px;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.4);
+  color: #fff;
+  text-align: center;
   pointer-events: none;
 }
 .wheel-tip[hidden] {
   display: none;
 }
-.wheel-tip.why {
-  white-space: normal;
-  width: max-content;
-  max-width: 230px;
+.wheel-tip-head {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.wheel-tip-name {
+  font-size: 20px;
+  font-weight: 650;
+  letter-spacing: 0.01em;
+}
+.wheel-tip.why .wheel-tip-name {
+  font-size: 15px;
+  font-weight: 500;
   color: var(--muted);
 }
 .wheel-tip-sub {
   color: var(--muted);
-  font-size: 11.5px;
+  font-size: 13px;
 }
-.wheel-tip kbd {
-  margin-left: 0;
+.wheel-tip-about {
+  color: #c9ccd2;
+  font-size: 14px;
+  line-height: 1.35;
 }
+.wheel-tip kbd,
 .wheel-tip .beta-tag {
   margin-left: 0;
 }

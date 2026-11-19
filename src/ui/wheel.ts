@@ -30,6 +30,7 @@ import { evaluate, toDisplay, UNIT_LABEL, units } from "../units";
 import { numpadInput, openNumpad } from "./numpad";
 import { selectAll } from "./textField";
 import { iconNameFor, icons, type IconName } from "./icons";
+import { toolInfo } from "./toolInfo";
 import { el, usable, type PanelItem, type ToolItem, type UI } from "./ui";
 
 /**
@@ -160,7 +161,7 @@ const SLOTS: Record<string, string[]> = {
   combine: ["subtract", "union", "intersect", "split"],
   modify: ["fillet", "chamfer", "shell", "offsetFace", "offsetEdge", "thread", "wrap", "fix", "replace"],
   construct: ["offset", "mid", "plane", "axis", "proje", "3pt", "parallel", "angle"],
-  transform: ["move", "mirror", "linear", "circular", "scale", "translate", "rotate", "align"],
+  transform: ["move", "circular", "mirror", "linear", "scale", "translate", "rotate", "align"],
   freeform: ["ff-box", "ff-cylinder", "ff-sphere", "ff-plane", "faceFreeform", "connect", "editFreeform"],
 };
 /**
@@ -169,7 +170,7 @@ const SLOTS: Record<string, string[]> = {
  * where Color and Transparency are ("": an empty place).
  */
 const OWN_PICKED = ["deselect", "delete", "measure", "section", "color", "opacity", "variables", "isolate"];
-const OWN_FREE = ["", "", "measure", "section", "insert", "bim", "variables", "isolate"];
+const OWN_FREE = ["", "", "section", "insert", "measure", "bim", "variables", "isolate"];
 /** A picked thing's tool that is one of the places' under another name. */
 const ALIAS: Record<string, string> = { patl: "linear", patc: "circular", moveBody: "move", deleteBody: "delete", planePerp: "perp", planeEdge: "angle" };
 /** The model's first ring, clockwise from the top: eight places, each always the same. */
@@ -480,7 +481,9 @@ export class Wheel implements WheelHandle {
     this.fanBox.append(this.fanSvg, this.fanItems);
     this.ringBox.append(this.ringSvg, this.ringItems);
     this.body.append(this.fanBox, this.ringBox, this.hubBox);
-    this.root.append(this.body, this.tip);
+    this.root.append(this.body);
+    // (The tip is said in the middle of the screen, wherever the wheel is.)
+    document.body.append(this.tip);
     document.body.append(this.root);
     document.addEventListener("pointerdown", this.onDown, true);
     document.addEventListener("pointermove", this.onMove, true);
@@ -1466,32 +1469,26 @@ export class Wheel implements WheelHandle {
 
   // -------------------------------------------------------------------- tip
 
-  /** The name of what's pointed at (with its second line and key), just outside the wheel there. */
-  private say(a: number, r: number, name: string, opts: { sub?: string; key?: string; beta?: boolean; why?: boolean } = {}): void {
+  /**
+   * The name of what's pointed at (with its second line, its key and what it
+   * does), in the middle of the screen. (`a` and `r`: where on the wheel it
+   * is - no longer used for the place.)
+   */
+  private say(_a: number, _r: number, name: string, opts: { sub?: string; key?: string; beta?: boolean; why?: boolean; about?: string } = {}): void {
     const t = this.tip;
-    t.replaceChildren(el("span", "wheel-tip-name", name));
-    if (opts.beta) t.append(el("span", "beta-tag", "BETA"));
-    if (opts.sub) t.append(el("span", "wheel-tip-sub", opts.sub));
-    if (opts.key) t.append(el("kbd", "", opts.key));
+    const head = el("div", "wheel-tip-head");
+    head.append(el("span", "wheel-tip-name", name));
+    if (opts.beta) head.append(el("span", "beta-tag", "BETA"));
+    if (opts.sub) head.append(el("span", "wheel-tip-sub", opts.sub));
+    if (opts.key) head.append(el("kbd", "", opts.key));
+    t.replaceChildren(head);
+    if (opts.about) t.append(el("div", "wheel-tip-about", opts.about));
     t.classList.toggle("why", !!opts.why);
     t.hidden = false;
-    const c = Math.cos(a);
-    const s = Math.sin(a);
-    const x = r * c;
-    const y = r * s;
-    t.style.left = `${Math.round(x)}px`;
-    t.style.top = `${Math.round(y)}px`;
-    t.style.transform = `translate(${c > 0.4 ? "0" : c < -0.4 ? "-100%" : "-50%"}, ${s > 0.4 ? "0" : s < -0.4 ? "-100%" : "-50%"})`;
-    // Kept on the screen (once per thing pointed at, not per move).
-    const b = t.getBoundingClientRect();
-    const dx = b.left < 6 ? 6 - b.left : b.right > innerWidth - 6 ? innerWidth - 6 - b.right : 0;
-    const dy = b.top < 6 ? 6 - b.top : b.bottom > innerHeight - 6 ? innerHeight - 6 - b.bottom : 0;
-    if (dx) t.style.left = `${Math.round(x + dx)}px`;
-    if (dy) t.style.top = `${Math.round(y + dy)}px`;
   }
 
   private sayTool(it: ToolItem, a: number, r: number): void {
-    this.say(a, r, it.label, { sub: it.sub, key: it.shortcut, beta: it.beta });
+    this.say(a, r, it.label, { sub: it.sub, key: it.shortcut, beta: it.beta, about: toolInfo(this.layout, it.id) || toolInfo(this.layout, ALIAS[it.id] ?? "") });
   }
 
   /** What the middle is for, said under the wheel once the pointer rests on it. */
@@ -1567,12 +1564,22 @@ export class Wheel implements WheelHandle {
     this.hot = hit;
     this.elOf(hit)?.classList.add("hot");
     this.clearTimers();
-    if (hit >= CELL) {
-      const c = this.fan[hit - CELL];
-      return this.sayTool(c.item, (c.a0 + c.a1) / 2, this.reach() + 8);
-    }
     this.tip.hidden = true;
     if (hit === NONE) return;
+    // A finger says what's under it once held there a moment (a tap just uses it); a mouse, at once.
+    if (this.type === "touch" && hit !== HUB) {
+      this.tipTimer = window.setTimeout(() => this.hot === hit && this.tell(hit), 350);
+      return;
+    }
+    this.tell(hit);
+  }
+
+  /** What's under the pointer, said in the middle of the screen. */
+  private tell(hit: number): void {
+    if (hit >= CELL) {
+      const c = this.fan[hit - CELL];
+      return void (c && this.sayTool(c.item, (c.a0 + c.a1) / 2, this.reach() + 8));
+    }
     if (hit === HUB) {
       this.tipTimer = window.setTimeout(() => this.hot === HUB && !this.grab?.moved && this.sayHub(), 700);
       return;
@@ -1580,8 +1587,12 @@ export class Wheel implements WheelHandle {
     const i = hit - SECTOR;
     const s = this.sectors[i];
     const mid = this.midOf(i);
+    if (!s) return;
     if (!s.cells.length && !s.item) return this.say(mid, this.reach() + 8, s.why ?? `${s.label} has nothing here`, { why: true });
-    if (s.item) this.sayTool(s.item, mid, this.reach() + 8);
+    if (s.item) return this.sayTool(s.item, mid, this.reach() + 8);
+    // A group: its name and what is in it.
+    const about = toolInfo(this.layout, s.id);
+    if (about) this.say(mid, this.reach() + 8, s.label, { about });
   }
 
   private run(item: ToolItem): void {
