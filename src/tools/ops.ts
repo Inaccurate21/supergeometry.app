@@ -747,6 +747,20 @@ export class EdgeOp extends FeatureOp<EdgeFeature> {
       const refs = edgesOfFace(this.app, hit.body, hit.face).filter((k) => !this.app.view.body(hit.body)?.edges[k]?.seam).flatMap((k) => edgeRefOf(this.app, { body: hit.body, edge: k }) ?? []);
       const at = (r: EdgeRef) => this.feature.edges.findIndex((e) => e.body === r.body && Math.hypot(...sub(e.mid, r.mid)) < 1e-6);
       if (!refs.length) return;
+      // The face tapped again, as its preview shows it - its edges rounded
+      // in, new ones: those picked on its plane are dropped (they were added
+      // to instead - its rounded outline on top of them).
+      const face = this.app.view.body(hit.body)?.faces[hit.face];
+      if (face?.plane && refs.every((r) => at(r) < 0) && refs.some((r) => this.roundedInto(r) >= 0)) {
+        const n = norm(face.normal);
+        const onIt = (e: EdgeRef) => e.body === hit.body && Math.abs(dot(sub(e.mid, face.center), n)) < 1e-4 * Math.max(1, this.feature.radius) && Math.abs(dot(norm(e.dir), n)) < 1e-6;
+        if (this.feature.edges.some(onIt)) {
+          this.feature.edges = this.feature.edges.filter((e) => !onIt(e));
+          this.app.setSelection(this.edgeSels());
+          this.update();
+          return;
+        }
+      }
       if (refs.every((r) => at(r) >= 0)) this.feature.edges = this.feature.edges.filter((e) => !refs.some((r) => r.body === e.body && Math.hypot(...sub(e.mid, r.mid)) < 1e-6));
       else {
         const kin = withCircleKin(this.app, refs.filter((r) => at(r) < 0));
