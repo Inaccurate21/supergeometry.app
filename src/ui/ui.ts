@@ -16,6 +16,8 @@ export interface ToolItem {
   icon: IconName;
   /** Small second line, e.g. the current variant ("Diagonal"). */
   sub?: string;
+  /** A shorter name for the wheel, where a long one runs over the button ("Perpendicular to Edge at Point": "Square to Edge"). */
+  short?: string;
   shortcut?: string;
   active?: boolean;
   /** Draw the eye to it: a ring pulses round it (Exit Sketch once a shape is closed). */

@@ -1058,13 +1058,13 @@ export class App implements AppContext {
               }
             }),
             children: [
-              { id: "offset", label: "Offset Plane", icon: "planeOffset", run: () => this.setTool(new PlaneOp(this, null, undefined)) },
+              { id: "offset", label: "Offset Plane", short: "Offset", icon: "planeOffset", run: () => this.setTool(new PlaneOp(this, null, undefined)) },
               { id: "mid", label: "Midplane", icon: "planeMid", run: () => this.setTool(new MidplaneOp(this)) },
-              { id: "3pt", label: "Through 3 Points", icon: "plane3pt", run: () => this.setTool(new ThreePointPlaneOp(this)) },
-              { id: "curve", label: "On Curve at Point", icon: "planeCurve", run: () => this.setTool(new CurvePointPlaneOp(this, false)) },
-              { id: "perp", label: "Perpendicular to Edge at Point", icon: "planePerp", run: () => this.setTool(new CurvePointPlaneOp(this, true)) },
-              { id: "angle", label: "Through Edge at Angle", icon: "planeAngle", run: () => this.setTool(new EdgeAnglePlaneOp(this)) },
-              { id: "parallel", label: "Parallel to Face at Point", icon: "planeParallel", run: () => this.setTool(new FacePointPlaneOp(this)) },
+              { id: "3pt", label: "Through 3 Points", short: "3 Points", icon: "plane3pt", run: () => this.setTool(new ThreePointPlaneOp(this)) },
+              { id: "curve", label: "On Curve at Point", short: "On Curve", icon: "planeCurve", run: () => this.setTool(new CurvePointPlaneOp(this, false)) },
+              { id: "perp", label: "Perpendicular to Edge at Point", short: "Perpendicular", icon: "planePerp", run: () => this.setTool(new CurvePointPlaneOp(this, true)) },
+              { id: "angle", label: "Through Edge at Angle", short: "At Angle", icon: "planeAngle", run: () => this.setTool(new EdgeAnglePlaneOp(this)) },
+              { id: "parallel", label: "Parallel to Face at Point", short: "Parallel", icon: "planeParallel", run: () => this.setTool(new FacePointPlaneOp(this)) },
             ],
           },
           {

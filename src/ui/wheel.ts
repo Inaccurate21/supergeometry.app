@@ -1133,9 +1133,9 @@ export class Wheel implements WheelHandle {
   private sectorOf(it: ToolItem): Sector {
     if (opens(it)) {
       const cells = this.kindsOf(it);
-      return { id: it.id, label: it.label, icon: it.icon, swatch: it.swatch, cells, on: !!it.active, mark: marked(cells), starts: it.startsDefault ? it : undefined };
+      return { id: it.id, label: it.short ?? it.label, icon: it.icon, swatch: it.swatch, cells, on: !!it.active, mark: marked(cells), starts: it.startsDefault ? it : undefined };
     }
-    return { id: it.id, label: it.label, icon: it.icon, swatch: it.swatch, cells: [], item: it, on: !!it.active, mark: !!it.pulse };
+    return { id: it.id, label: it.short ?? it.label, icon: it.icon, swatch: it.swatch, cells: [], item: it, on: !!it.active, mark: !!it.pulse };
   }
 
   /**
@@ -1462,7 +1462,7 @@ export class Wheel implements WheelHandle {
       this.fanSvg.append(p);
       const rm = (c.r0 + c.r1) / 2;
       const mid = (c.a0 + c.a1) / 2;
-      this.fanItems.append(this.item(it, kidsOf(it).length ? `${it.label} ›` : it.label, `${it.active ? "on" : ""}${it.pulse ? " mark" : ""}`, rm, mid, roomFor(rm, mid, c.a1 - c.a0, c.r0, c.r1)));
+      this.fanItems.append(this.item(it, kidsOf(it).length ? `${it.short ?? it.label} ›` : it.short ?? it.label, `${it.active ? "on" : ""}${it.pulse ? " mark" : ""}`, rm, mid, roomFor(rm, mid, c.a1 - c.a0, c.r0, c.r1)));
       return p;
     });
     for (const p of this.fanEls) if (p.classList.contains("on")) this.fanSvg.append(p);
