@@ -97,9 +97,9 @@ interface Metrics {
   min: number;
   max: number;
 }
-const FINE: Metrics = { hub: 24, r0: 30, r1: 104, gap: 4, depth: 54, min: 46, max: 58 };
+const FINE: Metrics = { hub: 24, r0: 30, r1: 110, gap: 4, depth: 54, min: 46, max: 58 };
 /** Fingers (and a headset's ray): bigger cells. */
-const COARSE: Metrics = { hub: 26, r0: 32, r1: 108, gap: 4, depth: 58, min: 52, max: 64 };
+const COARSE: Metrics = { hub: 26, r0: 32, r1: 114, gap: 4, depth: 58, min: 52, max: 64 };
 /** The drawings are this far (px) each way from the middle at most. */
 const BOX = 440;
 const SVG = "http://www.w3.org/2000/svg";
@@ -222,6 +222,8 @@ interface Sector {
   ring?: Cell[];
   /** A colour as its picture, in place of an icon. */
   swatch?: string;
+  /** A tool with kinds (Rectangle, Plane): a small tab outside the ring says so, and a tap on it opens them too. */
+  kinds?: boolean;
 }
 /** A ring opened on the way to the one up now: where its middle was, and what of it was opened (`at`: its place, -1 one of its outer band). */
 interface Level {
@@ -306,6 +308,29 @@ function svgBox(): SVGSVGElement {
   return s;
 }
 
+/** A kinds tab: how far out from the ring it goes, and how wide it is (px). */
+const TAB_IN = 3;
+const TAB_OUT = 13;
+const TAB_HALF = 9;
+const angleOff = (a: number, b: number) => Math.atan2(Math.sin(a - b), Math.cos(a - b));
+
+/**
+ * The small tab just outside a piece of the ring (or of its outer band) that
+ * has kinds to choose from: a chevron pointing out, apart from the wheel.
+ */
+function tab(r1: number, mid: number, cls: string): SVGPathElement[] {
+  const a0 = r1 + TAB_IN;
+  const a1 = r1 + TAB_OUT;
+  const h = TAB_HALF / ((a0 + a1) / 2);
+  const at = (r: number, a: number) => `${(r * Math.cos(a)).toFixed(2)} ${(r * Math.sin(a)).toFixed(2)}`;
+  const rc = (a0 + a1) / 2;
+  const w = 3.2 / rc;
+  return [
+    path(`wheel-tab${cls}`, wedge(a0, a1, mid - h, mid + h, 0)),
+    path(`wheel-tab-mark${cls}`, `M${at(rc - 2, mid - w)}L${at(rc + 2, mid)}L${at(rc - 2, mid + w)}`),
+  ];
+}
+
 function path(cls: string, d: string): SVGPathElement {
   const p = document.createElementNS(SVG, "path");
   p.setAttribute("class", cls);
@@ -380,7 +405,9 @@ function fitSize(label: string, width: number, px: number, weight: number): { si
     for (let size = px; size >= least; size -= 0.5) if (linesOf(label, width, size, weight) <= lines) return { size, lines };
     return null;
   };
-  const got = fit(2, 9) ?? fit(3, 8) ?? fit(2, 7.5) ?? { size: 7.5, lines: 2 };
+  // One line first, a little smaller if need be (two lines pushed the icon up
+  // and made it look smaller than its neighbours'); two only for a long name.
+  const got = fit(1, Math.max(8.5, px - 1.5)) ?? fit(2, 8.5) ?? fit(2, 7.5) ?? { size: 7.5, lines: 2 };
   sizes.set(key, got);
   return got;
 }
@@ -1133,7 +1160,7 @@ export class Wheel implements WheelHandle {
   private sectorOf(it: ToolItem): Sector {
     if (opens(it)) {
       const cells = this.kindsOf(it);
-      return { id: it.id, label: it.short ?? it.label, icon: it.icon, swatch: it.swatch, cells, on: !!it.active, mark: marked(cells), starts: it.startsDefault ? it : undefined };
+      return { id: it.id, label: it.short ?? it.label, icon: it.icon, swatch: it.swatch, cells, on: !!it.active, mark: marked(cells), starts: it.startsDefault ? it : undefined, kinds: true };
     }
     return { id: it.id, label: it.short ?? it.label, icon: it.icon, swatch: it.swatch, cells: [], item: it, on: !!it.active, mark: !!it.pulse };
   }
@@ -1436,7 +1463,9 @@ export class Wheel implements WheelHandle {
       const p = path(`wheel-cell wheel-sector${dim ? " dim" : ""}${own ? " own" : ""}${s.on ? " on" : ""}`, wedge(m.r0, m.r1, mid - step / 2, mid + step / 2, 3));
       this.ringSvg.append(p);
       const rm = (m.r0 + m.r1) / 2 + 3;
-      this.ringItems.append(this.item(s, inner && !s.item && s.cells.length ? `${s.label} ›` : s.label, `sector${dim ? " dim" : ""}${s.mark ? " mark" : ""}${s.on ? " on" : ""}`, rm, mid, roomFor(rm, mid, step, m.r0, m.r1), true));
+      if (s.kinds) this.ringSvg.append(...tab(m.r1, mid, `${dim ? " dim" : ""}${s.on ? " on" : ""}`));
+      // (No dot on what opens - a group, a kinds tool: only a single tool to tap, Exit Sketch with a closed shape, pulses.)
+      this.ringItems.append(this.item(s, inner && !s.item && s.cells.length && !s.kinds ? `${s.label} ›` : s.label, `sector${dim ? " dim" : ""}${s.mark && s.item ? " mark" : ""}${s.on ? " on" : ""}`, rm, mid, roomFor(rm, mid, step, m.r0, m.r1), true));
       return p;
     });
     // (What's on is drawn last: its outline whole, over its neighbours'.)
@@ -1462,7 +1491,8 @@ export class Wheel implements WheelHandle {
       this.fanSvg.append(p);
       const rm = (c.r0 + c.r1) / 2;
       const mid = (c.a0 + c.a1) / 2;
-      this.fanItems.append(this.item(it, kidsOf(it).length ? `${it.short ?? it.label} ›` : it.short ?? it.label, `${it.active ? "on" : ""}${it.pulse ? " mark" : ""}`, rm, mid, roomFor(rm, mid, c.a1 - c.a0, c.r0, c.r1)));
+      if (kidsOf(it).length) this.fanSvg.append(...tab(c.r1, mid, it.active ? " on" : ""));
+      this.fanItems.append(this.item(it, it.short ?? it.label, `${it.active ? "on" : ""}${it.pulse ? " mark" : ""}`, rm, mid, roomFor(rm, mid, c.a1 - c.a0, c.r0, c.r1)));
       return p;
     });
     for (const p of this.fanEls) if (p.classList.contains("on")) this.fanSvg.append(p);
@@ -1531,15 +1561,15 @@ export class Wheel implements WheelHandle {
     if (r < m.r0) return HUB;
     if (this.isFolded) return NONE;
     const a = Math.atan2(dy, dx);
-    if (r <= m.r1 + m.gap / 2) {
-      const n = this.sectors.length;
-      const step = TAU / n;
-      const k = ((Math.floor((a + Math.PI / 2 + step / 2) / step) % n) + n) % n;
-      return this.sectors[k]?.blank ? NONE : SECTOR + k;
-    }
+    const n = this.sectors.length;
+    const step = TAU / n;
+    const k = ((Math.floor((a + Math.PI / 2 + step / 2) / step) % n) + n) % n;
+    if (r <= m.r1 + m.gap / 2) return this.sectors[k]?.blank ? NONE : SECTOR + k;
+    // A kinds tool's tab outside the ring: the tool.
+    if (!this.fan.length && this.sectors[k]?.kinds && r <= m.r1 + TAB_OUT + 2 && Math.abs(angleOff(a, this.midOf(k))) * r <= TAB_HALF + 3) return SECTOR + k;
     for (let i = 0; i < this.fan.length; i++) {
       const c = this.fan[i];
-      if (r < c.r0 - m.gap / 2 || r > c.r1 + m.gap / 2) continue;
+      if (r < c.r0 - m.gap / 2 || r > c.r1 + (kidsOf(c.item).length ? TAB_OUT + 2 : m.gap / 2)) continue;
       if ((((a - c.a0) % TAU) + TAU) % TAU <= c.a1 - c.a0) return CELL + i;
     }
     return NONE;

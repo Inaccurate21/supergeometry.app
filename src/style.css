@@ -5819,7 +5819,9 @@ circle.wheel-plate {
 }
 .wheel-item {
   position: absolute;
-  transform: translate(-50%, -50%);
+  /* Held by its icon, the name hanging below: every icon in the same place
+     on its piece whether its name takes one line or two. */
+  transform: translate(-50%, -17px);
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -5829,8 +5831,8 @@ circle.wheel-plate {
   pointer-events: none;
 }
 .wheel-item svg {
-  width: 19px;
-  height: 19px;
+  width: 21px;
+  height: 21px;
   flex: none;
 }
 .wheel-item .swatch {
@@ -5864,6 +5866,37 @@ circle.wheel-plate {
 .wheel-item.dim {
   opacity: 0.34;
 }
+/* A tool with kinds: a small tab just outside its piece, a chevron pointing out. */
+.wheel-tab {
+  fill: rgba(31, 33, 37, 0.94);
+  stroke: rgba(255, 255, 255, 0.14);
+  stroke-width: 1px;
+  pointer-events: none;
+}
+.wheel-tab.on {
+  fill: #1d3a6b;
+  stroke: var(--accent);
+}
+.wheel-tab-mark {
+  fill: none;
+  stroke: #c3c7cf;
+  stroke-width: 1.6px;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  pointer-events: none;
+}
+.wheel-tab-mark.on {
+  stroke: #b9d4ff;
+}
+.wheel-tab.dim,
+.wheel-tab-mark.dim {
+  opacity: 0.34;
+}
+/* (A group's tools out round the ring: its band is where the tabs would be.) */
+.wheel-root.fanned .wheel-ring .wheel-tab,
+.wheel-root.fanned .wheel-ring .wheel-tab-mark {
+  visibility: hidden;
+}
 .wheel-item.on,
 .wheel-item.on .wheel-name {
   color: #b9d4ff;
@@ -5883,6 +5916,7 @@ circle.wheel-plate {
 .wheel-item.wheel-grip {
   left: 0;
   top: 0;
+  transform: translate(-50%, -50%);
   color: var(--text);
   opacity: 0.8;
 }

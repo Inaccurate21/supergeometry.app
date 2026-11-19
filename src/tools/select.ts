@@ -228,6 +228,13 @@ export class SelectTool implements Tool {
       // the middle of the circle to sweep along opened its sketch instead.
       if (under?.kind === "profile") hit = under;
     }
+    // A double tap on a sketch's line opens its sketch, even where the line
+    // lies on a body (a sketch drawn on a face: its corner or the face won
+    // the pick, and the double tap took the whole body instead).
+    if (count >= 2 && !forced && !this.pending && (hit?.kind === "vertex" || hit?.kind === "edge" || hit?.kind === "face" || hit?.kind === "profile")) {
+      const line = this.app.view.pick(p.x, p.y, { edgeTolPx: p.tol, curves: true, vertices: false, edges: false, profiles: false, planes: false, axes: false });
+      if (line?.kind === "curve" || line?.kind === "point") hit = line;
+    }
     // Tapping a line/curve/point of a finished sketch opens it for editing, with that piece selected.
     if ((hit?.kind === "curve" || hit?.kind === "point") && !this.pending) {
       const tool = new SketchTool(this.app, { sketchId: hit.sketch });
