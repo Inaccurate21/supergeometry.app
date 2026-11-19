@@ -259,18 +259,23 @@ export class SelectTool implements Tool {
       this.openSketch(s.sketch, "select");
       return true;
     }
-    // Double tap selects the whole body.
-    if (count >= 2 && (s.kind === "face" || s.kind === "edge" || s.kind === "vertex")) s = { kind: "body", body: s.body };
-    // With bodies selected, tapping another body adds it (Union/Subtract need two).
-    if (sel[0]?.kind === "body" && (s.kind === "face" || s.kind === "edge" || s.kind === "vertex") && (p.add || !sel.some((x) => x.kind === "body" && x.body === (s as { body: string }).body))) {
-      s = { kind: "body", body: s.body };
-    }
-    if (sel.length && sel[0].kind === s.kind) {
-      const i = sel.findIndex((x) => sameSel(x, s!));
-      if (i >= 0 && count < 2) this.app.setSelection(sel.filter((_, j) => j !== i));
-      else if (i < 0) this.app.setSelection(p.add || sel[0].kind !== "vertex" ? [...sel, s] : [s]);
-    } else {
+    // Double tap selects the whole body (what its first tap picked there gives way to it).
+    const whole = count >= 2 && (s.kind === "face" || s.kind === "edge" || s.kind === "vertex");
+    if (whole) s = { kind: "body", body: (s as { body: string }).body };
+    // With bodies selected, tapping another body adds it (Union/Subtract need
+    // two) - and tapping a picked body anywhere lets it go.
+    if (sel[0]?.kind === "body" && (s.kind === "face" || s.kind === "edge" || s.kind === "vertex")) s = { kind: "body", body: s.body };
+    if (this.pending && (!sel.length || sel[0].kind !== s.kind)) {
+      // A tool waiting for its pick: what's tapped is the pick.
       this.app.setSelection([s]);
+    } else if (whole) {
+      const b = (s as { body: string }).body;
+      this.app.setSelection([...sel.filter((x) => !("body" in x && x.body === b)), s]);
+    } else {
+      // Each tap adds to what's picked, whatever it is (a face, then an edge,
+      // then a plane); tapping a picked one again lets it go.
+      const i = sel.findIndex((x) => sameSel(x, s!));
+      this.app.setSelection(i >= 0 ? sel.filter((_, j) => j !== i) : [...sel, s]);
     }
     // Waiting for a body, and a corner of one was tapped (an STL's faces meet
     // in corners everywhere): that body is the pick.
@@ -542,7 +547,8 @@ export class SelectTool implements Tool {
             this.armedHint() + (this.app.wheel.on && !this.app.wheel.kept ? (isTouchDevice ? " Press and hold for the tool wheel." : " Press Q for the tool wheel.") : ""),
     );
     const first = sel[0];
-    if (!first) return;
+    // (Picks of different kinds: no one handle is for all of them.)
+    if (!first || sel.some((x) => x.kind !== first.kind)) return;
     // The most likely next step gets a handle.
     if (first.kind === "profile") {
       const src = sourcesOf(this.app, sel)[0];
@@ -601,7 +607,7 @@ export class SelectTool implements Tool {
    */
   /** What the pick is ready for, in one line: its handle, then the other tools (the round buttons beside it when there are). */
   private armedHint(): string {
-    const sel = this.app.selection;
+    const sel = this.picks;
     const first = sel[0];
     const n = sel.length;
     const tap = isTouchDevice ? "tap" : "click";
@@ -641,10 +647,22 @@ export class SelectTool implements Tool {
     return withGroups(this.actionList());
   }
 
-  private actionList(): ToolItem[] {
+  /**
+   * What the tools are for: everything picked - or, picks of different kinds
+   * (a face, then an edge), the ones of the kind picked last.
+   */
+  private get picks(): Sel[] {
     const sel = this.app.selection;
+    const k = sel[sel.length - 1]?.kind;
+    return sel.every((x) => x.kind === k) ? sel : sel.filter((x) => x.kind === k);
+  }
+
+  private actionList(): ToolItem[] {
+    const all = this.app.selection;
+    const sel = this.picks;
     if (!sel.length) return [];
-    const head: ToolItem[] = [{ id: "deselect", label: "Deselect All", icon: "deselect", shortcut: "Esc", sub: `${sel.length} ${label(sel[0], sel.length)}`, run: () => this.app.setSelection([]) }];
+    const mixed = all.length > sel.length;
+    const head: ToolItem[] = [{ id: "deselect", label: "Deselect All", icon: "deselect", shortcut: "Esc", sub: mixed ? `${all.length} items` : `${sel.length} ${label(sel[0], sel.length)}`, run: () => this.app.setSelection([]) }];
     // A freeform body (or a face/edge/point of one): open its cage, picking the spot that was tapped.
     const first = sel[0];
     const ffBody = "body" in first ? first.body : "";
@@ -738,7 +756,7 @@ export class SelectTool implements Tool {
 
   private profileActions(): ToolItem[] {
     const app = this.app;
-    const sel = app.selection;
+    const sel = this.picks;
     const src = sourcesOf(app, sel)[0] as Extract<ExtrudeSource, { kind: "profile" }> | undefined;
     const sketchId = (sel[0] as Extract<Sel, { kind: "profile" }>).sketch;
     const plane = app.sketchPlane(sketchId);
@@ -776,7 +794,7 @@ export class SelectTool implements Tool {
 
   private faceActions(): ToolItem[] {
     const app = this.app;
-    const sel = app.selection;
+    const sel = this.picks;
     const s = sel[0] as Extract<Sel, { kind: "face" }>;
     const info = app.view.body(s.body)?.faces[s.face];
     const flat = !!info?.plane;
@@ -838,7 +856,7 @@ export class SelectTool implements Tool {
 
   private edgeActions(): ToolItem[] {
     const app = this.app;
-    const sel = app.selection;
+    const sel = this.picks;
     const s = sel[0] as Extract<Sel, { kind: "edge" }>;
     const info = app.view.body(s.body)?.edges[s.edge];
     const bodies = bodiesOf(sel);
@@ -899,7 +917,7 @@ export class SelectTool implements Tool {
 
   private bodyActions(): ToolItem[] {
     const app = this.app;
-    const bodies = bodiesOf(app.selection);
+    const bodies = bodiesOf(this.picks);
     const multi = bodies.length >= 2;
     // An open surface (it has open edges: a sheet, not a solid).
     const openSurface = bodies.length === 1 && !!app.view.bodyList.find((b) => b.id === bodies[0])?.openEdges?.length;
@@ -1035,7 +1053,7 @@ export class SelectTool implements Tool {
 
   private planeActions(): ToolItem[] {
     const app = this.app;
-    const s = app.selection[0] as Extract<Sel, { kind: "plane" }>;
+    const s = this.picks[0] as Extract<Sel, { kind: "plane" }>;
     const plane = app.view.planeOf(s.id);
     const isFeature = !!app.store.find(s.id);
     return [
@@ -1048,7 +1066,7 @@ export class SelectTool implements Tool {
 
   private axisActions(): ToolItem[] {
     const app = this.app;
-    const s = app.selection[0] as Extract<Sel, { kind: "axis" }>;
+    const s = this.picks[0] as Extract<Sel, { kind: "axis" }>;
     return [{ id: "delete", label: "Delete", icon: "trash", shortcut: "Del", run: () => (app.store.remove(s.id), app.setSelection([])) }];
   }
 
@@ -1066,12 +1084,10 @@ export class SelectTool implements Tool {
    * its next tools as buttons beside it (QuickActions).
    */
   private showQuick(items: ToolItem[]): void {
-    const sel = this.app.selection;
+    const sel = this.picks;
     if (!sel.length || this.pending) return;
     const view = this.app.view;
     const s = sel[sel.length - 1];
-    // (Mixed kinds: the tools are for all of them - no one place to show them.)
-    if (!sel.every((x) => x.kind === s.kind)) return;
     const show = (kind: QuickKind, at: Vec3 | undefined, place?: QuickPlace) => {
       if (at) this.quick = QuickActions.show(view, kind, items, at, place);
     };
@@ -1174,7 +1190,7 @@ export class SelectTool implements Tool {
   /** Fillet/chamfer every edge round the selected faces: on a flat one's plane, or a round one's rims. */
   private edgesOfFaces(kind: "fillet" | "chamfer"): void {
     const refs: EdgeRef[] = [];
-    for (const s of this.app.selection) {
+    for (const s of this.picks) {
       if (s.kind !== "face") continue;
       const b = this.app.view.body(s.body);
       const f = b?.faces[s.face];
@@ -1204,7 +1220,7 @@ export class SelectTool implements Tool {
   }
 
   private sketchOnFace(kind?: string): void {
-    const s = this.app.selection[0] as Extract<Sel, { kind: "face" }>;
+    const s = this.picks[0] as Extract<Sel, { kind: "face" }>;
     const info = this.app.view.body(s.body)?.faces[s.face];
     if (!info?.plane) return;
     const ref = faceRefOf(this.app, s)!;
@@ -1218,7 +1234,7 @@ export class SelectTool implements Tool {
   /** The picked edges in a new sketch: on a flat face they all lie on, or else on the plane through them. */
   private projectEdges(): void {
     const app = this.app;
-    const picked = app.selection.filter((x): x is Extract<Sel, { kind: "edge" }> => x.kind === "edge");
+    const picked = this.picks.filter((x): x is Extract<Sel, { kind: "edge" }> => x.kind === "edge");
     const infos = picked.map((x) => ({ s: x, b: app.view.body(x.body), e: app.view.body(x.body)?.edges[x.edge] })).filter((x) => x.b && x.e);
     if (!infos.length) return;
     const pts = infos.flatMap((x) => [x.e!.start, x.e!.mid, x.e!.end]);
@@ -1262,7 +1278,7 @@ export class SelectTool implements Tool {
   }
 
   private projectFace(then: string): void {
-    const s = this.app.selection[0] as Extract<Sel, { kind: "face" }>;
+    const s = this.picks[0] as Extract<Sel, { kind: "face" }>;
     const b = this.app.view.body(s.body);
     const f = b?.faces[s.face];
     if (!b || !f?.plane) return;

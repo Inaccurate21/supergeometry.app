@@ -4314,13 +4314,16 @@ export class SketchTool implements Tool {
     if (hit?.kind !== "profile" || hit.sketch !== this.sketchId) return false;
     const s = hitToSel(hit);
     if (!s || s.kind !== "profile") return false;
-    const same = this.regionArrow?.sel.some((x) => x.kind === "profile" && x.region === s.region);
+    // Each shape tapped joins the ones picked (one arrow pulls them all); tapped again, it leaves.
+    const had = this.regionArrow?.sel ?? [];
+    const same = had.some((x) => x.kind === "profile" && x.region === s.region);
     if (this.selected.size || this.selPts.length) this.clearSelection();
-    if (same) {
+    const next = same ? had.filter((x) => !(x.kind === "profile" && x.region === s.region)) : [...had, s];
+    if (!next.length) {
       this.hideRegionArrow();
       return true;
     }
-    this.showRegionArrow([s]);
+    this.showRegionArrow(next);
     return true;
   }
 

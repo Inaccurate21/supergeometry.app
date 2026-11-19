@@ -213,17 +213,13 @@ export class App implements AppContext {
         if (this.tool instanceof TransformOp && this.tool.toggleBody(id)) return;
         // Subtract, Shell… waiting for a body: it takes this one.
         if (this.tool instanceof FeatureOp && this.tool.pickBody(id)) return;
-        const had = this.selection.filter((s) => s.kind === "body");
-        this.setTool(null);
-        if (!isTouchDevice || !had.length || had.length !== this.selection.length) return this.setSelection([{ kind: "body", body: id }]);
-        const i = had.findIndex((s) => s.kind === "body" && s.body === id);
-        this.setSelection(i >= 0 ? had.filter((_, k) => k !== i) : [...had, { kind: "body", body: id }]);
+        this.togglePick({ kind: "body", body: id });
       },
       editSketch: (id) => this.setTool(new SketchTool(this, { sketchId: id })),
-      selectPlane: (id) => (this.setTool(null), this.setSelection([{ kind: "plane", id }])),
+      selectPlane: (id) => this.togglePick({ kind: "plane", id }),
       deleteBody: (id) => this.store.add({ ...this.store.newIdentity("delete"), type: "delete", bodies: [id] }),
       deleteFeature: (id) => this.store.remove(id),
-      selectImage: (id) => (this.setTool(null), this.setSelection([{ kind: "image", id }])),
+      selectImage: (id) => this.togglePick({ kind: "image", id }),
       rename: async (id, current, isBody) => {
         const v = await this.ui.dialog("Rename", [{ key: "name", label: "Name", value: current }]);
         const name = v?.name.trim();
@@ -423,6 +419,15 @@ export class App implements AppContext {
 
   revealInItems(ids: string[]): void {
     this.items.reveal(ids);
+  }
+
+  /** A pick from the Items list: it joins what's picked (picked already: it leaves), as taps in the view do. */
+  private togglePick(s: Sel): void {
+    // (Another tool's highlights aren't picks.)
+    const had = this.tool === this.selectTool ? this.selection : [];
+    this.setTool(null);
+    const i = had.findIndex((x) => sameSel(x, s));
+    this.setSelection(i >= 0 ? had.filter((_, k) => k !== i) : [...had, s]);
   }
 
   isolate(bodies: string[] | null): void {
