@@ -21,7 +21,7 @@ import type { ToolPointer } from "../view/input";
 import { dotMaterial, planeMarkMaterial, PLANE_MARK_SIZE } from "../view/viewport";
 import { isCoarse, screenClass } from "../device";
 import { DragTyping, type DragTypingTarget } from "./dragTyping";
-import { Gimbal, GIMBAL_AXES, type GimbalPart } from "./gimbal";
+import { Gimbal, GIMBAL_AXES, SCALE_PARTS, type GimbalPart } from "./gimbal";
 import { axisDrag } from "./handles";
 import { FillToPlaneOp } from "./ops";
 import type { AppContext, Sel, Tool } from "./tool";
@@ -77,7 +77,9 @@ export class FreeformTool implements Tool {
   private picks: Pick[] = [];
   private hovered: Pick | null = null;
   private gimbal: Gimbal | null = null;
-  private dragging: { part: GimbalPart; from: ToolPointer; base: Vec3[]; center: Vec3; d: Vec3; ang: number } | null = null;
+  private dragging: { part: GimbalPart; from: ToolPointer; base: Vec3[]; center: Vec3; d: Vec3; ang: number; k: Vec3; r0: number } | null = null;
+  /** What the gimbal up now is for (Move, Turn or Scale: its handles are that one's). */
+  private gimbalFor = "";
   private typing: DragTyping;
   /** The card's exact values: what they act on (Move, Turn, Scale), and the points as they were before typing. */
   private xform: "move" | "turn" | "scale" = "move";
@@ -374,7 +376,7 @@ export class FreeformTool implements Tool {
       this.fieldBase = null;
       // Nothing moved yet: no offset, no turn - and every scale factor 1 (0 flattened the points).
       this.fieldVals = this.xform === "scale" ? [1, 1, 1, 1] : [0, 0, 0, 1];
-      items.push({ type: "choice", options: [{ id: "move", label: "Move" }, { id: "turn", label: "Turn" }, { id: "scale", label: "Scale" }], value: this.xform, onChange: (v) => ((this.xform = v as typeof this.xform), this.panel()) });
+      items.push({ type: "choice", options: [{ id: "move", label: "Move" }, { id: "turn", label: "Turn" }, { id: "scale", label: "Scale" }], value: this.xform, onChange: (v) => ((this.xform = v as typeof this.xform), this.panel(), this.placeGimbal()) });
       if (this.xform === "scale") {
         items.push({ type: "number", label: "All", value: 1, kind: "number", min: 0.01, onInput: (v) => this.setField(3, v) });
         for (const [k, a] of ["X", "Y", "Z"].entries()) items.push({ type: "number", label: a, value: 1, kind: "number", min: 0.01, onInput: (v) => this.setField(k, v) });
@@ -1096,7 +1098,11 @@ export class FreeformTool implements Tool {
       this.gimbal = null;
       return;
     }
-    this.gimbal ??= new Gimbal(this.app.view, { axes: this.axes });
+    // Move: the arrows and planes; Turn: the rings; Scale: the cube-ended handles and the middle.
+    if (this.gimbal && this.gimbalFor !== this.xform) (this.gimbal.dispose(), (this.gimbal = null));
+    this.gimbalFor = this.xform;
+    const parts = this.xform === "turn" ? (q: GimbalPart) => q.kind === "ring" : this.xform === "scale" ? SCALE_PARTS : (q: GimbalPart) => q.kind !== "ring";
+    this.gimbal ??= new Gimbal(this.app.view, { axes: this.axes, parts, cubes: this.xform === "scale" });
     this.gimbal.setCenter(this.centroid(ids));
   }
 
@@ -1139,7 +1145,10 @@ export class FreeformTool implements Tool {
     const center = part.kind === "ring" && ids.length === 1 ? this.centroid(this.cage.verts.map((_, i) => i)) : this.gimbal.origin;
     this.remember();
     this.fieldBase = null;
-    this.dragging = { part, from: p, base: this.cage.verts.map((v) => [...v] as Vec3), center, d: [0, 0, 0], ang: 0 };
+    // (Scale: the press's distance from the middle on screen is "as it is" for this drag.)
+    const c = this.app.view.toScreen(this.gimbal.origin);
+    const r0 = c ? Math.max(24, Math.hypot(p.x - c[0], p.y - c[1])) : 60;
+    this.dragging = { part, from: p, base: this.cage.verts.map((v) => [...v] as Vec3), center, d: [0, 0, 0], ang: 0, k: [1, 1, 1], r0 };
     this.gimbal.setHot(part);
     return true;
   }
@@ -1153,6 +1162,15 @@ export class FreeformTool implements Tool {
     const step = niceStep(view.cam.worldPerPixel(view.height) * 4);
     const snap = (v: number) => (p.shift ? v : Math.round(v / step) * step);
     const part = dr.part;
+    if (this.xform === "scale" && (part.kind === "axis" || part.kind === "center")) {
+      const c = view.toScreen(dr.center);
+      if (!c) return;
+      let f = part.kind === "axis" ? (dr.r0 + axisDrag(view, dr.center, this.axes[part.i], dr.from, p) / view.cam.worldPerPixel(view.height)) / dr.r0 : Math.hypot(p.x - c[0], p.y - c[1]) / dr.r0;
+      f = Math.max(0.01, p.shift ? f : Math.round(f * 100) / 100);
+      this.scaleBy(part.kind === "axis" ? ([0, 1, 2].map((i) => (i === part.i ? f : 1)) as Vec3) : [f, f, f]);
+      this.boxAt(p, `×${f.toFixed(2)}`);
+      return;
+    }
     if (part.kind === "axis") {
       const dir = this.axes[part.i];
       const d = snap(axisDrag(view, dr.center, dir, dr.from, p));
@@ -1179,6 +1197,21 @@ export class FreeformTool implements Tool {
       this.apply([0, 0, 0], total);
       this.boxAt(p, `${total}°`);
     }
+  }
+
+  /** Scale the selected points from where the drag began, about the gimbal's middle, by k along its three axes. */
+  private scaleBy(k: Vec3): void {
+    const dr = this.dragging;
+    if (!dr) return;
+    dr.k = k;
+    const ids = this.selectedVerts();
+    for (const i of ids) {
+      const v = sub(dr.base[i], dr.center);
+      this.cage.verts[i] = this.axes.reduce((q, a, j) => add(q, scale(a, dot(v, a) * k[j])), dr.center);
+    }
+    this.mirrorMoved(ids);
+    this.gimbal?.setCenter(this.centroid(ids));
+    this.rebuild();
   }
 
   /** Move the selected points from where the drag began: translate d, then turn `deg` about the gimbal axis. */
@@ -1288,7 +1321,7 @@ export class FreeformTool implements Tool {
   }
 
   up(): void {
-    const moved = !!this.dragging && (len(this.dragging.d) > 0 || this.dragging.ang !== 0);
+    const moved = !!this.dragging && (len(this.dragging.d) > 0 || this.dragging.ang !== 0 || this.dragging.k.some((x) => x !== 1));
     const from = this.dragging?.from;
     // A press on the gimbal that moved nothing isn't a step to undo…
     if (this.dragging && !moved) (this.past.pop(), this.app.refreshUndo());
@@ -1326,6 +1359,13 @@ export class FreeformTool implements Tool {
     if (!dr) return null;
     const part = dr.part;
     const dragDir = norm(dr.d);
+    if (this.xform === "scale" && (part.kind === "axis" || part.kind === "center"))
+      return {
+        kind: "number",
+        apply: (v) => v > 0 && this.scaleBy(part.kind === "axis" ? ([0, 1, 2].map((i) => (i === part.i ? v : 1)) as Vec3) : [v, v, v]),
+        commit: () => this.up(),
+        cancel: () => this.scaleBy([1, 1, 1]),
+      };
     return {
       kind: part.kind === "ring" ? "angle" : "length",
       apply: (v) => {
