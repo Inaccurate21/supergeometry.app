@@ -1370,6 +1370,12 @@ export class Wheel implements WheelHandle {
     this.rest();
     this.root.hidden = false;
     this.up = true;
+    const r = this.resume;
+    this.resume = null;
+    if (r && r.layout === this.layout) {
+      this.stack = r.stack;
+      this.itemsChanged();
+    }
   }
 
   toggle(x: number, y: number, opts: WheelOpen = {}): void {
@@ -1392,8 +1398,9 @@ export class Wheel implements WheelHandle {
     else this.hide();
   }
 
+  /** Scrolled, or the window left: one up at the pointer goes; a kept one stays on the ring it is on. */
   private away(): void {
-    if (this.up) this.close();
+    if (this.up && !this.kept) this.hide();
   }
 
   /** Off the screen altogether. */
@@ -1409,9 +1416,12 @@ export class Wheel implements WheelHandle {
     this.grab = null;
     this.adopt = false;
     this.hot = NONE;
+    // (Kept, put away while a tool is open: back on the same ring after, as far as it is still there.)
+    this.resume = this.kept && this.stack.length && this.layout ? { layout: this.layout, stack: this.stack } : null;
     this.stack = [];
     this.fan = [];
   }
+  private resume: { layout: string; stack: Level[] } | null = null;
 
   private clearTimers(): void {
     clearTimeout(this.tipTimer);
@@ -1721,8 +1731,10 @@ export class Wheel implements WheelHandle {
       this.itemsChanged();
       return;
     }
-    this.close();
+    // Kept, it stays on the ring it is on (pick another colour, the next tool of the group); up at the pointer, it goes.
+    if (!this.kept) this.hide();
     item.run?.();
+    if (this.kept) this.itemsChanged();
   }
 
   /** A tap (or a press let go) at (x, y) on a place of the ring, or of its outer band. */
@@ -1773,14 +1785,7 @@ export class Wheel implements WheelHandle {
         this.hide();
         return;
       }
-      // Kept somewhere, it stays: the press only takes it back to its first ring. A finger's is spent
-      // on that (a tap meant to close the ring would draw a point).
-      if (!this.stack.length) return;
-      this.shut();
-      if (e.pointerType === "touch" && onView) {
-        e.preventDefault();
-        e.stopPropagation();
-      }
+      // Kept somewhere, it stays - on the ring it is on: the press goes on to what was pressed (a pick, a turn of the view).
       return;
     }
     e.preventDefault();
