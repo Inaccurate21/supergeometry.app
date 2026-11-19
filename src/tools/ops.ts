@@ -507,7 +507,12 @@ export class ExtrudeOp extends FeatureOp<ExtrudeFeature> {
   protected done(): void {
     // Nothing pulled: nothing made. (Up to a face or plane, or through all, has
     // no distance of its own: Done there made nothing and said nothing.)
-    if (this.feature.distance === 0 && (this.feature.extent ?? "distance") === "distance") return this.app.setTool(null);
+    // (A shape from a sketch left at 0 - Symmetric's box is "Each side", and
+    // a 60 meant for it went nowhere: Done closed without a word.)
+    if (this.feature.distance === 0 && (this.feature.extent ?? "distance") === "distance") {
+      if (!this.existing && this.feature.source.kind === "profile") this.app.ui.toast(`Nothing made: the ${this.feature.symmetric ? "distance each side" : "distance"} was 0`);
+      return this.app.setTool(null);
+    }
     if (!this.existing && this.feature.source.kind === "profile") lastExtrude.distance = this.feature.distance;
     super.done();
   }
