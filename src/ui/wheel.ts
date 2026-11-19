@@ -8,11 +8,12 @@
 // ORDER), and the middle becomes Back. A tool with kinds of its own (Plane,
 // Colour…) opens them the same way. Press, slide, let go: any tool in one stroke.
 //
-// Its middle is a handle: dragged, the wheel goes where it is put and is kept
-// there - it then stays up, showing what the pick offers, instead of coming up
-// at the pointer (a tap on the middle folds it to just the handle, two let it
-// go back to the pointer). In a sketch it is the sketch's wheel, always kept:
-// the drawing tools by what they are for.
+// It has a place of its own on the screen and stays up there, showing what
+// the pick offers (it no longer comes up at the pointer: tapped closed there,
+// it was gone, and people looked for it). Its middle is a handle: dragged,
+// the wheel goes where it is put and is kept there; a tap on it folds it to
+// just the handle, another opens it again. In a sketch it is the sketch's
+// wheel: the drawing tools by what they are for.
 //
 // It holds exactly what the column and the bottom bar hold - the same
 // ToolItems, by the same rule (only what can be used now) - so the keys, the
@@ -102,8 +103,12 @@ const COARSE: Metrics = { hub: 26, r0: 32, r1: 108, gap: 4, depth: 58, min: 52, 
 const BOX = 440;
 const SVG = "http://www.w3.org/2000/svg";
 const TAU = Math.PI * 2;
-/** Where the wheel is kept, per kind of screen (as the tool card's place is). */
-const SPOTS = "sg-wheel-spot";
+/**
+ * Where the wheel is kept, per kind of screen (as the tool card's place is).
+ * (A new key: the wheels' first places moved to a column beside History, and
+ * places kept from before would have hidden that.)
+ */
+const SPOTS = "sg-wheel-spot-2";
 /** The top sector: what's picked (its own tools), and the view's. */
 const OWN = "own";
 /**
@@ -411,7 +416,7 @@ export class Wheel implements WheelHandle {
   /** Where it is kept, by layout: the middle as fractions of the page's width and height. */
   private spots: Partial<Record<WheelLayout, [number, number]>> = {};
   /** Kept, and folded to just its middle (until the page is loaded again). */
-  private folded: Record<WheelLayout, boolean> = { model: false, sketch: screenClass() === "phone", freeform: screenClass() === "phone", settings: true, options: true };
+  private folded: Record<WheelLayout, boolean> = { model: screenClass() === "phone", sketch: screenClass() === "phone", freeform: screenClass() === "phone", settings: true, options: true };
   /** Where it belongs (px): where it was put, or where it came up. */
   private home = { x: 0, y: 0 };
   /** The middle, on the page (off its home while a fan needs the room). */
@@ -430,7 +435,6 @@ export class Wheel implements WheelHandle {
   private pressed: number | null = null;
   /** Pressed on the middle: the wheel goes with it once it moves. */
   private grab: { dx: number; dy: number; moved: boolean } | null = null;
-  private hubTapAt = -Infinity;
   /** Opened under a finger still down: its next move makes it the pressed one. */
   private adopt = false;
   private adopted = false;
@@ -518,7 +522,7 @@ export class Wheel implements WheelHandle {
   }
 
   get kept(): boolean {
-    return this.layout === "sketch" || this.layout === "freeform" || this.layout === "settings" || this.layout === "options" || (this.layout === "model" && !!this.spots.model);
+    return !!this.layout;
   }
 
   private get isFolded(): boolean {
@@ -594,9 +598,10 @@ export class Wheel implements WheelHandle {
 
   /** Where a kept wheel belongs on the page as it is now. */
   private homeNow(): { x: number; y: number } {
+    const kept = this.layout && (this.spots[this.layout] ?? (this.kind === "tools" ? this.spots.model : undefined));
+    if (kept) return { x: kept[0] * innerWidth, y: kept[1] * innerHeight };
+    if (document.documentElement.dataset.screen !== "phone") return this.columnSpot();
     if (this.layout === "settings" || this.layout === "options") {
-      const s = this.spots[this.layout];
-      if (s) return { x: s[0] * innerWidth, y: s[1] * innerHeight };
       // Never put anywhere: at the bottom right, beside the right-hand column (folded, just its icon) -
       // the Options above the Settings.
       const col = document.getElementById("right-col")?.getBoundingClientRect();
@@ -613,14 +618,38 @@ export class Wheel implements WheelHandle {
       }
       return { x: right - 8 - r, y: innerHeight - 70 - step - r };
     }
-    // (The sketch's wheel never moved: where the model's is kept, if it is.)
-    const s = (this.layout && this.spots[this.layout]) ?? this.spots.model;
-    if (s) return { x: s[0] * innerWidth, y: s[1] * innerHeight };
     // Never put anywhere: where the tool column is - at the left, beside Items when that is open
     // (folded, its middle is at the edge; unfolded, the ring is clear of it).
     const items = document.getElementById("items");
     const left = items?.classList.contains("open") && innerWidth > 720 ? items.getBoundingClientRect().right : 0;
     return { x: left + 8 + (this.isFolded ? this.m.r0 : this.m.r1), y: innerHeight / 2 };
+  }
+
+  /**
+   * Where a wheel never put anywhere goes on a tablet or a computer: one
+   * column, just left of the History panel (or of the buttons at the right when
+   * it is shut), the tools at the top, the Options below them, the Settings at
+   * the bottom - far enough apart that open, they don't run into each other
+   * (as far as the screen's height allows), and below the view cube.
+   */
+  private columnSpot(): { x: number; y: number } {
+    const m = isCoarse ? COARSE : FINE;
+    const r = m.r1;
+    const M = 8;
+    const box = (id: string) => {
+      const b = document.getElementById(id)?.getBoundingClientRect();
+      return b && b.width > 0 && b.height > 0 ? b : null;
+    };
+    const history = document.body.classList.contains("history-open") ? box("history") : null;
+    const col = box("right-col");
+    const right = Math.min(history?.left ?? innerWidth, col?.left ?? innerWidth);
+    const x = right - M - r;
+    const cube = box("viewcube-host");
+    const top = Math.max(56, cube && cube.left < x + r && cube.right > x - r ? cube.bottom + M : 0);
+    const bottom = innerHeight - M;
+    const slot = this.kind === "settings" ? 2 : this.kind === "options" ? 1 : 0;
+    const step = Math.max(m.r0 * 2 + M, Math.min(2 * r + 12, (bottom - top - 2 * r) / 2));
+    return { x, y: Math.min(top + r + slot * step, bottom - r) };
   }
 
   /** A kept wheel at its home, as near it as keeps it whole on the screen (folded: just its middle). */
@@ -669,16 +698,6 @@ export class Wheel implements WheelHandle {
     this.settle();
     this.still = false;
     this.root.classList.add("kept");
-    this.host.ui.toast("The wheel stays here now. Tap its middle to fold it away - twice, and it comes up at the pointer again.");
-  }
-
-  /** The model's wheel no longer kept anywhere: it comes up at the pointer again. */
-  private letGo(): void {
-    delete this.spots.model;
-    this.saveSpots();
-    this.folded.model = false;
-    this.hide();
-    this.host.ui.toast("The wheel comes up at the pointer again: tap the model, or an empty spot.");
   }
 
   // ---------------------------------------------------------------- content
@@ -740,7 +759,7 @@ export class Wheel implements WheelHandle {
         const cells = it.options.map((o): Cell => ({ item: opt(o.label, () => it.onChange(o.id), o.id === it.value) }));
         // (A slot's quick picks - XY, XZ, YZ for a plane's From - have no name
         // and none picked: "Kind" hid them; they're named by what they are.)
-        const named = it.label ?? now?.label ?? (it.options.length <= 3 ? it.options.map((o) => o.label).join(" · ") : "Kind");
+        const named = it.wheelName ?? it.label ?? now?.label ?? (it.options.length <= 3 ? it.options.map((o) => o.label).join(" · ") : "Kind");
         sectors.push({ id: `choice-${k}`, label: named, icon: "more", cells, mark: false });
       } else if (it.type === "toggle") {
         const item = opt(it.label, () => it.onChange(!it.value), it.value, it.value ? "On" : "Off", iconNameFor(it.label) ?? (it.value ? "check" : "close"));
@@ -1585,13 +1604,10 @@ export class Wheel implements WheelHandle {
     this.enter(s.id, s.ring ?? s.cells, this.midOf(i), i);
   }
 
-  /** A tap on the middle: back a ring; on the first, one up at the pointer closes, one kept somewhere folds or unfolds - twice, the model's is let go. */
+  /** A tap on the middle: back a ring; on the first, it folds to just its middle, or opens again (never gone from the screen). */
   private hubTap(): void {
     if (this.stack.length) return this.back();
     if (!this.kept) return this.hide();
-    const now = performance.now();
-    if (this.layout === "model" && now - this.hubTapAt < 400) return this.letGo();
-    this.hubTapAt = now;
     this.fold(!this.isFolded);
   }
 

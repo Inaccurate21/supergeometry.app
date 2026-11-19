@@ -3127,12 +3127,19 @@ export class SketchTool implements Tool {
         }
         this.lenExpr = null;
         if (this.locks.ang !== undefined && !cs.some((x) => x.type === "horizontal" || x.type === "vertical")) cs.push({ id: uid(), type: "dim", curves: [id], prop: "angle", value: this.locks.ang });
+        // Ending on a point already drawn (another curve's end): if that closes a
+        // shape - one drawn in pieces, after an arc, or carried on from an end
+        // after a stop - the line tool lets go too, as closing on its own first
+        // point does. (It kept drawing: the next tap meant to turn the view
+        // started another line.)
+        const regionsBefore = !closes && this.sketchId && (snapRef ?? this.typedEndOn(pt, id)) ? arrangement(this.app.sketchCurves(this.sketchId)).regions.length : -1;
         this.commitAdd([{ id, kind: "line", a, b: pt }], cs);
         this.lastLineId = id;
         this.chainFirstId ??= id;
         // Closing the chain on its first point ends it.
         // The outline closed: the drawing tool lets go (Select), so the next drag turns the view.
         if (closes || (this.pts.length > 1 && samePt(pt, start))) return this.shapeClosed();
+        if (regionsBefore >= 0 && this.sketchId && arrangement(this.app.sketchCurves(this.sketchId)).regions.length > regionsBefore) return this.shapeClosed();
         // Touch: its length in a box right away, for the numpad.
         // (A pen too, numpad or not: tap the line's end, then type its length.)
         if ((settings.value.numpad || this.pen) && this.locks.len === undefined) queueMicrotask(() => this.showLineBox(id));

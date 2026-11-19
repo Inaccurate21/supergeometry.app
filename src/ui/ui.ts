@@ -73,7 +73,17 @@ export type PanelItem =
       follows?: boolean;
     }
   | { type: "slot"; label: string; value: string; active: boolean; filled: boolean; onClick(): void }
-  | { type: "choice"; label?: string; options: { id: string; label: string }[]; value: string; onChange(id: string): void; /** Always a drop-down. */ list?: boolean }
+  | {
+      type: "choice";
+      label?: string;
+      options: { id: string; label: string }[];
+      value: string;
+      onChange(id: string): void;
+      /** Always a drop-down. */
+      list?: boolean;
+      /** Its name on the Options wheel, when not its label (what it does now: "Cut", "Add"…). */
+      wheelName?: string;
+    }
   | { type: "toggle"; label: string; value: boolean; onChange(v: boolean): void }
   /**
    * Drag to set (no typing, no maths): how much a spout bends, a handle

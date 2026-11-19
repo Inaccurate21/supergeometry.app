@@ -182,6 +182,14 @@ export interface ExtrudeFeature extends FeatureBase {
   mode: "auto" | "new" | "join" | "cut" | "intersect";
   target?: string;
   /**
+   * Auto by the way it goes (extrudes made since this was added): with no body
+   * of its own (drawn on a plane, not on a face) a new body going +, a cut of
+   * what it runs into going - (a new body if it runs into nothing). Without
+   * it, as before: a cut of whatever it runs into, either way - kept so that
+   * projects made then come out as they were.
+   */
+  byDirection?: boolean;
+  /**
    * How big the far end is, as a fraction of the shape (1 or missing: straight
    * sides; 0.5: half size; near 0: to a point - a spire, a pyramid, a cone).
    */

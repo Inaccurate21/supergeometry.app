@@ -1101,7 +1101,8 @@ async function apply(f: Feature, ctx: Ctx): Promise<void> {
       if (upTo) solid = trimmedTo(solid, upTo, startFaces()[0]?.face.center.toTuple() as Vec3);
       // Auto: other bodies the extrusion runs into get cut through. Drawn on
       // its own (no body it belongs to), it then only cuts - no new body.
-      if (f.mode === "auto") {
+      // (By the way it goes: going +, a shape drawn on its own is a new body, whatever it runs into.)
+      if (f.mode === "auto" && !(f.byDirection && !f.target && distance >= 0)) {
         const hit = overlapping(solid, ctx, f.target);
         // Started inside a body (drawn on a plane through it) and reaching out
         // of it: cut, and the part outside left off - said so (a pipe's branch
@@ -2636,18 +2637,90 @@ export function threadFace(body: Shape3D, face: Face, pitch: number, left = fals
   const t0 = Math.min(...ts);
   const t1 = Math.max(...ts);
   if (t1 - t0 < pitch) throw new Error("This face is shorter than one turn of the thread");
-  // The groove stops just short of both ends: its ends never lie on a face of
-  // the body (a groove running out through an end face can make OpenCascade's
-  // cut silently do nothing, or take the whole rod), and under a head it
-  // mustn't cut into the head anyway.
-  const lo = t0 + 0.05 * pitch;
-  const hi = t1 - 0.05 * pitch;
   // The groove's section in a plane through the axis: a 60° V from its tip
   // (the thread's depth) opening past the face.
   const out = inside ? -1 : 1;
   const tip = cy.r - out * depth;
   const mouth = cy.r + out * 0.2 * pitch;
   const hm = Math.abs(mouth - tip) * Math.tan(Math.PI / 6);
+  // The groove stops just short of both ends: its ends never lie on a face of
+  // the body (a groove run out through an end face makes OpenCascade's cut
+  // take the wrong amount, every start tried), and under a head it mustn't
+  // cut into the head anyway. That leaves a thin ring of the face at each end
+  // and the groove's flat stub beside it: at an end with nothing past it (a
+  // shank's free end, a hole's open end) - seen there as stray little faces
+  // along its edge - a 45° chamfer down to the thread's root takes them away,
+  // as a bolt's end (a nut's mouth) is made.
+  const side = norm(cross(a, Math.abs(a[0]) < 0.9 ? [1, 0, 0] : [0, 1, 0]));
+  const side2 = cross(a, side);
+  const freeAt = (t: number, way: number): boolean => {
+    const rr = (cy.r + tip) / 2;
+    const at: Vec3[] = [];
+    for (let k = 0; k < 6; k++) {
+      const th = (k * Math.PI) / 3;
+      at.push(add(add(cy.c, scale(a, t + way * 0.3 * pitch)), add(scale(side, rr * Math.cos(th)), scale(side2, rr * Math.sin(th)))));
+    }
+    try {
+      return !insideOf(body, at).some(Boolean);
+    } catch {
+      return false;
+    }
+  };
+  const res = threadCut(body, face, cy, a, pitch, left, inside, depth, tip, mouth, hm, t0, t1);
+  if (res) {
+    let r = res;
+    for (const [t, way] of [[t0, -1], [t1, 1]] as const) if (freeAt(t, way)) r = threadEndChamfer(r, cy.c, a, side, cy.r, tip, out, t, way, pitch) ?? r;
+    return r;
+  }
+  // A very fine pitch on a wide face is where this happens: "slightly different" sent people from 0.2 to 0.21.
+  throw new Error(pitch < 0.1 * cy.r ? "The thread couldn't be cut here - try a coarser pitch" : "The thread couldn't be cut here - try a slightly different pitch");
+}
+
+/**
+ * A thread's free end chamfered at 45° from the face down to the thread's
+ * root (in to the minor diameter of a shank, out to the major of a hole), so
+ * the groove's stopped end is cut away. Null when the cut goes wrong.
+ */
+function threadEndChamfer(body: Shape3D, c: Vec3, a: Vec3, side: Vec3, r: number, tip: number, out: number, t: number, way: number, pitch: number): Shape3D | null {
+  try {
+    const e = 0.5 * pitch;
+    const air = r + out * e;
+    const at = (rr: number, tt: number): Vec3 => add(add(c, scale(a, tt)), scale(side, rr));
+    // A triangle in a plane through the axis, its slope through (root, end), turned all the way round.
+    // (Through a point a little below the root: through the root itself, a sliver of the groove's stub stayed.)
+    const root = tip - out * 0.15 * pitch;
+    const tri = makePolygon([at(root - out * e, t + way * e), at(air, t + way * e), at(air, t - way * Math.abs(air - root))]);
+    const ring = revolution(tri, c, a, 360) as Shape3D;
+    const v0 = Math.abs(measureVolume(body));
+    const res = body.cut(ring);
+    const v = Math.abs(measureVolume(res));
+    // It takes a little (no more than the ring holds, at most the body's own share of it).
+    const most = Math.abs(measureVolume(ring));
+    if (!Number.isFinite(v) || !(v < v0) || v0 - v > most || subShapes(res, "SOLID").length !== subShapes(body, "SOLID").length) return null;
+    return res;
+  } catch {
+    return null;
+  }
+}
+
+/** threadFace's groove, stopped just short of both ends; null when it can't be made right. */
+function threadCut(
+  body: Shape3D,
+  face: Face,
+  cy: NonNullable<ReturnType<typeof cylinderOf>>,
+  a: Vec3,
+  pitch: number,
+  left: boolean,
+  inside: boolean,
+  depth: number,
+  tip: number,
+  mouth: number,
+  hm: number,
+  t0: number,
+  t1: number,
+): Shape3D | null {
+  const lo = t0 + 0.05 * pitch;
+  const hi = t1 - 0.05 * pitch;
   // Only along the face (a shank's thread mustn't run into the head).
   const reach = Math.max(cy.r, tip, mouth) + pitch * 2;
   const slab = makeCylinder(reach, hi - lo, add(cy.c, scale(a, lo)), a) as Shape3D;
@@ -2700,7 +2773,20 @@ export function threadFace(body: Shape3D, face: Face, pitch: number, left = fals
         const profile = makePolygon([at(mouth, -hm), at(tip, 0), at(mouth, hm)]).outerWire();
         pieces.push(pipeAlong(profile, helix, a).intersect(slab));
       }
-      cut = pieces.length === 1 ? pieces[0] : (makeCompound(pieces) as unknown as Shape3D);
+      // Fused into one groove where it can be: cut as pieces, a little flat
+      // triangle stayed where each piece met the next (a stray face on the
+      // thread, all of them in a line down one side).
+      let one: Shape3D | null = pieces.length === 1 ? pieces[0] : null;
+      if (!one) {
+        try {
+          let f = pieces[0];
+          for (const q of pieces.slice(1)) f = fuzzyBoolean("fuse", f, q);
+          if (subShapes(f, "SOLID").length === 1) one = f;
+        } catch {
+          // the pieces, then
+        }
+      }
+      cut = one ?? (makeCompound(pieces) as unknown as Shape3D);
     } catch {
       continue;
     }
@@ -2713,8 +2799,7 @@ export function threadFace(body: Shape3D, face: Face, pitch: number, left = fals
       }
     }
   }
-  // A very fine pitch on a wide face is where this happens: "slightly different" sent people from 0.2 to 0.21.
-  throw new Error(pitch < 0.1 * cy.r ? "The thread couldn't be cut here - try a coarser pitch" : "The thread couldn't be cut here - try a slightly different pitch");
+  return null;
 }
 
 /** A shell in pieces: what was cut into the opened face hung from that face alone. */

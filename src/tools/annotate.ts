@@ -354,7 +354,7 @@ function freeAreas(): { sides: DOMRect[]; panel: DOMRect | null } {
   return freeCache;
 }
 
-function clampToFree(s: [number, number], hw: number, hh: number): [number, number] {
+export function clampToFree(s: [number, number], hw: number, hh: number): [number, number] {
   let left = 8;
   let right = window.innerWidth - 8;
   const free = freeAreas();

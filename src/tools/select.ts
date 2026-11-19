@@ -1,3 +1,4 @@
+import { QuickActions } from "./quickActions";
 import { circleAxis } from "./slots";
 import { isTouchDevice } from "../device";
 import { BODY_COLORS, BODY_OPACITY, bodyColor } from "../doc/types";
@@ -41,6 +42,8 @@ export class SelectTool implements Tool {
   private handle: Handle | null = null;
   private handleAction: (() => Tool) | null = null;
   private gimbal: Gimbal | null = null;
+  /** The next tools for what's picked, as buttons beside it. */
+  private quick: QuickActions | null = null;
   private copyToggle: CopyToggle | null = null;
   private dim: DimWidget | null = null;
   /** A tool chosen with nothing selected waits for the selection. */
@@ -497,7 +500,8 @@ export class SelectTool implements Tool {
     // Whatever an earlier tool left on screen goes too (no ghost arrows or dots).
     this.app.view.clearHelpers([]);
     const sel = this.app.selection;
-    this.app.ui.setTools(sel.length ? this.actions() : this.app.mainTools());
+    const items = sel.length ? this.actions() : this.app.mainTools();
+    this.app.ui.setTools(items);
     this.app.ui.setBottom(this.app.bottomTools());
     this.app.ui.setHint(
       this.pending
@@ -519,6 +523,7 @@ export class SelectTool implements Tool {
     );
     const first = sel[0];
     if (!first) return;
+    this.showQuick(items);
     // The most likely next step gets a handle.
     if (first.kind === "profile") {
       const src = sourcesOf(this.app, sel)[0];
@@ -1037,7 +1042,27 @@ export class SelectTool implements Tool {
     this.handleAction = action;
   }
 
+  /** One face, edge or point of a body picked: its next tools as buttons beside it (QuickActions). */
+  private showQuick(items: ToolItem[]): void {
+    const sel = this.app.selection;
+    const s = sel[0];
+    if (sel.length !== 1 || this.pending || (s.kind !== "face" && s.kind !== "edge" && s.kind !== "vertex") || this.freeformOf(s.body)) return;
+    const b = this.app.view.body(s.body);
+    if (s.kind === "face") {
+      const f = b?.faces[s.face];
+      if (f) this.quick = QuickActions.show(this.app.view, "face", items, f.center, f.plane ? f.normal : undefined);
+    } else if (s.kind === "edge") {
+      const e = b?.edges[s.edge];
+      if (e) this.quick = QuickActions.show(this.app.view, "edge", items, e.mid);
+    } else {
+      const v = this.app.view.vertexOf(s.body, s.vertex);
+      if (v) this.quick = QuickActions.show(this.app.view, "vertex", items, v);
+    }
+  }
+
   private clearHandle(): void {
+    this.quick?.dispose();
+    this.quick = null;
     this.handle?.dispose();
     this.handle = null;
     this.handleAction = null;

@@ -68,6 +68,7 @@ import { makeCylinder, makeBaseBox } from "replicad";
 import { threadFace } from "../src/kernel/engine";
 import { defaultPitch as dp } from "../src/kernel/threads";
 const bad: string[] = [];
+const stray: string[] = [];
 let n = 0;
 t = Date.now();
 for (const D of [3, 4, 5, 6, 8, 10, 12, 16, 20, 24]) {
@@ -78,6 +79,9 @@ for (const D of [3, 4, 5, 6, 8, 10, 12, 16, 20, 24]) {
       const rod = makeCylinder(D / 2, 3 * D, [0, 0, 0]) as any;
       const out = threadFace(rod, rod.faces.find((f: any) => f.geomType === "CYLINDRE"), P, left);
       if (!isHealthy(healthOf(out))) bad.push(`M${D} rod${left ? " left" : ""}: not clean`);
+      // Clean ends: no flat bits left of the groove's stopped ends, nor where its pieces met - just the two end faces.
+      const flats = out.faces.filter((f: any) => f.geomType === "PLANE").length;
+      if (flats !== 2) stray.push(`M${D} rod${left ? " left" : ""}: ${flats} flat faces`);
     } catch (e) {
       bad.push(`M${D} rod${left ? " left" : ""}: ${(e as Error).message}`);
     }
@@ -86,10 +90,18 @@ for (const D of [3, 4, 5, 6, 8, 10, 12, 16, 20, 24]) {
       const hole = nutB.faces.find((f: any) => f.geomType === "CYLINDRE");
       const out = threadFace(nutB, hole, P, left);
       if (!isHealthy(healthOf(out))) bad.push(`M${D} nut${left ? " left" : ""}: not clean`);
+      const flats = out.faces.filter((f: any) => f.geomType === "PLANE").length;
+      if (flats !== 6) stray.push(`M${D} nut${left ? " left" : ""}: ${flats} flat faces`);
     } catch (e) {
       bad.push(`M${D} nut${left ? " left" : ""}: ${(e as Error).message}`);
     }
   }
 }
 check(`M3–M24, rods and nuts, both hands: all ${n} threaded`, !bad.length, `${bad.join("; ")} (${Date.now() - t} ms)`);
+// The groove stops just short of each end; at a free end a 45° chamfer to the root takes away what that left
+// (a thin ring of the face and the groove's flat stub: stray little faces along the end's edge).
+check("…their ends clean: only the end faces flat (chamfered at the free ends)", !stray.length, stray.join("; "));
+// Under the screw's head the thread stops short, unchamfered: the head is as it was (checked above), and the free end is chamfered.
+const cones = s1.faces.filter((f) => f.geomType === "CONE").map((f) => f.center.z);
+check("…the screw: its free end chamfered, nothing at the head", cones.length > 0 && cones.every((z) => z < -25), cones.map((z) => z.toFixed(2)).join(" "));
 process.exit(failed ? 1 : 0);

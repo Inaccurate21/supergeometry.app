@@ -34,10 +34,22 @@ const MODES = [
   { id: "intersect", label: "Intersect" },
 ];
 
-/** The result choice; `plain`: without Intersect (a tool that only adds, cuts or stands alone). */
-function modeChoice<M extends Mode>(get: () => M, set: (m: M) => void, rerender: () => void, plain = false): PanelItem {
-  return { type: "choice", options: plain ? MODES.filter((m) => m.id !== "intersect") : MODES, value: get(), onChange: (m) => (set(m as M), rerender()) };
+/**
+ * The result choice, "Operation"; `plain`: without Intersect (a tool that only
+ * adds, cuts or stands alone). `auto`: what Auto does here now ("Cut", "Add",
+ * "New body") - said on its option, and the wheel names the choice by what it
+ * does (it was named "Auto", which said nothing).
+ */
+function modeChoice<M extends Mode>(get: () => M, set: (m: M) => void, rerender: () => void, plain = false, auto?: () => string): PanelItem {
+  const effect = auto?.();
+  const options = (plain ? MODES.filter((m) => m.id !== "intersect") : MODES).map((m) => (m.id === "auto" && effect ? { id: m.id, label: `Auto: ${effect}` } : m));
+  const now = get();
+  const wheelName = now === "auto" ? effect : MODES.find((m) => m.id === now)?.label;
+  return { type: "choice", label: "Operation", options, value: now, onChange: (m) => (set(m as M), rerender()), ...(wheelName ? { wheelName } : {}) };
 }
+
+/** What Auto does for a revolve, sweep or loft: adds to the body it is drawn on, else a body of its own. */
+const autoAddsOrNew = (target: string | undefined) => (target ? "Add" : "New body");
 
 // ------------------------------------------------------------------ extrude
 
@@ -72,6 +84,8 @@ export class ExtrudeOp extends FeatureOp<ExtrudeFeature> {
     // Pushing a face of its own body is an Offset Face step in the history.
     const label = source.kind === "face" && mode !== "new" ? "Offset Face" : undefined;
     super(app, { ...app.store.newIdentity("extrude", label), type: "extrude", source, distance: opts.distance ?? 0, mode, target: targetOf(app, source) }, existing);
+    // Auto by the way it goes: + a new body (or added to the body it is drawn on), - a cut.
+    if (!existing) this.feature.byDirection = true;
     this.frame = sourceFrame(app, this.feature.source);
     this.handle = new Handle(app.view, "arrow");
     if (this.feature.extent === "to") this.slots = [this.upToSlot()];
@@ -230,6 +244,8 @@ export class ExtrudeOp extends FeatureOp<ExtrudeFeature> {
           this.update();
         },
         () => this.render(),
+        false,
+        () => this.autoEffect(),
       ),
       // Every shape in the sketch at once (a scale, lettering: hundreds of them,
       // far too many to tap) - holes stay holes.
@@ -493,8 +509,22 @@ export class ExtrudeOp extends FeatureOp<ExtrudeFeature> {
     });
   }
 
+  /** What Auto does with the extrude as it is now. */
+  private autoEffect(): string {
+    const f = this.feature;
+    const into = f.distance < 0;
+    // On a face of a body (a sketch on it, or the face itself pushed): out adds to it, in cuts it.
+    if (f.target || f.source.kind === "face") return into ? "Cut" : "Add";
+    // On its own: going - it cuts what it runs into (a new body if nothing); + a new body (made before: a cut either way).
+    if (!f.byDirection) return this.app.view.bodyList.length ? "Cut or new" : "New body";
+    return into && this.app.view.bodyList.length ? "Cut" : "New body";
+  }
+
   private setDistance(d: number): void {
+    const was = this.autoEffect();
     this.feature.distance = d;
+    // Auto now does the other thing (dragged through the shape's plane): the Operation says so.
+    if (this.feature.mode === "auto" && this.autoEffect() !== was) queueMicrotask(() => this.render());
     this.app.ui.updatePanelValues([d]);
     this.dim?.setValue(this.shown());
     this.update();
@@ -1005,7 +1035,7 @@ export class RevolveOp extends FeatureOp<RevolveFeature> {
     return [
       this.num("Angle", "angle", "angle"),
       this.num("Travel", "travel", "length", { onInput: (v) => this.setTravel(v), inBox: true }),
-      modeChoice(() => this.feature.mode, (m) => ((this.feature.mode = m), this.update()), () => this.render()),
+      modeChoice(() => this.feature.mode, (m) => ((this.feature.mode = m), this.update()), () => this.render(), false, () => autoAddsOrNew(this.feature.target)),
     ];
   }
 
@@ -1145,7 +1175,7 @@ export class SweepOp extends FeatureOp<SweepFeature> {
         value: this.feature.corner ?? "round",
         onChange: (v) => ((this.feature.corner = v === "mitre" ? "mitre" : undefined), this.update()),
       },
-      modeChoice(() => this.feature.mode, (m) => ((this.feature.mode = m), this.update()), () => this.render()),
+      modeChoice(() => this.feature.mode, (m) => ((this.feature.mode = m), this.update()), () => this.render(), false, () => autoAddsOrNew(this.feature.target)),
     ];
   }
 }
@@ -1309,7 +1339,7 @@ export class LoftOp extends FeatureOp<LoftFeature> {
       { type: "button", label: guided ? "Remove centre line" : "Centre line", icon: guided ? "close" : "sweep", onClick: () => this.toggleExtra("guide") },
       { type: "button", label: this.extra.rails ? "Remove guide curves" : "Guide curves", icon: this.extra.rails ? "close" : "sweep", onClick: () => this.toggleExtra("rails") },
       { type: "button", label: this.extra.conns ? "Remove connections" : "Connections", icon: this.extra.conns ? "close" : "sweep", onClick: () => this.toggleExtra("conns") },
-      modeChoice(() => this.feature.mode, (m) => ((this.feature.mode = m), this.update()), () => this.render()),
+      modeChoice(() => this.feature.mode, (m) => ((this.feature.mode = m), this.update()), () => this.render(), false, () => autoAddsOrNew(this.feature.target)),
     ];
   }
 }

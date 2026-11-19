@@ -5935,3 +5935,56 @@ circle.wheel-plate {
 .wheel-tip .beta-tag {
   margin-left: 0;
 }
+
+/* ---------------------------------------------------------- quick actions */
+/* The next tools for what's picked, as round buttons just below it on the model. */
+.quick-actions {
+  position: fixed;
+  left: 0;
+  top: 0;
+  display: flex;
+  gap: 8px;
+  z-index: 30;
+  pointer-events: auto;
+  -webkit-user-select: none;
+  user-select: none;
+  touch-action: none;
+}
+.quick-actions[hidden] {
+  display: none;
+}
+.quick-action {
+  width: 48px;
+  height: 48px;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 1px;
+  border-radius: 50%;
+  border: 1.5px solid rgba(120, 165, 255, 0.6);
+  background: rgba(31, 33, 37, 0.95);
+  color: var(--text);
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.45);
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+.quick-action:hover,
+.quick-action:active {
+  background: #2a57a3;
+  border-color: #8fbcff;
+}
+.quick-action svg {
+  width: 18px;
+  height: 18px;
+  flex: none;
+}
+.quick-action span {
+  font-size: 9px;
+  line-height: 10px;
+  max-width: 44px;
+  overflow: hidden;
+  white-space: nowrap;
+  color: #c3c7cf;
+}
