@@ -12,7 +12,7 @@ import { Box3, BufferAttribute, BufferGeometry, DoubleSide, Sprite, LineBasicMat
 import { LineSegments2 } from "three/examples/jsm/lines/LineSegments2.js";
 import { LineSegmentsGeometry } from "three/examples/jsm/lines/LineSegmentsGeometry.js";
 import type { FaceFreeformFeature, Feature, FreeformEditFeature, FreeformFeature, PlaneDef, TransformFeature, Vec3 } from "../doc/types";
-import { faceCage } from "../freeform/faceGrid";
+import { faceCage, facesNormal, liftOnto, onCorners, toFaces } from "../freeform/faceGrid";
 import { applyPlan, archBridge, planeCage, borderChains, cachedPlan, planIndices, smoothNormals, type SubdivPlan, bridgeChains, bridgeFaces, moveTurnScale, shapeCage, sweepFace, type Chain, boundaryEdges, bridgeLoops, cageEdgeKey, extendBorder, cageEdges, deleteFaces, extrudeFaces, fillHole, holeLoops, insertEdgeLoop, insetFaces, isClosed, primitiveCage, refineCage, selfCrossings, subdivide, type Cage, type CagePrimitive } from "../freeform/cage";
 import { add, cross, dot, len, niceStep, norm, scale, sub, xDirFor } from "../geom";
 import type { PanelItem } from "../ui/ui";
@@ -67,14 +67,22 @@ export type EditKeep = { edit?: string; inPlace?: boolean };
 
 /**
  * A cage `n` across over a face's triangles (relative to `center`) - or, if
- * the face's outline won't take that many, the nearest coarser preset.
+ * the face's outline won't take that many, the nearest coarser preset. Over
+ * several faces side by side: laid seen along `normal` (their middle way), then
+ * put down onto them - where they meet, the cage bends, and the smooth surface
+ * through it rounds the corner off.
  */
-export function layFaceCage(tris: [Vec3, Vec3, Vec3][], center: Vec3, normal: Vec3, n: number): { cage: Cage; n: number } | null {
+export function layFaceCage(tris: [Vec3, Vec3, Vec3][], center: Vec3, normal: Vec3, n: number, several = false): { cage: Cage; n: number } | null {
   for (const k of FACE_GRIDS.filter((g) => g <= n).reverse()) {
     const cage = faceCage(tris, center, normal, k);
-    if (cage) return { cage, n: k };
+    if (cage) return { cage: several ? onCorners(liftOnto(cage, center, normal, tris), center, tris) : cage, n: k };
   }
   return null;
+}
+
+/** The way a Freeform Face step's faces face (one face: its normal; several: the middle of theirs). */
+export function faceStepNormal(f: FaceFreeformFeature): Vec3 {
+  return f.more?.length ? facesNormal([f.face.normal, ...f.more.map((m) => m.normal)]) : norm(f.face.normal);
 }
 
 /** "Pick in a box" (a finger draws the box): on until switched off. */
@@ -180,7 +188,7 @@ export class FreeformTool implements Tool {
       const f = from.face.feature;
       this.cage = { faces: structuredClone(f.cage.faces), verts: f.cage.verts.map((v) => add(f.face.center, v)) };
       this.surfaceSheet = true;
-      const n = norm(f.face.normal);
+      const n = faceStepNormal(f);
       const u = xDirFor(n);
       this.axes = [u, norm(cross(n, u)), n];
     } else if ("feature" in from) {
@@ -537,7 +545,7 @@ export class FreeformTool implements Tool {
         options: FACE_GRIDS.map((n) => ({ id: String(n), label: String(n) })),
         value: String(f.feature.grid ?? ""),
         onChange: (v) => {
-          const laid = layFaceCage(f.tris, f.feature.face.center, f.feature.face.normal, Number(v));
+          const laid = layFaceCage(f.tris, f.feature.face.center, faceStepNormal(f.feature), Number(v), !!f.feature.more?.length);
           if (!laid) return this.app.ui.toast("This face's outline won't take a grid that fine");
           const moved = !this.flat();
           f.feature.grid = laid.n;
@@ -566,6 +574,12 @@ export class FreeformTool implements Tool {
   /** Is every cage point still on the face's plane (nothing shaped)? */
   private flat(): boolean {
     const f = this.face!.feature.face;
+    // Several faces (a new step): every point still on them.
+    const more = this.face!.feature.more;
+    if (more?.length) {
+      const n = faceStepNormal(this.face!.feature);
+      return !this.face!.existing && this.cage.verts.every((v) => Math.abs(toFaces(v, n, this.face!.tris) ?? 1) < 1e-6);
+    }
     return this.cage.verts.every((v) => Math.abs(dot(sub(v, f.center), f.normal)) < 1e-9);
   }
 
@@ -1619,7 +1633,7 @@ export class FreeformTool implements Tool {
       const f = this.faceDraft();
       // A new step that shapes nothing: no step at all.
       if (this.face.existing) this.saveEdit(f.id, { cage: f.cage, grid: f.grid });
-      else if (!this.flat()) this.app.store.add(f);
+      else if (!this.flat() || f.more?.length) this.app.store.add(f); // (several faces: made one smooth surface even as laid)
       this.app.setTool(null);
       return f.face.body;
     }

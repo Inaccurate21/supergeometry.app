@@ -534,6 +534,11 @@ export interface FaceFreeformFeature extends FeatureBase {
   type: "faceFreeform";
   face: FaceRef;
   /**
+   * More faces of the body, side by side with `face`, made one smooth
+   * surface with it (no edge left where they met).
+   */
+  more?: FaceRef[];
+  /**
    * The cage shaping it, laid over the face: points relative to the face's
    * middle (so it follows the face when an earlier step moves it). Its border
    * runs round the face's edge and stays there; the inside points are moved.

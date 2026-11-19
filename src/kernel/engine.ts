@@ -56,6 +56,7 @@ import type {
 } from "../doc/types";
 import { fillEdgeKey } from "../doc/types";
 import { applyFreeformEdits } from "../doc/freeformEdits";
+import { facesNormal } from "../freeform/faceGrid";
 import { add, cross, dist, dot, len, norm, scale, sub, toWorld, xDirFor } from "../geom";
 import { outlineOffsetCurves, projectPolyline } from "../sketch/edit";
 import { solveFine } from "../sketch/constraints";
@@ -77,7 +78,7 @@ import { edgeOrigins, edgeSteps, faceAliases, faceOrigins, faceSteps, inheritTag
 import { closestOnEntity } from "../sketch/regions";
 
 import { cylinderOf, deleteFace,
- deleteFaces as deleteBodyFaces, editNotes, freeformFace, sameSizesAgain, sheetFace, hasBlends, offsetFace, onFace as pointOnFace, planeOf, replaceFacePlane, SIDES_MEET, sizeOf, unify } from "./faceEdit";
+ deleteFaces as deleteBodyFaces, editNotes, freeformFace, sameSizesAgain, sheetFace, sheetFaces, hasBlends, offsetFace, onFace as pointOnFace, planeOf, replaceFacePlane, SIDES_MEET, sizeOf, unify } from "./faceEdit";
 import { threadDepth } from "./threads";
 import { anchorOf, freeformFaces, meshViews, viewEdge } from "./viewLines";
 import { entitiesWire, pathOf, regionFaces, regionHoleWires, regionWire, withFittedSplines } from "./sketchGeom";
@@ -1708,6 +1709,18 @@ async function apply(f: Feature, ctx: Ctx): Promise<void> {
       // The cage follows the face (an earlier step moved it).
       const c = face.center.toTuple() as Vec3;
       const cage = { faces: f.cage.faces, verts: f.cage.verts.map((v) => add(c, v)) };
+      // Several faces side by side: one smooth surface over them all (no fitted way for those).
+      if (f.more?.length) {
+        const Fs = [face, ...f.more.map((r) => resolveFace(body, r))];
+        const n = facesNormal(Fs.map((F) => F.normalAt().toTuple() as Vec3));
+        try {
+          bodies.set(f.face.body, staysClosed(body, sheetFaces(body, Fs, cage, n)));
+        } catch (err) {
+          if (isFault(err) || (err instanceof Error && /holes in them/.test(err.message))) throw err;
+          throw new Error("These faces can't be made one smooth surface like that - move the points less, or pick fewer faces");
+        }
+        return;
+      }
       const n = norm(face.normalAt().toTuple() as Vec3);
       // Through the cage's surface twice as fine as the cage; if the face
       // can't be filled through that many points (a fine cage on an outline

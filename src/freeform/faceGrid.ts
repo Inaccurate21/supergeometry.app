@@ -238,3 +238,115 @@ export function faceCage(tris: [Vec3, Vec3, Vec3][], center: Vec3, normal: Vec3,
   }
   return null;
 }
+
+/**
+ * Freeform Face over several faces side by side (a top and the side it bends
+ * into): one way they all face - the middle of their normals - to lay one grid
+ * over all of them, seen along it.
+ */
+export function facesNormal(normals: Vec3[]): Vec3 {
+  const s = normals.reduce((a, n) => {
+    const m = norm(n);
+    return [a[0] + m[0], a[1] + m[1], a[2] + m[2]] as Vec3;
+  }, [0, 0, 0] as Vec3);
+  return norm(s);
+}
+
+/**
+ * How far along `normal` from `p` the faces made of `tris` are (the nearest
+ * way; null when no triangle is under or over it).
+ */
+export function toFaces(p: Vec3, normal: Vec3, tris: [Vec3, Vec3, Vec3][]): number | null {
+  let best: number | null = null;
+  for (const [a, b, c] of tris) {
+    // Where the line p + t·normal meets the triangle's plane, and whether that is inside it.
+    const e1 = sub(b, a);
+    const e2 = sub(c, a);
+    const h = cross(normal, e2);
+    const det = dot(e1, h);
+    if (Math.abs(det) < 1e-12) continue;
+    const s = sub(p, a);
+    const u = dot(s, h) / det;
+    const q = cross(s, e1);
+    const v = dot(normal, q) / det;
+    const eps = 1e-6;
+    if (u < -eps || v < -eps || u + v > 1 + eps) continue;
+    const t = dot(e2, q) / det;
+    if (best === null || Math.abs(t) < Math.abs(best)) best = t;
+  }
+  return best;
+}
+
+/** A grid laid flat (points relative to `center`) put down onto the faces it was laid over, each point straight along `normal`. */
+export function liftOnto(cage: Cage, center: Vec3, normal: Vec3, tris: [Vec3, Vec3, Vec3][]): Cage {
+  const n = norm(normal);
+  return {
+    faces: cage.faces,
+    verts: cage.verts.map((v) => {
+      const t = toFaces([center[0] + v[0], center[1] + v[1], center[2] + v[2]], n, tris);
+      return t === null || Math.abs(t) < 1e-9 ? v : ([v[0] + n[0] * t, v[1] + n[1] * t, v[2] + n[2] * t] as Vec3);
+    }),
+  };
+}
+
+/**
+ * Where the outline of faces side by side turns sharply (a top meeting the
+ * side it bends into: its outline turns down there), the nearest border point
+ * of the grid goes right onto that corner - the smooth surface's border bends
+ * only at its points, and would cut the corner off the body's edge. (Points
+ * relative to `center`.)
+ */
+export function onCorners(cage: Cage, center: Vec3, tris: [Vec3, Vec3, Vec3][]): Cage {
+  const key = (p: Vec3) => p.map((x) => Math.round(x * 1e4)).join(",");
+  const at = new Map<string, Vec3>();
+  const uses = new Map<string, number>();
+  for (const t of tris)
+    for (let k = 0; k < 3; k++) {
+      const a = key(t[k]);
+      const b = key(t[(k + 1) % 3]);
+      if (a === b) continue;
+      at.set(a, t[k]);
+      const e = a < b ? `${a}|${b}` : `${b}|${a}`;
+      uses.set(e, (uses.get(e) ?? 0) + 1);
+    }
+  const nb = new Map<string, string[]>();
+  for (const [e, c] of uses) {
+    if (c !== 1) continue;
+    const [a, b] = e.split("|");
+    nb.set(a, [...(nb.get(a) ?? []), b]);
+    nb.set(b, [...(nb.get(b) ?? []), a]);
+  }
+  const corners: Vec3[] = [];
+  for (const [k, ns] of nb) {
+    if (ns.length !== 2) continue;
+    const p = at.get(k)!;
+    const d1 = norm(sub(p, at.get(ns[0])!));
+    const d2 = norm(sub(at.get(ns[1])!, p));
+    if (dot(d1, d2) < Math.cos((25 * Math.PI) / 180)) corners.push(p);
+  }
+  const border = new Set<number>();
+  const count = new Map<string, number>();
+  for (const f of cage.faces)
+    for (let k = 0; k < 4; k++) {
+      const a = f[k];
+      const b = f[(k + 1) % 4];
+      const e = a < b ? `${a}|${b}` : `${b}|${a}`;
+      count.set(e, (count.get(e) ?? 0) + 1);
+    }
+  for (const [e, c] of count) if (c === 1) for (const v of e.split("|")) border.add(Number(v));
+  const verts = cage.verts.map((v) => [...v] as Vec3);
+  const taken = new Set<number>();
+  for (const c of corners) {
+    const rel = sub(c, center);
+    let best = -1;
+    let bd = Infinity;
+    for (const i of border) {
+      const d = Math.hypot(verts[i][0] - rel[0], verts[i][1] - rel[1], verts[i][2] - rel[2]);
+      if (d < bd) ((bd = d), (best = i));
+    }
+    if (best < 0 || taken.has(best)) continue;
+    taken.add(best);
+    verts[best] = rel;
+  }
+  return { faces: cage.faces, verts };
+}

@@ -803,6 +803,8 @@ export class SelectTool implements Tool {
     const src = sourcesOf(app, sel)[0];
     const faceRefs = sel.flatMap((x) => (x.kind === "face" ? [faceRefOf(app, x)!] : []));
     const needFlat = { disabled: !flat || !one, why: "Needs one flat face" };
+    const allFlat = sel.every((x) => x.kind === "face" && x.body === s.body && !!app.view.body(x.body)?.faces[x.face]?.plane);
+    const freeFaces = { disabled: !allFlat, why: one ? "Needs a flat face" : "Needs flat faces of one body" };
     const ref = faceRefOf(app, s);
     const bodies = bodiesOf(sel);
     // A round face: its axis (from its mesh).
@@ -840,7 +842,8 @@ export class SelectTool implements Tool {
       { id: "plane", label: "Plane – Offset", icon: "plane", ...needFlat, run: () => info?.plane && app.setTool(new PlaneOp(app, info.plane, faceRefOf(app, s)!)) },
       { id: "loft", label: "Loft", icon: "loft", ...needFlat, run: () => app.setTool(new LoftOp(app, sourcesOf(app, sel).flatMap(splitRegions), sel)) },
       // The face made smooth: a grid of points over it to pull out or push in; its edges stay put.
-      { id: "faceFreeform", label: "Freeform Face", icon: "faceFreeform", beta: true, ...needFlat, run: () => { const t = faceFreeformTool(app, s); if (t) app.setTool(t); } },
+      // (Several flat faces of one body, side by side: one smooth surface over them all, no edge where they met.)
+      { id: "faceFreeform", label: "Freeform Face", icon: "faceFreeform", beta: true, ...freeFaces, run: () => { const t = faceFreeformTool(app, sel as Extract<Sel, { kind: "face" }>[]); if (t) app.setTool(t); } },
       // A smooth freeform bridge between two faces (the second tapped next when one is picked).
       { id: "connect", label: "Connect", icon: "connect", beta: true, disabled: sel.length > 2, why: "Needs two faces", run: () => app.setTool(new ConnectOp(app, sel)) },
       { id: "split", label: "Split Body", icon: "split", disabled: !flat || app.view.bodyList.length < 2, why: "Needs another body to split", run: () => this.splitWith(info!.plane!, s.body) },

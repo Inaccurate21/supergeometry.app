@@ -354,16 +354,30 @@ export function freeformFace(body: Shape3D, F: Face, points: Vec3[]): Shape3D {
  * close round the new surface - the fitted way is tried then.
  */
 export function sheetFace(body: Shape3D, F: Face, cage: Cage): Shape3D {
+  return sheetFaces(body, [F], cage, norm(F.normalAt().toTuple() as Vec3));
+}
+
+/**
+ * Several faces side by side made one smooth surface (sheetFace's way): its
+ * border on their outer edges, the edges between them gone. `n`: the way they
+ * face together (the middle of their normals).
+ */
+export function sheetFaces(body: Shape3D, Fs: Face[], cage: Cage, n: Vec3): Shape3D {
   const oc = getOC();
-  const ex = new oc.TopExp_Explorer(F.wrapped, oc.TopAbs_ShapeEnum.TopAbs_WIRE, oc.TopAbs_ShapeEnum.TopAbs_SHAPE);
-  let wires = 0;
-  for (; ex.More(); ex.Next()) wires++;
-  ex.delete();
-  if (wires !== 1) throw new Error("Faces with holes in them can't be made freeform yet");
-  const size = Math.sqrt(measureArea(F));
-  const tol = Math.max(5e-3, size * 1e-3);
-  // The face's edge, finely (a round edge as short straight pieces).
-  const edge: [Vec3, Vec3][] = F.edges.flatMap((e) => {
+  for (const F of Fs) {
+    const ex = new oc.TopExp_Explorer(F.wrapped, oc.TopAbs_ShapeEnum.TopAbs_WIRE, oc.TopAbs_ShapeEnum.TopAbs_SHAPE);
+    let wires = 0;
+    for (; ex.More(); ex.Next()) wires++;
+    ex.delete();
+    if (wires !== 1) throw new Error("Faces with holes in them can't be made freeform yet");
+  }
+  const size = Math.sqrt(Fs.reduce((a, F) => a + measureArea(F), 0));
+  // (Over several faces the border bends round their corners: it follows the edge a hair less closely.)
+  const tol = Math.max(5e-3, size * (Fs.length > 1 ? 3e-3 : 1e-3));
+  // The faces' outer edge, finely (a round edge as short straight pieces) - not the edges between them.
+  const between = (e: Face["edges"][number]) => Fs.filter((F) => F.edges.some((x) => x.isSame(e))).length > 1;
+  const outer = Fs.flatMap((F) => F.edges).filter((e) => !between(e));
+  const edge: [Vec3, Vec3][] = outer.flatMap((e) => {
     const pts = Array.from({ length: 257 }, (_, i) => e.pointAt(i / 256).toTuple() as Vec3);
     return pts.slice(1).map((q, i) => [pts[i], q] as [Vec3, Vec3]);
   });
@@ -403,7 +417,6 @@ export function sheetFace(body: Shape3D, F: Face, cage: Cage): Shape3D {
   // lip over it; pushed in, a cut through the wall): those points are drawn
   // back onto the edge, at their height. Far past it (a coarse cage whose
   // cells reach across the corner): not this way.
-  const n = norm(F.normalAt().toTuple() as Vec3);
   const u = xDirFor(n);
   const v = norm(cross(n, u));
   const flat = edge.map(([a, b]) => [dot(a, u), dot(a, v), dot(b, u), dot(b, v)]);
@@ -431,7 +444,7 @@ export function sheetFace(body: Shape3D, F: Face, cage: Cage): Shape3D {
   const progress = new oc.Message_ProgressRange();
   const sew = new oc.BRepBuilderAPI_Sewing(tol, true, true, true, false);
   try {
-    const others = body.faces.filter((f) => !f.isSame(F));
+    const others = body.faces.filter((f) => !Fs.some((F) => f.isSame(F)));
     meetsOnlyAt(sheet.wrapped, others, rim, size);
     for (const f of others) sew.Add(f.wrapped);
     for (const f of sheet.faces) sew.Add(f.wrapped);
