@@ -16,7 +16,8 @@ import { clampToFree } from "./annotate";
 
 /** By kind of pick: the tools to offer, best first (the first two there are and can be used now). */
 export const QUICK = {
-  face: ["thread", "sketch", "shell", "move", "fillet", "editFreeform", "thicken"],
+  // (A freeform surface's face: Edit Freeform first - shaping it again is what it is for.)
+  face: ["editFreeform", "thread", "sketch", "shell", "move", "fillet", "thicken"],
   edge: ["chamfer", "thread", "move", "connect"],
   vertex: ["moveVertex", "delete"],
   body: ["shell", "fillet", "mirror"],
@@ -58,7 +59,7 @@ export class QuickActions {
       }
     };
     walk(items);
-    const picked = (QUICK[kind] as readonly string[]).map((id) => byId.get(id)).filter((it): it is ToolItem => !!it && !it.disabled && !!it.run && !it.beta).slice(0, MOST_OF[kind] ?? MOST);
+    const picked = (QUICK[kind] as readonly string[]).map((id) => byId.get(id)).filter((it): it is ToolItem => !!it && !it.disabled && !!it.run && (!it.beta || it.id === "editFreeform")).slice(0, MOST_OF[kind] ?? MOST);
     return picked.length ? new QuickActions(view, picked, at, place) : null;
   }
 
