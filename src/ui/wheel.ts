@@ -248,8 +248,8 @@ const CELL = 100;
 
 const notSep = (it: ToolItem) => !it.id.startsWith("---");
 const kidsOf = (it: ToolItem) => usable(it.children ?? []).filter(notSep);
-/** A tap opens its kinds - not one that starts with the kind used last and shows them once it's the tool in use. */
-const opens = (it: ToolItem) => kidsOf(it).length > 0 && !(it.variantsWhenActive && !it.active && !!it.run);
+/** A tap on a tool with kinds (Rectangle: Center, Diagonal, 3 Points) opens them straight away, the one used last lit. */
+const opens = (it: ToolItem) => kidsOf(it).length > 0;
 const marked = (cells: Cell[]) => cells.some((c) => !!c.item.active || !!c.item.pulse);
 const clamp = (v: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, v));
 
