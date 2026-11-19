@@ -4,7 +4,7 @@
 import type { ThreadFeature } from "../doc/types";
 import { fillEdgeKey } from "../doc/types";
 import { defaultPitch, threadLabel } from "../kernel/threads";
-import type { AxisFeature, AxisRef, ConnectFeature, EdgeFeature, EdgeRef, ExtrudeFeature, ExtrudeSource, FaceRef, FillFeature, FillToPlaneFeature, ImageFeature, LoftFeature, MoveFaceFeature, PathRef, PlaneDef, PlaneFeature, ReplaceFaceFeature, RevolveFeature, ScaleFaceFeature, ShellFeature, SketchFeature, SplitFeature, SweepFeature, TransformFeature, Vec3 } from "../doc/types";
+import type { AxisFeature, AxisKind, AxisRef, ConnectFeature, EdgeFeature, EdgeRef, ExtrudeFeature, ExtrudeSource, FaceRef, FillFeature, FillToPlaneFeature, ImageFeature, LoftFeature, MoveFaceFeature, PathRef, PlaneDef, PlaneFeature, ReplaceFaceFeature, RevolveFeature, ScaleFaceFeature, ShellFeature, SketchFeature, SplitFeature, SweepFeature, TransformFeature, Vec3 } from "../doc/types";
 import { FRONT, GROUND, RIGHT, add, cross, dot, len, norm, niceStep, patternSpacing, roundSig, scale, sub, xDirFor } from "../geom";
 import type { PanelItem, ToolItem } from "../ui/ui";
 import { QuickActions } from "./quickActions";
@@ -3213,8 +3213,8 @@ export class MidplaneOp extends FeatureOp<PlaneFeature> {
 export class AxisOp extends FeatureOp<AxisFeature> {
   readonly id = "axis";
 
-  constructor(app: AppContext, origin: Vec3, dir: Vec3, existing?: AxisFeature) {
-    super(app, { ...app.store.newIdentity("axis"), type: "axis", origin, dir }, existing);
+  constructor(app: AppContext, origin: Vec3, dir: Vec3, existing?: AxisFeature, kind?: AxisKind) {
+    super(app, { ...app.store.newIdentity("axis"), type: "axis", origin, dir, ...(kind ? { kind } : {}) }, existing);
   }
 
   protected hint(): string {

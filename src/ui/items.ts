@@ -110,7 +110,7 @@ export class ItemsPanel {
       Bodies: bodies.map((b) => ({ id: b.id, name: names[b.id] ?? b.name, icon: "body" as IconName, open: () => this.h.selectBody(b.id), remove: () => this.h.deleteBody(b.id), extra: iso && !iso.includes(b.id) ? " isolated-out" : "", isBody: true })),
       // Greyed while something else is isolated (they're hidden until Isolate is off).
       Sketches: of("sketch").map((s) => ({ id: s.id, name: s.name, icon: "sketch" as IconName, open: () => this.h.editSketch(s.id), remove: () => this.h.deleteFeature(s.id), extra: iso && !iso.includes(s.id) ? " isolated-out" : "" })),
-      "Planes & axes": [...of("plane"), ...of("axis")].map((c) => ({ id: c.id, name: c.name, icon: (c.type === "plane" ? PLANE_ICON[(c as { kind?: string }).kind ?? "offset"] ?? "plane" : "axis") as IconName, open: () => this.h.selectPlane(c.id), remove: () => this.h.deleteFeature(c.id), extra: iso && !iso.includes(c.id) ? " isolated-out" : "" })),
+      "Planes & axes": [...of("plane"), ...of("axis")].map((c) => ({ id: c.id, name: c.name, icon: (c.type === "plane" ? PLANE_ICON[(c as { kind?: string }).kind ?? "offset"] ?? "plane" : AXIS_ICON[(c as { kind?: string }).kind ?? ""] ?? "axis") as IconName, open: () => this.h.selectPlane(c.id), remove: () => this.h.deleteFeature(c.id), extra: iso && !iso.includes(c.id) ? " isolated-out" : "" })),
       Images: of("image").map((i) => ({ id: i.id, name: i.name, icon: "image" as IconName, open: () => this.h.selectImage(i.id), remove: () => this.h.deleteFeature(i.id) })),
     };
     const byId = new Map(Object.values(rows).flat().map((r) => [r.id, r]));
@@ -389,5 +389,8 @@ export class ItemsPanel {
   }
 }
 
-/** Each kind of construction plane's icon (its mark in the corner). */
+/** Each kind of construction plane's icon (its mark big, the plane small). */
+/** Each kind of axis's icon (an axis from before they were told apart: the plain one). */
+const AXIS_ICON: Record<string, IconName> = { face: "axisFace", edge: "axisEdge", round: "axisRound", "2pt": "axis2pt", planes: "axisPlanes" };
+
 const PLANE_ICON: Record<string, IconName> = { offset: "planeOffset", mid: "planeMid", "3pt": "plane3pt", curve: "planeCurve", perp: "planePerp", angle: "planeAngle", parallel: "planeParallel" };

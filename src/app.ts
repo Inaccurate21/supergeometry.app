@@ -1109,26 +1109,26 @@ export class App implements AppContext {
             icon: "axis",
             // (Along X, Y or Z: the origin's own axes, tapped in the view.)
             children: [
-              { id: "axisFace", label: "Square to Face", short: "Face", icon: "axis" as const, run: wait("Axis Square to Face", ["face"], () => {
+              { id: "axisFace", label: "Square to Face", short: "Face", icon: "axisFace" as const, run: wait("Axis Square to Face", ["face"], () => {
                 const s = this.selection[0];
                 const f = s?.kind === "face" ? this.view.body(s.body)?.faces[s.face] : undefined;
-                if (f) this.setTool(new AxisOp(this, f.center, f.plane?.normal ?? f.normal));
+                if (f) this.setTool(new AxisOp(this, f.center, f.plane?.normal ?? f.normal, undefined, "face"));
               }) },
-              { id: "axisEdge", label: "Along Edge", short: "Edge", icon: "axis" as const, run: wait("Axis Along Edge", ["edge"], () => {
+              { id: "axisEdge", label: "Along Edge", short: "Edge", icon: "axisEdge" as const, run: wait("Axis Along Edge", ["edge"], () => {
                 const s = this.selection[0];
                 const e = s?.kind === "edge" ? this.view.body(s.body)?.edges[s.edge] : undefined;
                 // A round edge: through its centre, square to it.
                 const ax = e && (e.type === "CIRCLE" ? circleAxis(e.start, e.mid, e.end, e.dir) : { origin: e.start, dir: e.dir });
-                if (ax) this.setTool(new AxisOp(this, ax.origin, ax.dir));
+                if (ax) this.setTool(new AxisOp(this, ax.origin, ax.dir, undefined, e.type === "CIRCLE" ? "round" : "edge"));
               }) },
-              { id: "axisRound", label: "Cylinder / Cone", icon: "axis" as const, run: wait("Axis of Cylinder / Cone", ["face"], () => {
+              { id: "axisRound", label: "Cylinder / Cone", icon: "axisRound" as const, run: wait("Axis of Cylinder / Cone", ["face"], () => {
                 const s = this.selection[0];
                 const ax = s?.kind === "face" ? surfaceAxis(this, s.body, s.face) : null;
-                if (ax) this.setTool(new AxisOp(this, ax.origin, ax.dir));
+                if (ax) this.setTool(new AxisOp(this, ax.origin, ax.dir, undefined, "round"));
                 else this.ui.toast("Tap a round face - a cylinder, a hole or a cone - for the axis through its middle", "error");
               }) },
-              { id: "axis2pt", label: "Point to Point", icon: "axis" as const, run: () => this.setTool(new TwoPointAxisOp(this)) },
-              { id: "axisPlanes", label: "Intersection of 2 Planes", short: "2 Planes", icon: "axis" as const, run: () => this.setTool(new PlanesAxisOp(this)) },
+              { id: "axis2pt", label: "Point to Point", icon: "axis2pt" as const, run: () => this.setTool(new TwoPointAxisOp(this)) },
+              { id: "axisPlanes", label: "Intersection of 2 Planes", short: "2 Planes", icon: "axisPlanes" as const, run: () => this.setTool(new PlanesAxisOp(this)) },
             ],
           },
         ],

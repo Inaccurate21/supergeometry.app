@@ -8,8 +8,10 @@ const glyph = (t: string, size = 10) =>
   svg(`<text x="12" y="${12 + size * 0.36}" font-size="${size}" font-family="system-ui, sans-serif" font-weight="600" text-anchor="middle" fill="currentColor" stroke="none">${t}</text>`);
 
 /** A plane (lower right) with a small symbol above its corner. */
-const planeWith = (mark: string) =>
-  svg(`<path d="M6 19l5-5h11l-5 5z"/><text x="7" y="11" font-size="11" font-family="system-ui, sans-serif" text-anchor="middle" fill="currentColor" stroke="none">${mark}</text>`);
+/** A kind of plane: what makes it drawn big, a small plane in the corner below. */
+const planeWith = (mark: string) => svg(`${mark}<path d="M1.8 22l2.6-2.6h6.4L8.2 22z" stroke-width="1.4"/>`);
+/** A kind of axis: what makes it drawn big, a small dashed axis in the corner below. */
+const axisWith = (mark: string) => svg(`${mark}<path d="M2 22.2l4.8-4.8" stroke-width="1.4" stroke-dasharray="2 1.5"/>`);
 
 export const icons = {
   // The usual share mark: a box with an arrow leaving it.
@@ -59,16 +61,21 @@ export const icons = {
   replaceFace: svg('<rect x="4" y="9" width="12" height="11"/><path d="M8 9l4-5h8l-4 5M20 4v11l-4 5"/>'),
   projectEdge: svg('<rect x="4" y="12" width="16" height="8"/><path d="M8 4h8l-2 8h-4z" stroke-dasharray="2 2"/>'),
   plane: svg('<path d="M3 15l6-6h12l-6 6z"/>'),
-  // Each kind of plane: the plane with its mark in the corner (the same mark it
-  // has in the view).
-  planeOffset: planeWith("⇡"),
-  planeMid: planeWith("⇹"),
-  plane3pt: planeWith("∴"),
-  planeCurve: planeWith("∿"),
-  planePerp: planeWith("⊥"),
-  planeAngle: planeWith("∠"),
-  planeParallel: planeWith("∥"),
+  // Each kind of plane: what makes it big (the mark it has in the view), the plane small.
+  planeOffset: planeWith('<path d="M15 18V3M10 8l5-5 5 5"/>'),
+  planeMid: planeWith('<path d="M8 3v14M22 3v14"/><path d="M15 3v14" stroke-dasharray="2.2 2"/>'),
+  plane3pt: planeWith('<circle cx="9" cy="15" r="2.3" fill="currentColor" stroke="none"/><circle cx="21" cy="15" r="2.3" fill="currentColor" stroke="none"/><circle cx="15" cy="4.5" r="2.3" fill="currentColor" stroke="none"/>'),
+  planeCurve: planeWith('<path d="M6.5 17C9.5 3 13 19 16.5 8.5S20 3 22.5 3"/><circle cx="12.2" cy="10.6" r="2" fill="currentColor" stroke="none"/>'),
+  planePerp: planeWith('<path d="M15 3v14M7 17h15"/><path d="M15 13h3.6v4" stroke-width="1.3"/>'),
+  planeAngle: planeWith('<path d="M22 17H7L18 3.5"/><path d="M13.6 17a6.6 6.6 0 0 0-2.4-5.1"/>'),
+  planeParallel: planeWith('<path d="M11.5 17.5L16.5 3M17.5 17.5L22.5 3"/>'),
   axis: svg('<path d="M4 20L20 4" stroke-dasharray="3 2"/><circle cx="12" cy="12" r="1.5" fill="currentColor"/>'),
+  // Each kind of axis: what makes it big, the axis small.
+  axisFace: axisWith('<path d="M8 17.5l3.4-3.2H22l-3.4 3.2z"/><path d="M15.3 15.8V3M12.6 5.7L15.3 3l2.7 2.7"/>'),
+  axisEdge: axisWith('<path d="M9 9.5h8.5v8.5H9z" stroke-width="1.3"/><path d="M9 9.5l4-4h8.5V14l-4 4" stroke-width="1.3"/><path d="M17.5 9.5l4-4" stroke-width="2.8"/>'),
+  axisRound: axisWith('<ellipse cx="16" cy="5" rx="5.6" ry="2.2"/><path d="M10.4 5v10.4a5.6 2.2 0 0 0 11.2 0V5"/>'),
+  axis2pt: axisWith('<path d="M11 15L20.5 5" stroke-dasharray="2.2 2"/><circle cx="11" cy="15" r="2.4" fill="currentColor" stroke="none"/><circle cx="20.5" cy="5" r="2.4" fill="currentColor" stroke="none"/>'),
+  axisPlanes: axisWith('<path d="M8.5 4.5l13.5 11M8.5 15.5l13.5-11"/><circle cx="15.25" cy="10" r="1.7" fill="currentColor" stroke="none"/>'),
   align: svg('<path d="M4 3v18"/><rect x="7" y="6" width="9" height="4"/><rect x="7" y="14" width="13" height="4"/>'),
   translate: svg('<path d="M4 12h16M16 8l4 4-4 4"/>'),
   fillet: svg('<path d="M4 20V10a6 6 0 0 1 6-6h10"/><path d="M4 20h16V4" stroke-dasharray="2 2.5"/>'),

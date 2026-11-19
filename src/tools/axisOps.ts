@@ -5,7 +5,7 @@
 // one tap each: started from the wheel with the pick, see app.ts.)
 // The axis is worked out from the picks and kept, like the planes.
 
-import type { AxisFeature, PlaneDef, Vec3 } from "../doc/types";
+import type { AxisFeature, AxisKind, PlaneDef, Vec3 } from "../doc/types";
 import { add, cross, dot, len, norm, scale, sub } from "../geom";
 import type { PanelItem } from "../ui/ui";
 import { FeatureOp } from "./featureOp";
@@ -15,8 +15,8 @@ import type { AppContext } from "./tool";
 
 abstract class AxisFromPicks extends FeatureOp<AxisFeature> {
   readonly id = "axis";
-  constructor(app: AppContext, label: string) {
-    super(app, { ...app.store.newIdentity("axis", label), type: "axis", origin: [0, 0, 0], dir: [0, 0, 1] });
+  constructor(app: AppContext, label: string, kind: AxisKind) {
+    super(app, { ...app.store.newIdentity("axis", label), type: "axis", origin: [0, 0, 0], dir: [0, 0, 1], kind });
   }
   /** The axis the picks make (null: not yet / they don't make one). */
   protected abstract make(): { origin: Vec3; dir: Vec3 } | null;
@@ -35,7 +35,7 @@ abstract class AxisFromPicks extends FeatureOp<AxisFeature> {
 export class TwoPointAxisOp extends AxisFromPicks {
   private pts: (Vec3 | null)[] = [null, null];
   constructor(app: AppContext) {
-    super(app, "Axis Point to Point");
+    super(app, "Axis Point to Point", "2pt");
     this.slots = ["First point", "Second point"].map((l, i) => pointSlot(app, l, () => this.pts[i], (p) => ((this.pts[i] = p), this.sync())));
     this.finishWhenPicked = true;
   }
@@ -54,7 +54,7 @@ export class PlanesAxisOp extends AxisFromPicks {
   private a: PlaneDef | null = null;
   private b: PlaneDef | null = null;
   constructor(app: AppContext) {
-    super(app, "Axis 2 Planes");
+    super(app, "Axis 2 Planes", "planes");
     this.slots = [
       planeSlot(app, "First plane", () => this.a, (p) => ((this.a = p), this.sync())),
       planeSlot(app, "Second plane", () => this.b, (p) => ((this.b = p), this.sync())),

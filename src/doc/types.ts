@@ -388,7 +388,11 @@ export interface AxisFeature extends FeatureBase {
   type: "axis";
   origin: Vec3;
   dir: Vec3;
+  /** What it was made from (its icon): square to a face, along an edge, a round face's middle, two points, two planes. */
+  kind?: AxisKind;
 }
+
+export type AxisKind = "face" | "edge" | "round" | "2pt" | "planes";
 
 /** A body imported from a file. The file content travels inside the project. */
 export interface ImportFeature extends FeatureBase {

@@ -793,7 +793,7 @@ export class SelectTool implements Tool {
       { id: "patc", label: "Pattern – Circular", icon: "patternCircular", run: inSketch("patternCircular") },
       // Starts at the last distance used (the preview shows at once: Enter keeps it).
       { id: "extrude", label: "Extrude", icon: "extrude", shortcut: "E", active: true, pulse: app.firstShape(), run: () => src && app.setTool(new ExtrudeOp(app, src, undefined, "auto", { distance: 0 })) },
-      { id: "axis", label: "Axis – Perp. to Face", icon: "axis", run: () => frame && app.setTool(new AxisOp(app, frame.base, frame.normal)) },
+      { id: "axis", label: "Axis – Perp. to Face", icon: "axisFace", run: () => frame && app.setTool(new AxisOp(app, frame.base, frame.normal, undefined, "face")) },
       { id: "plane", label: "Plane – Offset", icon: "plane", run: () => plane && app.setTool(new PlaneOp(app, plane, undefined)) },
       { id: "text", label: "Text", icon: "text", run: inSketch("text") },
       // In the sketch: the shape turns about a point you tap (not a 3D axis).
@@ -857,8 +857,8 @@ export class SelectTool implements Tool {
       { id: "extrude", label: "Extrude", icon: "extrude", ...needFlat, run: () => src && app.setTool(new ExtrudeOp(app, src, undefined, "new")) },
       { id: "shell", label: "Shell", icon: "shell", run: () => app.setTool(new ShellOp(app, s.body, faceRefs)) },
       axis
-        ? { id: "axis", label: "Axis – Cylinder", icon: "axis", run: () => app.setTool(new AxisOp(app, axis.origin, axis.dir)) }
-        : { id: "axis", label: "Axis – Perp. to Face", icon: "axis", run: () => info && app.setTool(new AxisOp(app, info.center, info.normal)) },
+        ? { id: "axis", label: "Axis – Cylinder", icon: "axisRound", run: () => app.setTool(new AxisOp(app, axis.origin, axis.dir, undefined, "round")) }
+        : { id: "axis", label: "Axis – Perp. to Face", icon: "axisFace", run: () => info && app.setTool(new AxisOp(app, info.center, info.normal, undefined, "face")) },
       { id: "plane", label: "Plane – Offset", icon: "plane", ...needFlat, run: () => info?.plane && app.setTool(new PlaneOp(app, info.plane, faceRefOf(app, s)!)) },
       { id: "loft", label: "Loft", icon: "loft", ...needFlat, run: () => app.setTool(new LoftOp(app, sourcesOf(app, sel).flatMap(splitRegions), sel)) },
       // The face made smooth: a grid of points over it to pull out or push in; its edges stay put.
@@ -921,13 +921,13 @@ export class SelectTool implements Tool {
       {
         id: "axis",
         label: info?.type === "CIRCLE" ? "Axis – Through Centre" : "Axis – Along Edge",
-        icon: "axis",
+        icon: info?.type === "CIRCLE" ? "axisRound" : "axisEdge",
         disabled: !straight && info?.type !== "CIRCLE",
         why: "Needs a straight or round edge",
         run: () => {
           if (!info) return;
           const ax = info.type === "CIRCLE" ? circleAxis(info.start, info.mid, info.end, info.dir) : { origin: info.start, dir: info.dir };
-          if (ax) app.setTool(new AxisOp(app, ax.origin, ax.dir));
+          if (ax) app.setTool(new AxisOp(app, ax.origin, ax.dir, undefined, info.type === "CIRCLE" ? "round" : "edge"));
         },
       },
       { id: "planePerp", label: "Plane – Perp. to Edge", icon: "plane", run: () => info && app.setTool(new PlaneOp(app, { origin: info.mid, normal: info.dir, xDir: perpTo(info.dir) }, undefined)) },
