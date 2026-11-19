@@ -908,7 +908,7 @@ export class Wheel implements WheelHandle {
    * Type a value right on the wheel: a small box by the pointer, the value
    * in it selected. Enter (or tapping away) sets it, Esc leaves it as it was.
    */
-  private typeValue(label: string, now: string, kind: "length" | "angle" | "number" | "int", put: (v: number) => void, follows = false): void {
+  private typeValue(label: string, now: string, kind: "length" | "angle" | "number" | "int", put: (v: number) => void, follows = false, range: { min?: number; max?: number } = {}): void {
     this.typerEnd?.(false);
     const box = el("div", "wheel-type");
     box.append(el("span", "wheel-type-label", label));
@@ -920,6 +920,15 @@ export class Wheel implements WheelHandle {
     input.value = now;
     input.dataset.kind = kind;
     if (follows) input.dataset.follows = "1";
+    if (range.min !== undefined) input.dataset.min = String(range.min);
+    if (range.max !== undefined) input.dataset.max = String(range.max);
+    // (Typed on a keyboard: no point in a whole number, no minus where it can't go below 0.)
+    input.addEventListener("input", () => {
+      let t = input.value;
+      if (kind === "int") t = t.replace(/[.,]/g, "");
+      if (range.min !== undefined && range.min >= 0) t = t.replace(/-/g, "");
+      if (t !== input.value) input.value = t;
+    });
     numpadInput(input);
     box.append(input);
     const unit = kind === "length" ? UNIT_LABEL[units()] : kind === "angle" ? "°" : "";
@@ -934,7 +943,7 @@ export class Wheel implements WheelHandle {
       over = true;
       if (keep) {
         const v = evaluate(input.value, kind === "int" ? "number" : kind);
-        if (v !== null) put(kind === "int" ? Math.round(v) : v);
+        if (v !== null) put(Math.min(range.max ?? Infinity, Math.max(range.min ?? -Infinity, kind === "int" ? Math.round(v) : v)));
       }
       box.remove();
       if (this.typer === box) (this.typer = null), (this.typerEnd = null);
@@ -1705,7 +1714,7 @@ export class Wheel implements WheelHandle {
 
   private run(item: ToolItem): void {
     // A number to type (a custom transparency): its box comes up by the wheel.
-    if (item.value) return this.typeValue(item.label.replace(/…$/, ""), item.value.now, item.value.int ? "int" : "number", item.value.put);
+    if (item.value) return this.typeValue(item.label.replace(/…$/, ""), item.value.now, item.value.int ? "int" : "number", item.value.put, false, item.value);
     // A switch or a choice on the Settings wheel is set right there: the fan stays, showing it set.
     if (item.id.startsWith("opt-") && !item.id.endsWith("-more")) {
       item.run?.();

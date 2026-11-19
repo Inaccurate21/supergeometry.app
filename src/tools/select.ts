@@ -1078,7 +1078,7 @@ export class SelectTool implements Tool {
             icon: "numpad",
             ...(custom ? { sub: seeThrough(now) } : {}),
             active: custom,
-            value: { now: typed, put, int: true },
+            value: { now: typed, put, int: true, min: 0, max: 95 },
             run: async () => {
               const r = await app.ui.dialog("Custom transparency", [{ key: "pct", label: "Transparency (%)", value: typed }]);
               const v = r ? parseFloat(r.pct) : NaN;

@@ -58,6 +58,10 @@ class Numpad {
   private selEnd = 0;
   /** Just opened on a box: the first key typed replaces what's in it. */
   private fresh = false;
+  /** The keys, to grey the ones a box can't take (no point for whole numbers, no minus where it can't go below 0). */
+  private keys = new Map<string, HTMLButtonElement>();
+  private off = (k: string, t: HTMLInputElement | null) =>
+    !!t && ((k === "." && t.dataset.kind === "int") || (k === "−" && t.dataset.min !== undefined && Number(t.dataset.min) >= 0));
   /** The first key was − (the sign flipped): digits next type a new negative number. */
   private minusFirst = false;
   /** ƒx on: operators and the variables' names to type formulas with. */
@@ -133,7 +137,7 @@ class Numpad {
       host.append(b);
       return b;
     };
-    for (const k of KEYS) key(k, this.el);
+    for (const k of KEYS) this.keys.set(k, key(k, this.el));
     this.fxRow.className = "np-fx-row";
     for (const k of FX_KEYS) key(k, this.fxRow, k === "abc" ? "np-abc" : "np-op");
     this.chips.className = "np-chips";
@@ -201,6 +205,7 @@ class Numpad {
     const at = stay ? { left: this.el.style.left, top: this.el.style.top } : null;
     this.target?.classList.remove("np-all");
     this.target = input;
+    for (const [k, b] of this.keys) b.disabled = this.off(k, input);
     this.fresh = true;
     this.minusFirst = false;
     // A formula in the box already: ƒx is on.
@@ -310,6 +315,7 @@ class Numpad {
 
   private press(k: string): void {
     const t = this.target;
+    if (this.off(k, t)) return;
     // The box went away (its tool finished): nothing to type into.
     if (!t || !t.isConnected) return this.close();
     let v = t.value;
@@ -499,6 +505,9 @@ function scrubbable(input: HTMLInputElement): void {
     const n = Math.round(dx / 4);
     let nv = start.v + n * start.step;
     if (start.kind === "int") nv = Math.round(nv);
+    // (A box with a least or a most: the drag stops there.)
+    if (input.dataset.min !== undefined) nv = Math.max(Number(input.dataset.min), nv);
+    if (input.dataset.max !== undefined) nv = Math.min(Number(input.dataset.max), nv);
     const dec = Math.max(0, -Math.floor(Math.log10(start.step) + 1e-9));
     const text = String(Number(nv.toFixed(dec)));
     if (text !== input.value) {

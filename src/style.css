@@ -3040,6 +3040,11 @@ form.dialog {
 .numpad button:active {
   background: #3d8bff;
 }
+/* A key the box can't take (a point in a whole number, a minus where it can't go below 0). */
+.numpad button:disabled {
+  opacity: 0.3;
+  pointer-events: none;
+}
 .numpad .np-enter {
   grid-row: span 2;
   height: auto;
