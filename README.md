@@ -120,6 +120,22 @@ away under its heading, and a plane's icon shows how it was made), **More**
 (fullscreen, Help, About, support). On tablets and computers Items runs the
 full height of the screen, like History.
 
+**The wheels** - the tools are on the **tool wheel**: tap a group and its
+tools fan out, tap one to use it. With something picked it shows only what
+fits the pick. Beside it the **Options** wheel holds the open tool's values
+and choices, and the **Settings** wheel (the cog) snapping, units, look and
+the numpad. They stay on the screen: on tablets and computers they start in a
+column just left of History, spaced so they don't overlap when open. Tap a
+wheel's middle to fold it to its icon and again to open it; drag it by its
+middle to put it anywhere (it's remembered).
+
+**Quick buttons** - whatever you pick gets round buttons right beside it with
+the next two tools it most likely needs: a flat face Sketch and Shell, a round
+face Thread, an edge Chamfer and Move, a body Shell and Fillet, a plane Sketch,
+an image Scale; in a sketch, picked curves get Construction and Delete. They
+keep clear of the pick's own handle (a face's arrow, an edge's fillet dot, a
+gimbal) and of the wheels.
+
 **Left column** - the tools. With nothing selected you get the ones that
 *make* things (Sketch, Freeform, Extrude, Revolve, Transform, Construct,
 Insert…). With something selected you only see what can be done with it,
@@ -150,7 +166,8 @@ straight-on view (Front, Top…) Sketch goes on the face you're looking at.
 Sketches on a face measure X / Y from the model's origin.
 
 **Drawing tools:** Line (keeps going from the last point; tap the first point
-to close), Arc (two ends, then the bend - or by centre), Spline (smooth curve through points;
+to close - closing a shape ends the line tool, the sketch stays open, so the
+next tap turns the view or picks the shape), Arc (two ends, then the bend - or by centre), Spline (smooth curve through points;
 *Fit* or *Control* points, or *Draw*: press and drag freehand like a pencil - the stroke
 is cleaned up into a few lines, arcs and smooth curves, corners kept, so an extrusion
 gets a handful of faces, not hundreds; end where you began to close it), Rectangle (diagonal / centre / 3 points), Circle
@@ -213,9 +230,12 @@ sketch. A sketch stays in view until every region of it is used.
 
 ## Making and changing solids
 
-- **Extrude** - pull a region or a face. Negative distances cut. In *Auto*
-  mode an extrusion that runs into another body cuts through it; choose *New*
-  for a separate body. **Taper end %** sizes the far end (100 none, 0 a
+- **Extrude** - pull a region or a face. **Operation** is Auto, New body,
+  Add, Cut or Intersect. *Auto* goes by the way you pull: a shape drawn on
+  its own (on a plane) is a new body going +, and going - cuts what it runs
+  into; a shape on a face (or the face itself) adds going out and cuts going
+  in. The option says what it does now (*Auto: Cut*, *Auto: Add*, *Auto: New
+  body*), and the Options wheel names the choice the same way. **Taper end %** sizes the far end (100 none, 0 a
   point: a spire, a pyramid or a cone in one step) - type it or drag the box
   left / right. Extrude starts at the last distance.
 - **Revolve** - spin a region around an axis (a separate line, a side of a
@@ -257,7 +277,8 @@ sketch. A sketch stays in view until every region of it is used.
 - **Thread** - tap a round face or a hole's rim: a shank at the nominal size
   gets an outside thread, a hole at the tap-drill size an inside one. The
   pitch starts at the ISO coarse pitch (the card says what it makes, e.g.
-  M10 × 1.5); left-hand as an option.
+  M10 × 1.5); left-hand as an option. A free end gets a 45° lead-in
+  chamfer, so the thread starts clean.
 - **Repair Body** - fixes an imported or broken body (gaps, bad faces,
   slivers, inside-out) without changing its shape or size.
 - **Fill to Plane** - an open freeform surface becomes a solid by filling
