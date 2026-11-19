@@ -99,7 +99,7 @@ export function showLibrary(entries: LibraryEntry[], currentId: string | null, a
   const box = el("div", "dialog library");
   if (opts.welcome) box.classList.add("welcome");
   const head = el("div", "library-head");
-  head.append(el("div", "panel-title", opts.welcome ? "Welcome to supergeometry.app" : "Projects"));
+  head.append(el("div", "panel-title", opts.welcome ? "Welcome to superGeometry.app" : "Projects"));
   // No projects yet: New project is the way in.
   const newBtn = el("button", entries.length ? "text-btn" : "text-btn primary", "New project");
   newBtn.type = "button";

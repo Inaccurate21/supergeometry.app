@@ -1,4 +1,4 @@
-"""supergeometry.app logo: a faceted red cape blowing in the wind, a yellow clasp, and a yellow
+"""superGeometry.app logo: a faceted red cape blowing in the wind, a yellow clasp, and a yellow
 hexagon with a blue G printed on the cloth (it folds and shades with the facets).
 
 Run: python scripts/logo.py   (writes public/icon.svg; then node scripts/icons.mjs for the PNGs)"""

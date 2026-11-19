@@ -1,6 +1,6 @@
 # Architecture
 
-supergeometry.app is a static web app. There is no server: everything (geometry kernel
+superGeometry.app is a static web app. There is no server: everything (geometry kernel
 included) runs in the browser, so it can be hosted for free and works offline.
 
 ```

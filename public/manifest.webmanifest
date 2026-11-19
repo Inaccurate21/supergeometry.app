@@ -1,6 +1,6 @@
 {
-  "name": "supergeometry.app",
-  "short_name": "supergeometry",
+  "name": "superGeometry.app",
+  "short_name": "superGeometry",
   "description": "Free 3D CAD and 3D modeling in your browser, for phone, tablet, computer and VR.",
   "start_url": "./",
   "display": "standalone",

@@ -165,7 +165,7 @@ export class App implements AppContext {
     checkVR();
     (navigator as Navigator & { xr?: EventTarget }).xr?.addEventListener("devicechange", checkVR);
     vrBtn.addEventListener("click", async () => {
-      if (!(await vrSupported(handheld))) return this.ui.toast(handheld ? "This browser can't show AR - try Chrome" : "This browser can't open VR here - open supergeometry.app in the headset's own browser (not an installed app window)");
+      if (!(await vrSupported(handheld))) return this.ui.toast(handheld ? "This browser can't show AR - try Chrome" : "This browser can't open VR here - open superGeometry.app in the headset's own browser (not an installed app window)");
       vr.enter().catch((e: unknown) => this.ui.toast(`${handheld ? "AR" : "VR"} didn't start: ${e instanceof Error ? e.message : e}`));
     });
     this.pinLayer = new PinLayer(this.view);
@@ -1352,7 +1352,7 @@ export class App implements AppContext {
       if (root.requestFullscreen) void root.requestFullscreen().catch(() => this.ui.toast("This browser won't go fullscreen here"));
       else if (root.webkitRequestFullscreen) root.webkitRequestFullscreen();
       // iPhone Safari has no fullscreen for pages: the Home Screen app is.
-      else this.ui.toast("Tip: Share → Add to Home Screen opens supergeometry.app full screen");
+      else this.ui.toast("Tip: Share → Add to Home Screen opens superGeometry.app full screen");
     };
     moreItem("m-fullscreen", () => {
       if (isFull()) return void (document.exitFullscreen?.() ?? doc.webkitExitFullscreen?.());
@@ -1477,7 +1477,7 @@ export class App implements AppContext {
     const show = () => {
       if (document.activeElement !== name) name.textContent = this.store.doc.name;
       // A new, unnamed project keeps the page's own title (what search results show).
-      document.title = this.store.doc.name === "Untitled" ? PAGE_TITLE : `${this.store.doc.name} – supergeometry.app`;
+      document.title = this.store.doc.name === "Untitled" ? PAGE_TITLE : `${this.store.doc.name} – superGeometry.app`;
     };
     const rename = () => {
       const v = typed();

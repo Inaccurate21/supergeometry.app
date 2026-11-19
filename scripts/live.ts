@@ -1,4 +1,4 @@
-// Is the push live? Compares the commit supergeometry.app was built from
+// Is the push live? Compares the commit superGeometry.app was built from
 // (its /version.json) with main here.
 //
 //   npx tsx scripts/live.ts           once

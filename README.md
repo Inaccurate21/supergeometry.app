@@ -1,10 +1,10 @@
-# supergeometry.app
+# superGeometry.app
 
 **A free 3D design (CAD) app that runs in your web browser** - on a computer,
 an iPad or Android tablet, a phone, or a VR headset like the Meta Quest 3.
 No account, no download, no subscription. Your work stays on your device.
 
-👉 **Open it:** [supergeometry.app](https://supergeometry.app)
+👉 **Open it:** [superGeometry.app](https://supergeometry.app)
 
 Use it to design things for 3D printing, woodworking, laser cutting or just to
 think in 3D: brackets, boxes, vases, knobs, threads, enclosures, furniture parts…

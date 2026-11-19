@@ -19,7 +19,7 @@ function modelXml(bodies: MeshBody[], title: string): string {
   out.push('<?xml version="1.0" encoding="UTF-8"?>');
   out.push('<model unit="millimeter" xml:lang="en-US" xmlns="http://schemas.microsoft.com/3dmanufacturing/core/2015/02">');
   out.push(`<metadata name="Title">${esc(title)}</metadata>`);
-  out.push('<metadata name="Application">supergeometry.app</metadata>');
+  out.push('<metadata name="Application">superGeometry.app</metadata>');
   out.push("<resources>");
   if (colors.length) {
     out.push('<basematerials id="1">');

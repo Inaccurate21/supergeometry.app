@@ -35,7 +35,7 @@ export function deviceLine(): string {
 }
 
 export function infoLine(): string {
-  return `supergeometry.app ${__APP_VERSION__} · ${deviceLine()}`;
+  return `superGeometry.app ${__APP_VERSION__} · ${deviceLine()}`;
 }
 
 /** Reddit's "new text post" page for the subreddit, filled in. */

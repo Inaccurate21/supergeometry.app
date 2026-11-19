@@ -71,7 +71,7 @@ export class Install {
 
   /** The notice: Install / Not now (or, on iOS, how to do it). */
   offer(fromMenu = false): void {
-    if (isInstalled()) return void (fromMenu && this.toast("supergeometry.app is already installed on this device"));
+    if (isInstalled()) return void (fromMenu && this.toast("superGeometry.app is already installed on this device"));
     this.banner.innerHTML = "";
     const ios = isIOS() && !this.deferred;
     if (!ios && !this.deferred) {
@@ -83,8 +83,8 @@ export class Install {
       "span",
       "",
       ios
-        ? "Add supergeometry.app to your Home Screen: tap Share (the square with the arrow), then “Add to Home Screen”."
-        : "Install supergeometry.app on this device? It opens like an app, full screen.",
+        ? "Add superGeometry.app to your Home Screen: tap Share (the square with the arrow), then “Add to Home Screen”."
+        : "Install superGeometry.app on this device? It opens like an app, full screen.",
     );
     const yes = el("button", "text-btn primary", ios ? "Got it" : "Install");
     yes.addEventListener("click", () => void this.accept(ios));

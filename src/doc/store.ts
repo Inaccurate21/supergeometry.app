@@ -406,7 +406,7 @@ export function parseProject(text: string): ProjectDoc {
 export function migrate(raw: unknown): ProjectDoc {
   const doc = raw as ProjectDoc & { version: number };
   // "tessel" is the format name of files saved before the rename.
-  if (!doc || (doc.format !== "super" && (doc.format as string) !== "tessel") || !Array.isArray(doc.features)) throw new Error("Not a supergeometry.app project file");
+  if (!doc || (doc.format !== "super" && (doc.format as string) !== "tessel") || !Array.isArray(doc.features)) throw new Error("Not a superGeometry.app project file");
   if (doc.version === 2) return { ...emptyDoc(), ...doc, format: "super" };
   // A newer app saved it: read as an old one, it would come out mangled.
   if (doc.version > 2) throw new Error("This project was saved by a newer version of the app - reload the page to update");

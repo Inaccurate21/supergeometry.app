@@ -110,7 +110,7 @@ export function showAbout(): void {
   const back = el("div", "dialog-back");
   const box = el("div", "dialog about");
   const head = el("div", "library-head");
-  head.append(el("div", "panel-title", "About supergeometry.app"));
+  head.append(el("div", "panel-title", "About superGeometry.app"));
   const closeBtn = el("button", "icon-btn library-close");
   closeBtn.type = "button";
   closeBtn.title = "Close";

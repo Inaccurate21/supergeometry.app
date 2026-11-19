@@ -1,6 +1,6 @@
 @echo off
-rem Starts the supergeometry.app dev server and opens it in Chrome.
-title supergeometry.app dev server
+rem Starts the superGeometry.app dev server and opens it in Chrome.
+title superGeometry.app dev server
 cd /d "%~dp0"
 
 rem Node may not be on PATH in older terminals right after installing it.
@@ -22,7 +22,7 @@ if not exist node_modules (
 rem Open Chrome in the background as soon as the server answers.
 start "" /b powershell -NoProfile -WindowStyle Hidden -Command "for ($i=0; $i -lt 60; $i++) { try { Invoke-WebRequest http://localhost:5173 -UseBasicParsing -TimeoutSec 2 | Out-Null; break } catch { Start-Sleep 1 } }; try { Start-Process chrome 'http://localhost:5173' } catch { Start-Process 'http://localhost:5173' }"
 
-echo Starting supergeometry.app at http://localhost:5173  (close this window or press Ctrl+C to stop)
+echo Starting superGeometry.app at http://localhost:5173  (close this window or press Ctrl+C to stop)
 call npm run dev -- --port 5173 --strictPort
 pause
 exit /b

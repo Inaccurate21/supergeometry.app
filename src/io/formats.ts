@@ -194,7 +194,7 @@ export function glb(bodies: GlbBody[], title: string): Uint8Array {
     nodes.push({ name: b.name, mesh: i });
   });
   const json = {
-    asset: { version: "2.0", generator: "supergeometry.app" },
+    asset: { version: "2.0", generator: "superGeometry.app" },
     scene: 0,
     scenes: [{ name: title, nodes: [0] }],
     nodes,

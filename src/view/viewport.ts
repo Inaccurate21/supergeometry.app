@@ -1600,7 +1600,7 @@ export class Viewport {
   /**
    * The view as a PNG, with see-through marks at the bottom right: the
    * project's name, the isolated bodies' names (when isolating), and the
-   * supergeometry.app logo and name.
+   * superGeometry.app logo and name.
    */
   async screenshot(label?: { project: string; isolated?: string[] }): Promise<Blob | null> {
     const logo = await watermarkLogo();
@@ -1620,15 +1620,15 @@ export class Viewport {
     const right = out.width - pad;
     g.globalAlpha = 0.45;
     g.textBaseline = "middle";
-    // Bottom line: logo, "supergeometry" and ".app", ending at the right edge.
+    // Bottom line: logo, "superGeometry" and ".app", ending at the right edge.
     let y = out.height - pad - icon / 2;
     g.font = font(750, 20);
     const tld = g.measureText(".app").width;
-    const name = g.measureText("supergeometry").width;
+    const name = g.measureText("superGeometry").width;
     g.fillStyle = "#3d8bff";
     g.fillText(".app", right - tld, y);
     g.fillStyle = "#cfd6e4";
-    g.fillText("supergeometry", right - tld - name, y);
+    g.fillText("superGeometry", right - tld - name, y);
     if (logo) g.drawImage(logo, right - tld - name - 8 * px - icon, y - icon / 2, icon, icon);
     // Above it, right-aligned: the isolated bodies, then the project's name.
     g.textAlign = "right";
