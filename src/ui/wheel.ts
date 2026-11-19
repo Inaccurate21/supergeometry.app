@@ -119,7 +119,7 @@ const OWN = "own";
 const GROUP_OF: Record<string, string> = {
   text: "sketch", offset: "sketch", projs: "sketch",
   editFreeform: "freeform", fillHole: "freeform", thicken: "freeform",
-  planePerp: "construct", planeEdge: "construct",
+  planePerp: "construct", planeEdge: "construct", proje: "construct",
   moveBody: "transform", moveVertex: "transform", patl: "transform", patc: "transform", copySketch: "transform", align: "transform",
   offsetFromEdge: "modify",
   drawing: "more", material: "more",
@@ -160,7 +160,7 @@ const SLOTS: Record<string, string[]> = {
   create: ["extrude", "revolve", "sweep", "loft"],
   combine: ["subtract", "union", "intersect", "split"],
   modify: ["fillet", "chamfer", "shell", "offsetFace", "offsetEdge", "thread", "wrap", "fix", "replace"],
-  construct: ["offset", "mid", "plane", "axis", "proje", "3pt", "parallel", "angle"],
+  construct: ["plane", "axis"],
   transform: ["move", "circular", "mirror", "linear", "scale", "translate", "rotate", "align"],
   freeform: ["ff-box", "ff-cylinder", "ff-sphere", "ff-plane", "faceFreeform", "connect", "editFreeform"],
 };
@@ -210,6 +210,8 @@ interface Sector {
   item?: ToolItem;
   /** That tool is the one in use. */
   on?: boolean;
+  /** A tap on it starts this one's default kind as well as showing its kinds (Plane). */
+  starts?: ToolItem;
   /** Nothing in it now: why. */
   why?: string;
   /** The tool most likely next (or the one in use, or one that is on) is in it. */
@@ -1119,6 +1121,8 @@ export class Wheel implements WheelHandle {
   /** A tool's kinds, as the cells of its ring. */
   private kindsOf(parent: ToolItem): Cell[] {
     const kids = kidsOf(parent);
+    // One that starts a kind by itself (Plane: Offset Plane): that kind lit, the others to pick instead.
+    if (parent.startsDefault) return kids.map((item): Cell => ({ item: item.id === parent.startsDefault ? { ...item, active: true } : item }));
     const cells = kids.map((item): Cell => ({ item }));
     // What a tap on it does in the column (the kind used last) comes first, unless one of its kinds is marked as that.
     if (parent.run && !kids.some((k) => k.active)) cells.unshift({ item: { ...parent, children: undefined } });
@@ -1129,7 +1133,7 @@ export class Wheel implements WheelHandle {
   private sectorOf(it: ToolItem): Sector {
     if (opens(it)) {
       const cells = this.kindsOf(it);
-      return { id: it.id, label: it.label, icon: it.icon, swatch: it.swatch, cells, on: !!it.active, mark: marked(cells) };
+      return { id: it.id, label: it.label, icon: it.icon, swatch: it.swatch, cells, on: !!it.active, mark: marked(cells), starts: it.startsDefault ? it : undefined };
     }
     return { id: it.id, label: it.label, icon: it.icon, swatch: it.swatch, cells: [], item: it, on: !!it.active, mark: !!it.pulse };
   }
@@ -1620,7 +1624,10 @@ export class Wheel implements WheelHandle {
     if (hit >= CELL) {
       const c = this.fan[hit - CELL];
       if (!c) return;
-      if (opens(c.item)) return this.enter(c.item.id, this.kindsOf(c.item), (c.a0 + c.a1) / 2, -1);
+      if (opens(c.item)) {
+        if (c.item.startsDefault) c.item.run?.();
+        return this.enter(c.item.id, this.kindsOf(c.item), (c.a0 + c.a1) / 2, -1);
+      }
       return this.run(c.item);
     }
     const i = hit - SECTOR;
@@ -1628,6 +1635,7 @@ export class Wheel implements WheelHandle {
     if (!s || s.blank) return;
     if (s.item) return this.run(s.item);
     if (!s.cells.length) return this.say(this.midOf(i), this.reach() + 8, s.why ?? `${s.label} has nothing here`, { why: true });
+    s.starts?.run?.();
     this.enter(s.id, s.ring ?? s.cells, this.midOf(i), i);
   }
 

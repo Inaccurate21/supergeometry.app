@@ -1041,9 +1041,22 @@ export class App implements AppContext {
         icon: "construct",
         children: [
           {
+            // A tap: Offset Plane from the face or plane tapped next - or one of the other kinds, picked on the wheel.
             id: "plane",
             label: "Plane",
             icon: "plane",
+            startsDefault: "offset",
+            run: wait("Offset Plane", ["face", "plane"], () => {
+              const s = this.selection[0];
+              if (s?.kind === "face") {
+                const f = this.view.body(s.body)?.faces[s.face];
+                if (f?.plane) this.setTool(new PlaneOp(this, f.plane, faceRefOf(this, s)!));
+                else this.ui.toast("An Offset Plane starts from a flat face or a plane", "error");
+              } else if (s?.kind === "plane") {
+                const p = this.view.planeOf(s.id);
+                if (p) this.setTool(new PlaneOp(this, p, undefined));
+              }
+            }),
             children: [
               { id: "offset", label: "Offset Plane", icon: "planeOffset", run: () => this.setTool(new PlaneOp(this, null, undefined)) },
               { id: "mid", label: "Midplane", icon: "planeMid", run: () => this.setTool(new MidplaneOp(this)) },
@@ -1083,7 +1096,6 @@ export class App implements AppContext {
             }) },
             ],
           },
-          { id: "proje", label: "Project as Edge", icon: "projectEdge", beta: true, run: wait("Project as Edge (tap a sketch's shape)", ["profile"], () => src() && this.setTool(new ImprintOp(this, { source: src()! }))) },
         ],
       },
       {

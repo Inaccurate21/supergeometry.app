@@ -63,6 +63,8 @@ export class SelectTool implements Tool {
 
   exit(): void {
     this.live = false;
+    // Another tool started: a tool that was waiting for a pick (Plane's Offset Plane) waits no more.
+    this.pending = null;
     this.app.wheel.cover(false);
     this.clearHandle();
     this.app.ui.setHint(null);

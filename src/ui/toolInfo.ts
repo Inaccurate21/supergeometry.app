@@ -37,7 +37,7 @@ const MODEL: Record<string, string> = {
   fillToPlane: "Stretch a face out to a plane.",
   offset: "A plane parallel to a face or plane, at a distance.",
   mid: "A plane halfway between two faces.",
-  plane: "A construction plane to sketch on.",
+  plane: "A construction plane: tap a face or plane for an Offset Plane, or pick another kind here.",
   axis: "A construction axis: through a cylinder's middle, or square to a face.",
   axisPick: "An axis from a face or an edge.",
   proje: "Project edges onto a plane as new edges.",

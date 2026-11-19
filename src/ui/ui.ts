@@ -34,6 +34,11 @@ export interface ToolItem {
   swatch?: string;
   /** Small icons after the label (e.g. ⟲ + what a toggle switches to). */
   trailing?: IconName[];
+  /**
+   * The id of the kind a tap starts by itself (Plane: Offset Plane, from the
+   * face or plane tapped next) while its kinds show to pick another instead.
+   */
+  startsDefault?: string;
   /** Still being tried out: a BETA tag on it. */
   beta?: boolean;
   run?(): void;
