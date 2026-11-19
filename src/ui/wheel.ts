@@ -1501,8 +1501,11 @@ export class Wheel implements WheelHandle {
     plate.setAttribute("stroke-width", String(m.r1 - m.r0 + m.gap));
     this.ringSvg.replaceChildren(plate);
     this.ringItems.replaceChildren();
-    this.ringEls = this.sectors.map((s, i) => {
-      if (s.blank) return path("wheel-cell", "");
+    this.ringEls = this.sectors.map((s0, i) => {
+      if (s0.blank) return path("wheel-cell", "");
+      // A sketch's or a freeform's tool in use (Rectangle, Trim; Turn): its group's piece shows it, lit.
+      const use = !inner && !s0.item && (this.layout === "sketch" || this.layout === "freeform") ? s0.cells.find((c) => c.item.active && !c.item.swatch)?.item : undefined;
+      const s: Sector = use ? { ...s0, icon: use.icon, on: true } : s0;
       const mid = this.midOf(i);
       const dim = !s.cells.length && !s.item;
       const own = !inner && (s.id === OWN || (this.layout === "sketch" && s.id === "exit"));
