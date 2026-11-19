@@ -206,6 +206,8 @@ interface Cell {
   gap?: boolean;
   /** Not for what's picked: its place kept, greyed, saying this ("": an empty place). */
   off?: string;
+  /** Part of a list in its own order: the ring lays it out one after another. */
+  inOrder?: boolean;
 }
 interface Sector {
   id: string;
@@ -906,7 +908,7 @@ export class Wheel implements WheelHandle {
    * Type a value right on the wheel: a small box by the pointer, the value
    * in it selected. Enter (or tapping away) sets it, Esc leaves it as it was.
    */
-  private typeValue(label: string, now: string, kind: "length" | "angle" | "number", put: (v: number) => void, follows = false): void {
+  private typeValue(label: string, now: string, kind: "length" | "angle" | "number" | "int", put: (v: number) => void, follows = false): void {
     this.typerEnd?.(false);
     const box = el("div", "wheel-type");
     box.append(el("span", "wheel-type-label", label));
@@ -916,7 +918,7 @@ export class Wheel implements WheelHandle {
     input.autocomplete = "off";
     input.spellcheck = false;
     input.value = now;
-    input.dataset.kind = kind === "number" ? "number" : kind;
+    input.dataset.kind = kind;
     if (follows) input.dataset.follows = "1";
     numpadInput(input);
     box.append(input);
@@ -931,8 +933,8 @@ export class Wheel implements WheelHandle {
       if (over) return;
       over = true;
       if (keep) {
-        const v = evaluate(input.value, kind);
-        if (v !== null) put(v);
+        const v = evaluate(input.value, kind === "int" ? "number" : kind);
+        if (v !== null) put(kind === "int" ? Math.round(v) : v);
       }
       box.remove();
       if (this.typer === box) (this.typer = null), (this.typerEnd = null);
@@ -1205,7 +1207,7 @@ export class Wheel implements WheelHandle {
     const kids = kidsOf(parent);
     // One that starts a kind by itself (Plane: Offset Plane): that kind lit, the others to pick instead.
     if (parent.startsDefault) return kids.map((item): Cell => ({ item: item.id === parent.startsDefault ? { ...item, active: true } : item }));
-    const cells = kids.map((item): Cell => ({ item }));
+    const cells = kids.map((item): Cell => ({ item, inOrder: parent.inOrder }));
     // What a tap on it does in the column (the kind used last) comes first, unless one of its kinds is marked as that.
     if (parent.run && !kids.some((k) => k.active)) cells.unshift({ item: { ...parent, children: undefined } });
     return cells;
@@ -1233,7 +1235,10 @@ export class Wheel implements WheelHandle {
     // (A place kept for a tool that isn't for this pick: greyed, its name, a tap says why.)
     const at = (c: Cell): Sector =>
       c.off === undefined ? this.sectorOf(c.item) : c.item.label ? { id: c.item.id, label: c.item.label, icon: c.item.icon, cells: [], why: c.off, mark: false } : blank();
-    cells.slice(0, n).forEach((c, k) => (sectors[(((e + ORDER[k]) % n) + n) % n] = at(c)));
+    // (A list in its own order - Solid, 25%, 50%, 75% - one after another round the ring, its middle straight on.)
+    const seq = cells.some((c) => c.inOrder);
+    const lead = Math.floor((Math.min(n, cells.length) - 1) / 2);
+    cells.slice(0, n).forEach((c, k) => (sectors[(((e + (seq ? k - lead : ORDER[k])) % n) + n) % n] = at(c)));
     const rest = cells.slice(n).filter((c) => c.off === undefined);
     const m = this.m;
     const w = TAU / Math.max(n, rest.length);
@@ -1700,7 +1705,7 @@ export class Wheel implements WheelHandle {
 
   private run(item: ToolItem): void {
     // A number to type (a custom transparency): its box comes up by the wheel.
-    if (item.value) return this.typeValue(item.label.replace(/…$/, ""), item.value.now, "number", item.value.put);
+    if (item.value) return this.typeValue(item.label.replace(/…$/, ""), item.value.now, item.value.int ? "int" : "number", item.value.put);
     // A switch or a choice on the Settings wheel is set right there: the fan stays, showing it set.
     if (item.id.startsWith("opt-") && !item.id.endsWith("-more")) {
       item.run?.();

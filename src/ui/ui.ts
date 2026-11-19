@@ -44,7 +44,9 @@ export interface ToolItem {
   /** Still being tried out: a BETA tag on it. */
   beta?: boolean;
   /** On the wheel, a tap opens a box by it to type a number into (`run` is what a column or menu does instead). */
-  value?: { now: string; put(v: number): void };
+  value?: { now: string; put(v: number): void; /** Whole numbers only (a drag steps by 1). */ int?: boolean };
+  /** Its kinds go round the wheel in the order listed (Solid, 25%, 50%, 75%), not most used first. */
+  inOrder?: boolean;
   run?(): void;
 }
 

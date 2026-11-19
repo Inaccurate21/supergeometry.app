@@ -1043,6 +1043,7 @@ export class SelectTool implements Tool {
         // Next to Color: how see-through the body is.
         id: "opacity",
         label: "Transparency",
+        inOrder: true,
         icon: "color",
         sub: BODY_OPACITY.find((o) => o.value === ((app.store.doc.opacity ?? {})[bodies[0]] ?? 1))?.name ?? seeThrough((app.store.doc.opacity ?? {})[bodies[0]] ?? 1),
         children: [...BODY_OPACITY.map((o, i): ToolItem => ({
@@ -1064,10 +1065,10 @@ export class SelectTool implements Tool {
           const custom = !BODY_OPACITY.some((o) => o.value === now);
           const put = (pct: number) =>
             app.store.commit((d) => {
-              const v = Math.round(Math.min(95, Math.max(0, pct))) / 100;
+              const v = Math.round(Math.min(95, Math.max(0, pct)));
               const op = { ...(d.opacity ?? {}) };
               for (const b of bodies) if (v <= 0) delete op[b];
-              else op[b] = 1 - v;
+              else op[b] = (100 - v) / 100;
               d.opacity = op;
             });
           const typed = String(Math.round((1 - now) * 100));
@@ -1077,7 +1078,7 @@ export class SelectTool implements Tool {
             icon: "numpad",
             ...(custom ? { sub: seeThrough(now) } : {}),
             active: custom,
-            value: { now: typed, put },
+            value: { now: typed, put, int: true },
             run: async () => {
               const r = await app.ui.dialog("Custom transparency", [{ key: "pct", label: "Transparency (%)", value: typed }]);
               const v = r ? parseFloat(r.pct) : NaN;
