@@ -1486,7 +1486,7 @@ export class Viewport {
 
   private pickEdge(x: number, y: number, tolPx: number, faceDist: number): PickHit | null {
     // The nearest point of each edge near the pointer.
-    const per = new Map<string, { d: number; body: string; edge: number; point: Vector3 }>();
+    const per = new Map<string, { d: number; body: string; edge: number; point: Vector3; depth: number }>();
     const a = new Vector3();
     const b = new Vector3();
     const camPos = this.camera.position;
@@ -1518,13 +1518,15 @@ export class Viewport {
           // Hidden edges (behind the face under the pointer) are not pickable.
           const depth = this.cam.ortho ? w.clone().sub(camPos).dot(viewDir) : w.distanceTo(camPos);
           if (depth > faceDist + this.cam.distance * 0.01) continue;
-          per.set(key, { d, body: id, edge: g.edge, point: w });
+          per.set(key, { d, body: id, edge: g.edge, point: w, depth });
         }
       }
     }
     // The nearest one nothing covers (the allowance above lets an edge just
-    // behind a thin wall through).
-    const best = [...per.values()].sort((p, q) => p.d - q.d).slice(0, 6).find((c) => this.uncovered(c.point));
+    // behind a thin wall through). Two on the same pixels (a frame's front
+    // and back edge, seen from straight above): the one nearer the eye - the
+    // tap just off the face took the hidden one under it.
+    const best = [...per.values()].sort((p, q) => (Math.abs(p.d - q.d) < 1 ? p.depth - q.depth : p.d - q.d)).slice(0, 6).find((c) => this.uncovered(c.point));
     this.setRay(x, y);
     return best ? { kind: "edge", body: best.body, edge: best.edge, point: best.point.toArray() as Vec3 } : null;
   }

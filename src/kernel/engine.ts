@@ -1249,6 +1249,11 @@ async function apply(f: Feature, ctx: Ctx): Promise<void> {
         throw cornerTrouble();
       }
       if (corners && parts.some((part) => subShapes(part, "SOLID").length !== 1 || !shapeValid(part))) throw cornerTrouble();
+      // Mitred: each leg of the path is a piece of its own, so a flat side
+      // running round (a picture frame's front) was four faces meeting along
+      // the mitres - a chamfer round its inside edge "didn't fit", a round
+      // round its outside took more than it should at the corners. One face each.
+      if (corner === "right") parts = parts.map((part) => unify(part));
       combine(f.id, f.mode, f.target, fuseAll(parts), false, ctx);
       ctx.sweeps.set(f.id, spine);
       return;
