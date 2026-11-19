@@ -6,10 +6,10 @@ import math
 import sys
 
 TILE = "#1f2125"
-RED = ("#6a2723", "#bf4a40", "#e58a7f")
-YEL = ("#7e6430", "#ddb55a", "#f3dfa6")
-BLU = ("#22406f", "#3f6db8", "#8cb0ea")
-CLASP = "#e2bf62"
+RED = ("#7e1f1a", "#d8392f", "#ff7466")
+YEL = ("#9a6a08", "#ffc23d", "#ffe9a3")
+BLU = ("#123574", "#2a63c4", "#6ea4ff")
+CLASP = "#ffd34d"
 
 
 def stroke(pl, t):
@@ -101,10 +101,10 @@ def cross(p, q, a, b):
     return (p[0] + t * d1[0], p[1] + t * d1[1])
 
 
-def logo(nu=10, nv=6, badge_y=0.62, badge_r=0.5):
+def logo(nu=10, nv=6, badge_y=0.66, badge_r=0.56):
     # the print, laid flat, then into (u, v)
     hexa = [flat_to_uv(p) for p in densify(hexpts(0, badge_y, badge_r, [-90, -30, 30, 90, 150, 210]))]
-    g = [flat_to_uv(p) for p in densify(gmark_flat(0, badge_y, badge_r * 0.72, badge_r * 0.27))]
+    g = [flat_to_uv(p) for p in densify(gmark_flat(0, badge_y, badge_r * 0.77, badge_r * 0.3))]
     L = (-0.5, -0.6, 0.62); n = math.sqrt(sum(c * c for c in L)); L = tuple(c / n for c in L)
     UV = [[(i / nu, j / nv) for i in range(nu + 1)] for j in range(nv + 1)]
     tris = []
@@ -126,9 +126,9 @@ def logo(nu=10, nv=6, badge_y=0.62, badge_r=0.5):
     pts = [proj(p) for *_, P in tris for p in P]
     x0, x1 = min(p[0] for p in pts), max(p[0] for p in pts)
     y0, y1 = min(p[1] for p in pts), max(p[1] for p in pts)
-    k = min(50 / (x1 - x0), 44 / (y1 - y0))
+    k = min(56 / (x1 - x0), 49 / (y1 - y0))
     ox = 32 - (x0 + x1) / 2 * k
-    tx = lambda p: (ox + p[0] * k, 14 + (p[1] - y0) * k)
+    tx = lambda p: (ox + p[0] * k, 12.3 + (p[1] - y0) * k)
     out = []
     for _, s, t, P in tris:
         S = [tx(proj(p)) for p in P]
@@ -146,7 +146,7 @@ def logo(nu=10, nv=6, badge_y=0.62, badge_r=0.5):
             if len(c) >= 3:
                 out.append((tone(pal, s), [amap(q) for q in c]))
     top = [tx(proj(surf(0, 0))), tx(proj(surf(1, 0)))]
-    out.append((CLASP, [(top[0][0] - 1, 11), (top[1][0] + 1, 11), (top[1][0] + 0.5, 14.2), (top[0][0] - 0.5, 14.2)]))
+    out.append((CLASP, [(top[0][0] - 1, 9), (top[1][0] + 1, 9), (top[1][0] + 0.5, 12.5), (top[0][0] - 0.5, 12.5)]))
     return out
 
 

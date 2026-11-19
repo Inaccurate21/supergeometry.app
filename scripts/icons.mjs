@@ -74,7 +74,7 @@ function png(w, h, rgba) {
 writeFileSync("public/icon-192.png", render(192));
 writeFileSync("public/icon-512.png", render(512));
 // Maskable: full square, logo inside the safe circle.
-writeFileSync("public/icon-maskable-512.png", render(512, { rounded: false, scale: 0.8 }));
+writeFileSync("public/icon-maskable-512.png", render(512, { rounded: false, scale: 0.75 }));
 // iOS rounds the corners itself.
 writeFileSync("public/apple-touch-icon.png", render(180, { rounded: false }));
 console.log("icons written");

@@ -1771,7 +1771,7 @@ function watermarkLogo(): Promise<HTMLImageElement | null> {
       (text) =>
         new Promise<HTMLImageElement | null>((resolve) => {
           // Drop the tile and crop to the cape.
-          const svg = text.replace(/<rect[^>]*\/>/, "").replace(/viewBox="[^"]*"/, 'viewBox="6 10 52 43"');
+          const svg = text.replace(/<rect[^>]*\/>/, "").replace(/viewBox="[^"]*"/, 'viewBox="3 8 58 48"');
           const img = new Image();
           img.onload = () => resolve(img);
           img.onerror = () => resolve(null);
