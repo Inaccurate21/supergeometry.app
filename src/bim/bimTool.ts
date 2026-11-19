@@ -60,7 +60,7 @@ export class BimTool implements Tool {
     this.app.ui.setBottom(this.app.bottomTools());
     this.app.ui.setHint("Tap a body, then its material. The material's data gives the body its mass.");
     this.card = el("div", "bim-card");
-    this.body = el("div", "bim-body");
+    this.body = el("div", "bim-inner");
     this.card.append(this.header(), this.body);
     document.body.append(this.card);
     this.putCard(BimTool.spot());
