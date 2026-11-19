@@ -2245,6 +2245,27 @@ function taperedPrism(face: Face, c: Vec3, normal: Vec3, k: number, d: number): 
 function movePolyhedronPoints(body: Shape3D, moves: [Vec3, Vec3][]): Shape3D | null {
   const size = Math.hypot(body.boundingBox.width, body.boundingBox.height, body.boundingBox.depth) || 1;
   const tol = size * 1e-6;
+  // A body in separate pieces (a block added that doesn't touch the rest): the
+  // piece with the corners moves, the others stay as they are. (Made as one,
+  // the pieces came out as a group, not a solid - every move of a corner failed.)
+  const pieces = subShapes(body, "SOLID");
+  if (pieces.length > 1) {
+    const on = (piece: Shape3D) => piece.edges.some((e) => moves.some(([a]) => dist(e.startPoint.toTuple() as Vec3, a) < tol || dist(e.endPoint.toTuple() as Vec3, a) < tol));
+    let hit = false;
+    const out: Shape3D[] = [];
+    for (const p of pieces) {
+      const piece = cast(p) as Shape3D;
+      if (!on(piece)) {
+        out.push(piece);
+        continue;
+      }
+      hit = true;
+      const moved = movePolyhedronPoints(piece, moves);
+      if (!moved) return null;
+      out.push(moved);
+    }
+    return hit ? (makeCompound(out as never) as unknown as Shape3D) : null;
+  }
   const loops = body.faces.map((f) => faceLoop(f, tol));
   if (loops.some((l) => !l)) return null;
   const movedTo = (p: Vec3): Vec3 | null => moves.find(([a]) => dist(a, p) < tol)?.[1] ?? null;
