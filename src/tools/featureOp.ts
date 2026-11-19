@@ -147,6 +147,11 @@ export abstract class FeatureOp<F extends Feature> implements Tool {
     return true;
   }
 
+  /** A tap on a body the step waiting can't use (a mirror's plane, a ball tapped): true if the tool took it some other way. */
+  protected otherBody(_body: string): boolean {
+    return false;
+  }
+
   /** After regionTap changed the profile (e.g. Extrude moves its arrow). */
   protected regionsChanged(): void {}
 
@@ -172,6 +177,7 @@ export abstract class FeatureOp<F extends Feature> implements Tool {
     const body = "body" in hit ? hit.body : null;
     if (!slot.accept(hit) && !(body && this.app.view.facesAt(p.x, p.y).some((f) => f.kind === "face" && f.body !== body && slot.accept(f)))) {
       if (this.moreRegions && this.regionTap(p)) return;
+      if (body && !mine(body) && this.otherBody(body)) return;
       if (slot.rejectHint) this.app.ui.toast(slot.rejectHint);
       return;
     }

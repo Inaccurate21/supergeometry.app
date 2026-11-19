@@ -33,6 +33,22 @@ export function axisSlot(app: AppContext, label: string, get: () => AxisRef | nu
     ],
     shows: () => (shown ? [shown] : []),
     accept(hit) {
+      // A point of a sketch (a short axis line is mostly its ends, and the
+      // circle it halves has its own points on it): the sketch line through it.
+      // (Tapped, it was taken for nothing - the Axis waited on.)
+      if (hit.kind === "point") {
+        const s = app.store.find<SketchFeature>(hit.sketch);
+        const plane = app.sketchPlane(hit.sketch);
+        if (!s || !plane) return false;
+        const at = toPlane(plane, hit.point);
+        const on = s.entities.find((e) => e.kind === "line" && closestOnPrim(entityPrims(e)[0], at).d < 1e-6 * Math.max(1, len(sub(toWorld(plane, e.b), toWorld(plane, e.a)))));
+        if (!on || on.kind !== "line") return false;
+        const a = toWorld(plane, on.a);
+        set({ origin: a, dir: norm(sub(toWorld(plane, on.b), a)), ref: { kind: "sketchLine", sketch: s.id, entity: on.id } });
+        name = "Sketch line";
+        shown = { kind: "curve", sketch: s.id, entity: on.id } as Sel;
+        return true;
+      }
       if (hit.kind === "curve") {
         const s = app.store.find<SketchFeature>(hit.sketch);
         const e = s?.entities.find((x) => x.id === hit.entity);

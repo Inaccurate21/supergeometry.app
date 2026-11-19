@@ -728,7 +728,10 @@ export class EdgeOp extends FeatureOp<EdgeFeature> {
     {
       const shown = hit?.kind === "edge" ? this.app.view.body(hit.body)?.edges[hit.edge] : undefined;
       const hitD = shown ? this.screenDist(shown, p.x, p.y) : Infinity;
-      let again = this.pickedNear(p.x, p.y, Math.min(p.tol, hitD));
+      // (A face under the finger: a picked edge counts only right by it - on a
+      // plate's 8 mm side, seen at a slant, its rounded top edge was always
+      // within a finger's reach, so the side never got added.)
+      let again = this.pickedNear(p.x, p.y, Math.min(hit?.kind === "face" ? p.tol / 3 : p.tol, hitD));
       // Or the edge where its preview's rounding meets a face (a 1 mm round's,
       // a hair nearer the finger than the edge it rounds: it was added, not
       // the edge dropped) - along it, the radius off it.
@@ -748,22 +751,23 @@ export class EdgeOp extends FeatureOp<EdgeFeature> {
       const at = (r: EdgeRef) => this.feature.edges.findIndex((e) => e.body === r.body && Math.hypot(...sub(e.mid, r.mid)) < 1e-6);
       if (!refs.length) return;
       // The face tapped again, as its preview shows it - its edges rounded
-      // in, new ones: those picked on its plane are dropped (they were added
-      // to instead - its rounded outline on top of them).
-      const face = this.app.view.body(hit.body)?.faces[hit.face];
-      if (face?.plane && refs.every((r) => at(r) < 0) && refs.some((r) => this.roundedInto(r) >= 0)) {
-        const n = norm(face.normal);
-        const onIt = (e: EdgeRef) => e.body === hit.body && Math.abs(dot(sub(e.mid, face.center), n)) < 1e-4 * Math.max(1, this.feature.radius) && Math.abs(dot(norm(e.dir), n)) < 1e-6;
-        if (this.feature.edges.some(onIt)) {
-          this.feature.edges = this.feature.edges.filter((e) => !onIt(e));
-          this.app.setSelection(this.edgeSels());
-          this.update();
-          return;
-        }
+      // in, new ones (they were added on top: a gusset's side tapped by
+      // mistake couldn't be undone). It's that face when every edge it shows
+      // is a picked one's rounded border (or picked itself): those are
+      // dropped. (Not the face beside a picked edge: its other edges aren't.)
+      const was = refs.map((r) => (at(r) >= 0 ? at(r) : this.roundedInto(r)));
+      if (refs.some((r) => at(r) < 0) && was.every((i) => i >= 0)) {
+        const drop = new Set(was);
+        this.feature.edges = this.feature.edges.filter((_, i) => !drop.has(i));
+        this.app.setSelection(this.edgeSels());
+        this.update();
+        return;
       }
       if (refs.every((r) => at(r) >= 0)) this.feature.edges = this.feature.edges.filter((e) => !refs.some((r) => r.body === e.body && Math.hypot(...sub(e.mid, r.mid)) < 1e-6));
       else {
-        const kin = withCircleKin(this.app, refs.filter((r) => at(r) < 0));
+        // (Not a picked edge's rounded border, as the preview shows it: the
+        // face beside a picked edge brought it in as an edge of its own.)
+        const kin = withCircleKin(this.app, refs.filter((r) => at(r) < 0 && this.roundedInto(r) < 0));
         this.groupKin(kin);
         for (const r of kin) if (at(r) < 0) this.feature.edges.push(r);
       }
@@ -1490,6 +1494,17 @@ export class TransformOp extends FeatureOp<TransformFeature> {
     this.render();
     this.update();
     return true;
+  }
+
+  /**
+   * A body tapped in the view that the plane or direction can't use (the next
+   * pip of a row, to mirror with the first): it joins what's moved, as a tap
+   * on it in Items does. (The only way was Items; in the view it said "tap a
+   * flat face".)
+   */
+  protected otherBody(body: string): boolean {
+    if (this.kind === "move" || this.kind === "translate" || !this.app.view.body(body)) return false;
+    return this.toggleBody(body);
   }
 
   private copyToggle: CopyToggle | null = null;
