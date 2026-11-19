@@ -995,6 +995,9 @@ export class UI {
     // another tool starts: unfoldPanel.
     // (After this, the Options wheel shows what the window holds now.)
     queueMicrotask(() => this.onPanel?.());
+    // A window with nothing in it but Cancel and Done (Move Vertex) isn't shown with the wheel on:
+    // a tap on empty space is Done, Undo takes it back, Esc and Enter still work.
+    document.body.classList.toggle("panel-empty", !!spec && !spec.fields?.length && !spec.items?.length && !spec.actions?.length);
     if (!spec) {
       this.panelWarning = null;
       document.body.classList.remove("panel-shown");

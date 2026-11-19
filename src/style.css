@@ -5656,6 +5656,9 @@ body.items-open #items-btn {
 }
 /* The Options wheel is up: the tool's window stays out of sight - unless it holds a text
    box to type into (a sketch's Text: the words themselves can't be set from the wheel). */
+body.wheel-ui.panel-empty #panel {
+  display: none;
+}
 body.wheel-options:not(.panel-shown) #panel:not(:has(.text-input)) {
   display: none !important;
 }
