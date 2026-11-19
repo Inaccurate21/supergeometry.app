@@ -101,7 +101,7 @@ def cross(p, q, a, b):
     return (p[0] + t * d1[0], p[1] + t * d1[1])
 
 
-def logo(nu=10, nv=6, badge_y=0.66, badge_r=0.56):
+def logo(nu=10, nv=6, badge_y=0.9, badge_r=0.6):
     # the print, laid flat, then into (u, v)
     hexa = [flat_to_uv(p) for p in densify(hexpts(0, badge_y, badge_r, [-90, -30, 30, 90, 150, 210]))]
     g = [flat_to_uv(p) for p in densify(gmark_flat(0, badge_y, badge_r * 0.77, badge_r * 0.3))]
