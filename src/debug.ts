@@ -139,6 +139,9 @@ export function installDebug(app: App): void {
 
     /** Every tool the wheel offers now, by where it is ("Tools › Fillet"): the same as sg.actions(), arranged its way. */
     wheelTools: () => app.wheel.tools(),
+    /** The reference image windows and their tabs; refAdd(name, dataUrl) opens one as Insert › Reference Image does. */
+    refImages: () => app.refImages.describe(),
+    refAdd: (name: string, src: string) => void app.refImages.add(name, src),
     settingsWheel: () => app.settingsWheel.describe(),
     optionsWheel: () => app.optionsWheel.describe(),
 

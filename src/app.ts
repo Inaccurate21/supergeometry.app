@@ -11,6 +11,7 @@ import { findAction, openCommandSearch, showShortcuts } from "./ui/commands";
 import type { EdgeFeature, EdgeRef, ExtrudeFeature, ExtrudeSource, Feature, FillToPlaneFeature, ImageFeature, LoftFeature, PathRef, PinDef, PlaneDef, PlaneFeature, ProjectDoc, RevolveFeature, ShellFeature, SketchEntity, SketchFeature, SplitFeature, SweepFeature, TransformFeature, Units, Vec3 } from "./doc/types";
 import { emptyDoc } from "./doc/types";
 import { createVariable, insertFile, insertImage } from "./io/insert";
+import { RefImages } from "./ui/refImages";
 import { numpadVariables } from "./ui/numpad";
 import { variableTags } from "./doc/varAnchors";
 import { VariableTags } from "./tools/variableTags";
@@ -74,6 +75,8 @@ export class App implements AppContext {
   readonly settingsWheel = new Wheel({ ui: this.ui, mainTools: () => [] }, "settings");
   /** The Options wheel: the open tool's window as a wheel, up while there is one (folded to its icon unless opened). */
   readonly optionsWheel = new Wheel({ ui: this.ui, mainTools: () => [] }, "options");
+  /** Pictures to look at while modelling, each in a window over everything. */
+  readonly refImages = new RefImages((text, kind) => this.ui.toast(text, kind));
   private input: InputRouter;
   result: RegenResult | null = null;
   selection: Sel[] = [];
@@ -1127,6 +1130,7 @@ export class App implements AppContext {
               { id: "image", label: "Image", icon: "image", run: () => void insertImage(this).then((f) => f && this.setTool(new ImageOp(this, f))) },
               { id: "file", label: "File", icon: "file", sub: "STEP, STL, OBJ, 3MF, DXF, SVG", run: () => void insertFile(this) },
               { id: "project", label: "Project", icon: "file", sub: ".super", run: () => void insertFile(this) },
+              { id: "refImage", label: "Reference Image", icon: "refImage", sub: "a picture in its own window, over everything", run: () => void this.refImages.open() },
             ],
           },
           {
