@@ -770,6 +770,8 @@ export class Viewport {
     this.sketchPoints = [];
     const wpp = this.cam.worldPerPixel(this.height);
     for (const s of sketches) {
+      // (A sketch saved without a plane - a damaged file: left out, not the whole drawing stopped.)
+      if (!s.plane) continue;
       const active = s.id === activeId;
       // Not made into anything yet: drawn on top of bodies, so one inside a body still shows.
       const onTop = active || fresh.has(s.id);

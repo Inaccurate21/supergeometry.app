@@ -1,3 +1,4 @@
+import { QuickActions } from "./quickActions";
 import { isTouchDevice } from "../device";
 import { simplifyStroke } from "../sketch/freehand";
 import { Box3, BufferGeometry, Line, LineBasicMaterial, LineDashedMaterial, Points, PointsMaterial, Vector3 } from "three";
@@ -585,6 +586,7 @@ export class SketchTool implements Tool {
   }
 
   exit(): void {
+    this.clearQuick();
     this.app.wheel.cover(false);
     this.regionArrow?.handle.dispose();
     this.regionArrow = null;
@@ -2357,6 +2359,7 @@ export class SketchTool implements Tool {
       // Hidden while dragging too, so it doesn't jump around.
       this.copyToggle?.dispose();
       this.copyToggle = null;
+      this.clearQuick();
       return;
     }
     const refs = this.dragRefs(this.selected, this.selPts);
@@ -2373,6 +2376,32 @@ export class SketchTool implements Tool {
     const g = this.gimbal;
     this.copyToggle ??= new CopyToggle(this.app.view, () => g.origin);
     this.gimbal.setCenter(sketchToWorld(plane, c).toArray() as Vec3);
+    this.showQuick(sketchToWorld(plane, c).toArray() as Vec3);
+  }
+
+  /** Quick actions beside the picked curves and points (the gimbal moves them): Construction / Regular, Delete. */
+  private quick: QuickActions | null = null;
+  private quickSig = "";
+
+  private showQuick(at: Vec3): void {
+    const sel = this.entities.filter((e) => this.selected.has(e.id));
+    const cons = sel.length > 0 && sel.every((e) => e.construction);
+    // (Made again only when the pick, its type or its place changed: this runs while it is dragged.)
+    const sig = `${[...this.selected].join()}|${this.selPts.map((r) => r.e + r.p).join()}|${cons}|${at.map((v) => v.toFixed(4)).join()}`;
+    if (sig === this.quickSig && this.quick) return;
+    this.clearQuick();
+    this.quickSig = sig;
+    const items: ToolItem[] = [
+      ...(sel.length ? [{ id: "construction", label: cons ? "Regular" : "Construction", icon: cons ? "line" : "lineDashed", run: () => this.toggleConstruction() } as ToolItem] : []),
+      { id: "delete", label: "Delete", icon: "trash", run: () => this.deleteSelected() },
+    ];
+    this.quick = QuickActions.show(this.app.view, sel.length ? "curve" : "point", items, at, { gap: 110 });
+  }
+
+  private clearQuick(): void {
+    this.quick?.dispose();
+    this.quick = null;
+    this.quickSig = "";
   }
 
   /**
@@ -3924,7 +3953,9 @@ export class SketchTool implements Tool {
     if (this.sketchId && this.sketch) {
       store.update(this.sketchId, patch);
     } else {
-      const f: SketchFeature = { ...(this.pending ?? store.newIdentity("sketch")), type: "sketch", plane: this.plane!, attachedTo: this.attachedTo, onPlane: this.onPlane, ...patch };
+      // (No plane yet: nothing stored - a sketch without one broke every project switch after it.)
+      if (!this.plane) return;
+      const f: SketchFeature = { ...(this.pending ?? store.newIdentity("sketch")), type: "sketch", plane: this.plane, attachedTo: this.attachedTo, onPlane: this.onPlane, ...patch };
       store.add(f);
       this.sketchId = f.id;
     }

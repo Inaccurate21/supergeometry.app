@@ -1,10 +1,12 @@
-// Quick actions: a short row of round buttons right beside what is picked -
-// a face, an edge, a point of a body - with the two tools most likely next for
-// it (a flat face: Sketch, Shell; a round one: Thread; an edge: Chamfer, Move;
-// a point: Move Vertex). The most likely of all already has its handle on the
-// model (a face's arrow, an edge's fillet dot): these are the next ones, a
-// tap away instead of a trip round the wheel. They are the very tools the
-// wheel offers for the pick (the same ToolItems), so they do exactly that.
+// Quick actions: a short row of round buttons right beside whatever is
+// picked - on the model a face, an edge, a point, a body, a sketch's shape, a
+// plane, an axis, an image; in a sketch its curves and points - with the two
+// tools most likely next for it (a flat face: Sketch, Shell; a round one:
+// Thread; an edge: Chamfer, Move; a body: Shell, Fillet; a sketch's curves:
+// Construction, Delete). The most likely of all already has its handle on it
+// (a face's arrow, an edge's fillet dot, a gimbal): these are the next ones, a
+// tap away instead of a trip round the wheel. On the model they are the very
+// tools the wheel offers for the pick (the same ToolItems).
 
 import type { Vec3 } from "../doc/types";
 import { icons } from "../ui/icons";
@@ -13,11 +15,30 @@ import type { Viewport } from "../view/viewport";
 import { clampToFree } from "./annotate";
 
 /** By kind of pick: the tools to offer, best first (the first two there are and can be used now). */
-export const QUICK: Record<"face" | "edge" | "vertex", string[]> = {
-  face: ["thread", "sketch", "shell", "fillet"],
-  edge: ["chamfer", "thread", "move"],
+export const QUICK = {
+  face: ["thread", "sketch", "shell", "fillet", "editFreeform", "thicken"],
+  edge: ["chamfer", "thread", "move", "connect"],
   vertex: ["moveVertex", "delete"],
-};
+  body: ["shell", "fillet", "mirror"],
+  profile: ["sketch", "revolve"],
+  plane: ["sketch", "plane"],
+  axis: ["delete"],
+  image: ["scale", "delete"],
+  // In a sketch: its picked curves and points (the sketch tool's own buttons).
+  curve: ["construction", "delete"],
+  point: ["delete"],
+} satisfies Record<string, string[]>;
+
+export type QuickKind = keyof typeof QUICK;
+
+export interface QuickPlace {
+  /** The pick's outward normal (a face's, a shape's): they go the other way from its arrow on the screen. */
+  facing?: Vec3;
+  /** Turned away (seen from behind): hidden (a body's face; a sketch's shape is seen from both sides). */
+  hideBack?: boolean;
+  /** How far from the point (px): further for a gimbal round it. */
+  gap?: number;
+}
 
 /** At most this many: only the important things (more is the wheel's job). */
 const MOST = 2;
@@ -26,19 +47,29 @@ export class QuickActions {
   private readonly box = document.createElement("div");
   private readonly hook = () => this.layout();
 
-  /** `items`: what the pick offers (the wheel's own list); `at`: the point it is shown beside; `facing`: the pick's outward normal, if it has one (hidden when turned away). */
-  static show(view: Viewport, kind: keyof typeof QUICK, items: ToolItem[], at: Vec3, facing?: Vec3): QuickActions | null {
-    const byId = new Map(items.map((it) => [it.id, it]));
-    const picked = QUICK[kind].map((id) => byId.get(id)).filter((it): it is ToolItem => !!it && !it.disabled && !!it.run && !it.beta).slice(0, MOST);
-    return picked.length ? new QuickActions(view, picked, at, facing) : null;
+  /** `items`: what the pick offers (the wheel's own list, its kinds' items too); `at`: the point it is shown beside. */
+  static show(view: Viewport, kind: QuickKind, items: ToolItem[], at: Vec3, place: QuickPlace = {}): QuickActions | null {
+    const byId = new Map<string, ToolItem>();
+    const walk = (its: ToolItem[]) => {
+      for (const it of its) {
+        if (!byId.has(it.id)) byId.set(it.id, it);
+        if (it.children?.length) walk(it.children);
+      }
+    };
+    walk(items);
+    const picked = (QUICK[kind] as readonly string[]).map((id) => byId.get(id)).filter((it): it is ToolItem => !!it && !it.disabled && !!it.run && !it.beta).slice(0, MOST);
+    return picked.length ? new QuickActions(view, picked, at, place) : null;
   }
+
+  private readonly facing?: Vec3;
 
   private constructor(
     private readonly view: Viewport,
     items: ToolItem[],
     private readonly at: Vec3,
-    private readonly facing?: Vec3,
+    private readonly place: QuickPlace,
   ) {
+    this.facing = place.facing;
     this.box.className = "quick-actions";
     for (const it of items) {
       const b = document.createElement("button");
@@ -64,7 +95,7 @@ export class QuickActions {
   private layout(): void {
     const s = this.view.toScreen(this.at);
     let shown = !!s;
-    if (s && this.facing) {
+    if (s && this.facing && this.place.hideBack !== false) {
       const v = this.view.cam.viewDir();
       if (v.x * this.facing[0] + v.y * this.facing[1] + v.z * this.facing[2] > 0.05) shown = false;
     }
@@ -83,16 +114,17 @@ export class QuickActions {
       const dy = tip ? s[1] - tip[1] : 0;
       const l = Math.hypot(dx, dy);
       if (l > 8) {
-        const d = Math.abs((dx / l) * hw) + Math.abs((dy / l) * hh) + 34;
+        const d = Math.abs((dx / l) * hw) + Math.abs((dy / l) * hh) + (this.place.gap ?? 34);
         first.push([s[0] + (dx / l) * d, s[1] + (dy / l) * d]);
       }
     }
+    const g = this.place.gap ?? 46;
     const spots: [number, number][] = [
       ...first,
-      [s[0], s[1] + 46 + hh],
-      [s[0], s[1] - 46 - hh],
-      [s[0] - 46 - hw, s[1]],
-      [s[0] + 46 + hw, s[1]],
+      [s[0], s[1] + g + hh],
+      [s[0], s[1] - g - hh],
+      [s[0] - g - hw, s[1]],
+      [s[0] + g + hw, s[1]],
     ].map((p) => clampToFree(p as [number, number], hw, hh));
     const [x, y] = spots.find(([x, y]) => !wheels.some((w) => hits(w, x, y, hw + 4, hh + 4))) ?? spots[0];
     this.box.style.transform = `translate(${Math.round(x - hw)}px, ${Math.round(y - hh)}px)`;
@@ -107,7 +139,7 @@ export class QuickActions {
 /** A short name under the icon ("Move/Rotate Edge" → "Move"). */
 function shortName(label: string): string {
   const s = label.replace(/…$/, "").split(/[/ –]/)[0];
-  return s.length > 10 ? s.slice(0, 9) + "…" : s;
+  return s.length > 12 ? s.slice(0, 11) + "…" : s;
 }
 
 /** The wheels up on the screen, as circles (their middle, and how far they reach: folded, just the middle). */

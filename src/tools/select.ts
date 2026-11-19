@@ -1,4 +1,4 @@
-import { QuickActions } from "./quickActions";
+import { QuickActions, type QuickKind, type QuickPlace } from "./quickActions";
 import { circleAxis } from "./slots";
 import { isTouchDevice } from "../device";
 import { BODY_COLORS, BODY_OPACITY, bodyColor } from "../doc/types";
@@ -1042,22 +1042,36 @@ export class SelectTool implements Tool {
     this.handleAction = action;
   }
 
-  /** One face, edge or point of a body picked: its next tools as buttons beside it (QuickActions). */
+  /**
+   * Whatever is picked - a face, edge or point of a body (several of a kind:
+   * beside the last), a body, a sketch's shape, a plane, an axis, an image -
+   * its next tools as buttons beside it (QuickActions).
+   */
   private showQuick(items: ToolItem[]): void {
     const sel = this.app.selection;
-    const s = sel[0];
-    if (sel.length !== 1 || this.pending || (s.kind !== "face" && s.kind !== "edge" && s.kind !== "vertex") || this.freeformOf(s.body)) return;
-    const b = this.app.view.body(s.body);
+    if (!sel.length || this.pending) return;
+    const view = this.app.view;
+    const s = sel[sel.length - 1];
+    // (Mixed kinds: the tools are for all of them - no one place to show them.)
+    if (!sel.every((x) => x.kind === s.kind)) return;
+    const show = (kind: QuickKind, at: Vec3 | undefined, place?: QuickPlace) => {
+      if (at) this.quick = QuickActions.show(view, kind, items, at, place);
+    };
     if (s.kind === "face") {
-      const f = b?.faces[s.face];
-      if (f) this.quick = QuickActions.show(this.app.view, "face", items, f.center, f.plane ? f.normal : undefined);
-    } else if (s.kind === "edge") {
-      const e = b?.edges[s.edge];
-      if (e) this.quick = QuickActions.show(this.app.view, "edge", items, e.mid);
-    } else {
-      const v = this.app.view.vertexOf(s.body, s.vertex);
-      if (v) this.quick = QuickActions.show(this.app.view, "vertex", items, v);
-    }
+      const f = view.body(s.body)?.faces[s.face];
+      if (f) show("face", f.center, f.plane ? { facing: f.normal } : {});
+    } else if (s.kind === "edge") show("edge", view.body(s.body)?.edges[s.edge]?.mid);
+    else if (s.kind === "vertex") show("vertex", view.vertexOf(s.body, s.vertex), { gap: 110 });
+    else if (s.kind === "body") show("body", centerOf(this.app, bodiesOf(sel)), { gap: 120 });
+    else if (s.kind === "profile") {
+      const src = sourcesOf(this.app, [s])[0];
+      const fr = src && sourceFrame(this.app, src);
+      if (fr) show("profile", fr.base, { facing: fr.normal, hideBack: false });
+    } else if (s.kind === "plane") {
+      const pl = view.planeOf(s.id);
+      show("plane", view.planeShownAt(s.id) ?? pl?.origin, { gap: 110 });
+    } else if (s.kind === "axis") show("axis", view.axisOf(s.id)?.plane.origin, { gap: 40 });
+    else if (s.kind === "image") show("image", this.app.store.find<ImageFeature>(s.id)?.plane.origin, { gap: 110 });
   }
 
   private clearHandle(): void {
