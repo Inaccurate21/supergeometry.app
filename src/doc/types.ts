@@ -920,6 +920,12 @@ export interface MaterialDef {
   expansion?: number;
   conductivity?: number;
   specificHeat?: number;
+  /** Elongation at break, %. */
+  elongation?: number;
+  /** Melting point (a metal's: where it starts to melt), °C. */
+  melting?: number;
+  /** The warmest it is used at for long (a plastic's: about where it starts to soften under load), °C. */
+  maxTemp?: number;
 }
 
 /** The body colours offered by the Color tool: seven, Custom the eighth (no Grey - a body is grey until given one; a tap on its lit colour makes it grey again). Bodies given another before keep it (shown as Custom). */
