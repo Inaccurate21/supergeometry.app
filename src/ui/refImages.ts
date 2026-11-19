@@ -1,6 +1,7 @@
 // Reference images: pictures to look at while modelling (a drawing, a photo
 // of the part), each in a window over everything else. A window is dragged by
-// its top bar, resized from its corner, minimized to its bar and closed. More
+// its top bar or its picture, resized from its corner, minimized to its bar
+// (then dragged by its tabs) and closed. More
 // pictures in one window are tabs along its top; a tab dragged out of the bar
 // becomes a window of its own, and dropped on another window's bar it joins it.
 // They are kept on this device (not in the project) until closed.
@@ -141,6 +142,8 @@ export class RefImages {
     });
     close.addEventListener("click", () => this.closeTab(win, win.active, true));
     this.dragBy(bar, win, (e) => !(e.target as HTMLElement).closest("button, .ref-tab"));
+    // (The picture itself is a handle too: the bar is a small target, a finger's especially.)
+    this.dragBy(body, win, () => true);
     this.resizeBy(grip, win);
     // (A double click on the bar minimizes or restores it, as the button does.)
     bar.addEventListener("dblclick", (e) => {
@@ -277,6 +280,8 @@ export class RefImages {
       if (e.button !== 0) return;
       e.preventDefault();
       tab.setPointerCapture(e.pointerId);
+      // Minimized, its tabs are all there is of it: dragged, the window goes with them; a tap opens it.
+      if (win.min) return this.moveMinimized(tab, win, i, e);
       const start = { x: e.clientX, y: e.clientY };
       const off = tab.getBoundingClientRect();
       let ghost: HTMLElement | null = null;
@@ -321,6 +326,34 @@ export class RefImages {
       tab.addEventListener("pointerup", up);
       tab.addEventListener("pointercancel", cancel);
     });
+  }
+
+  private moveMinimized(tab: HTMLElement, win: Win, i: number, e: PointerEvent): void {
+    const start = { x: e.clientX, y: e.clientY };
+    const dx = e.clientX - win.x;
+    const dy = e.clientY - win.y;
+    let moved = false;
+    const move = (m: PointerEvent) => {
+      if (!moved && Math.hypot(m.clientX - start.x, m.clientY - start.y) < 8) return;
+      moved = true;
+      win.x = m.clientX - dx;
+      win.y = m.clientY - dy;
+      this.fit(win);
+    };
+    const up = () => {
+      tab.removeEventListener("pointermove", move);
+      tab.removeEventListener("pointerup", up);
+      tab.removeEventListener("pointercancel", up);
+      if (!moved) {
+        win.active = i;
+        win.min = false;
+        this.draw(win);
+      }
+      this.save();
+    };
+    tab.addEventListener("pointermove", move);
+    tab.addEventListener("pointerup", up);
+    tab.addEventListener("pointercancel", up);
   }
 
   /** The window whose bar is under the point (the one in front). */

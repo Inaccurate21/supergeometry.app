@@ -6129,6 +6129,8 @@ body > .ref-win {
 .ref-body {
   flex: 1;
   min-height: 0;
+  cursor: grab;
+  touch-action: none;
   display: grid;
   place-items: center;
   background: #15161a;
