@@ -503,6 +503,8 @@ export class SelectTool implements Tool {
     const items = sel.length ? this.actions() : this.app.mainTools();
     this.app.ui.setTools(items);
     this.app.ui.setBottom(this.app.bottomTools());
+    // (First the quick buttons: the guide says when there are some.)
+    if (sel[0]) this.showQuick(items);
     this.app.ui.setHint(
       this.pending
         ? `${this.pending.label}: tap ${this.pending.accepts.map((k) => withArticle(label({ kind: k } as Sel, 1))).join(" or ")}`
@@ -523,7 +525,6 @@ export class SelectTool implements Tool {
     );
     const first = sel[0];
     if (!first) return;
-    this.showQuick(items);
     // The most likely next step gets a handle.
     if (first.kind === "profile") {
       const src = sourcesOf(this.app, sel)[0];
@@ -581,6 +582,11 @@ export class SelectTool implements Tool {
    * away (drag its handle, or just type the value). Other tools: the list.
    */
   private armedHint(): string {
+    const quick = this.quick ? " The round buttons beside it are the likeliest next tools." : "";
+    return this.pickHint() + quick;
+  }
+
+  private pickHint(): string {
     const sel = this.app.selection;
     const first = sel[0];
     const n = sel.length;
