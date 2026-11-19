@@ -276,6 +276,12 @@ function compassOf(order: string[], sectors: Sector[]): Sector[] {
   return out;
 }
 
+/** An element's box on the page, if it is shown. */
+function visibleBox(id: string): DOMRect | null {
+  const b = document.getElementById(id)?.getBoundingClientRect();
+  return b && b.width > 0 && b.height > 0 ? b : null;
+}
+
 /** A piece of a ring, from r0 to r1 and a0 to a1 (clockwise, 0 to the right), a gap of `gap` px kept round it. */
 function wedge(r0: number, r1: number, a0: number, a1: number, gap = 2): string {
   const p = (r: number, a: number) => `${(r * Math.cos(a)).toFixed(2)} ${(r * Math.sin(a)).toFixed(2)}`;
@@ -496,6 +502,18 @@ export class Wheel implements WheelHandle {
       this.home = this.homeNow();
       this.rest();
     });
+    // (History slides or grows into place after it opens: a wheel placed by it settles where it ends up.)
+    const settle = () => {
+      if (!this.up || !this.kept || this.typer || this.pressed !== null) return;
+      const home = this.homeNow();
+      if (Math.abs(home.x - this.home.x) < 1 && Math.abs(home.y - this.home.y) < 1) return;
+      this.home = home;
+      this.root.classList.add("slide");
+      this.rest();
+    };
+    document.addEventListener("transitionend", (e) => (e.target as HTMLElement).id === "history" && settle());
+    const history = document.getElementById("history");
+    if (history) new ResizeObserver(settle).observe(history);
     this.root.addEventListener("contextmenu", (e) => e.preventDefault());
     if (kind === "tools") host.ui.onTools = () => this.itemsChanged();
     // (The tool's window opened, closed or changed: the Options wheel comes, goes, or shows what it holds now.)
@@ -599,57 +617,46 @@ export class Wheel implements WheelHandle {
   /** Where a kept wheel belongs on the page as it is now. */
   private homeNow(): { x: number; y: number } {
     const kept = this.layout && (this.spots[this.layout] ?? (this.kind === "tools" ? this.spots.model : undefined));
-    if (kept) return { x: kept[0] * innerWidth, y: kept[1] * innerHeight };
-    if (document.documentElement.dataset.screen !== "phone") return this.columnSpot();
-    if (this.layout === "settings" || this.layout === "options") {
-      // Never put anywhere: at the bottom right, beside the right-hand column (folded, just its icon) -
-      // the Options above the Settings.
-      const col = document.getElementById("right-col")?.getBoundingClientRect();
-      const right = col && col.width > 0 ? col.left : innerWidth;
-      // (Placed by the folded size: the two icons keep their places; unfolded, a wheel comes in from the edges as far as it must.)
-      const r = this.m.r0;
-      const step = this.layout === "options" ? 2 * r + 16 : 0;
-      // (A phone: no tool strip along the bottom any more - down on the row of undo/redo, level
-      // with its bottom; upright, where there's no room above the guide text, side by side.)
-      const undo = document.getElementById("undo-dock")?.getBoundingClientRect();
-      if (document.documentElement.dataset.screen === "phone" && undo && undo.height > 0) {
-        const upright = innerHeight > innerWidth;
-        return { x: right - 8 - r - (upright ? step : 0), y: undo.bottom - r - (upright ? 0 : step) };
-      }
-      return { x: right - 8 - r, y: innerHeight - 70 - step - r };
+    if (!kept) return this.defaultSpot();
+    // Put somewhere by hand: there - but never under the History panel (it slides left of it while History is open).
+    const at = { x: kept[0] * innerWidth, y: kept[1] * innerHeight };
+    const history = document.body.classList.contains("history-open") ? visibleBox("history") : null;
+    if (history && history.left > innerWidth / 3 && at.y > history.top && at.y < history.bottom) {
+      const r = this.isFolded ? this.m.r0 : this.m.r1;
+      at.x = Math.min(at.x, history.left - 8 - r);
     }
-    // Never put anywhere: where the tool column is - at the left, beside Items when that is open
-    // (folded, its middle is at the edge; unfolded, the ring is clear of it).
-    const items = document.getElementById("items");
-    const left = items?.classList.contains("open") && innerWidth > 720 ? items.getBoundingClientRect().right : 0;
-    return { x: left + 8 + (this.isFolded ? this.m.r0 : this.m.r1), y: innerHeight / 2 };
+    return at;
   }
 
   /**
-   * Where a wheel never put anywhere goes on a tablet or a computer: one
-   * column, just left of the History panel (or of the buttons at the right when
-   * it is shut), the tools at the top, the Options below them, the Settings at
-   * the bottom - far enough apart that open, they don't run into each other
-   * (as far as the screen's height allows), and below the view cube.
+   * Where a wheel never put anywhere goes, along the right edge (just left of
+   * the History panel while it is open, else of the buttons at the right): the
+   * Settings under the view cube, the tools at the middle, the Options at the
+   * bottom. Placed by the size it has now (folded, just its middle), so
+   * unfolding brings a ring in from the edge as far as it must.
    */
-  private columnSpot(): { x: number; y: number } {
-    const m = isCoarse ? COARSE : FINE;
-    const r = m.r1;
+  private defaultSpot(): { x: number; y: number } {
     const M = 8;
-    const box = (id: string) => {
-      const b = document.getElementById(id)?.getBoundingClientRect();
-      return b && b.width > 0 && b.height > 0 ? b : null;
-    };
-    const history = document.body.classList.contains("history-open") ? box("history") : null;
-    const col = box("right-col");
-    const right = Math.min(history?.left ?? innerWidth, col?.left ?? innerWidth);
+    const r = this.isFolded ? this.m.r0 : this.m.r1;
+    const history = document.body.classList.contains("history-open") ? visibleBox("history") : null;
+    const col = visibleBox("right-col");
+    // (A History panel spread over the whole width - a phone, upright - has nothing left of it to slide to.)
+    const histLeft = history && history.left > innerWidth / 3 ? history.left : innerWidth;
+    const right = Math.min(histLeft, col?.left ?? innerWidth);
     const x = right - M - r;
-    const cube = box("viewcube-host");
-    const top = Math.max(56, cube && cube.left < x + r && cube.right > x - r ? cube.bottom + M : 0);
-    const bottom = innerHeight - M;
-    const slot = this.kind === "settings" ? 2 : this.kind === "options" ? 1 : 0;
-    const step = Math.max(m.r0 * 2 + M, Math.min(2 * r + 12, (bottom - top - 2 * r) / 2));
-    return { x, y: Math.min(top + r + slot * step, bottom - r) };
+    if (this.kind === "settings") {
+      // (Under History too where it is a strip across the top - a phone, upright.)
+      const cube = visibleBox("viewcube-host");
+      const strip = history && history.left <= innerWidth / 3 ? history.bottom : 0;
+      return { x, y: Math.max(56, cube ? cube.bottom : 0, strip) + M + r };
+    }
+    if (this.kind === "options") {
+      // (A phone: down on the row of undo/redo, level with its bottom.)
+      const undo = visibleBox("undo-dock");
+      const bottom = undo && document.documentElement.dataset.screen === "phone" ? undo.bottom : innerHeight - M;
+      return { x, y: bottom - r };
+    }
+    return { x, y: innerHeight / 2 };
   }
 
   /** A kept wheel at its home, as near it as keeps it whole on the screen (folded: just its middle). */
@@ -1449,7 +1456,7 @@ export class Wheel implements WheelHandle {
   private drawCrumbs(): void {
     const inner = this.stack.length > 0;
     this.root.classList.toggle("inner", inner);
-    this.grip.innerHTML = inner ? icons.back : this.layout === "settings" ? icons.settings : this.layout === "options" ? icons.options : icons.move;
+    this.grip.innerHTML = inner ? icons.back : this.layout === "settings" ? icons.settings : this.layout === "options" ? icons.options : icons.wrench;
   }
 
   /** How far out the wheel reaches (its outer band too). */

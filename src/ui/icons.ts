@@ -92,6 +92,7 @@ export const icons = {
   image: svg('<rect x="3" y="5" width="18" height="14" rx="1"/><circle cx="8.5" cy="10" r="1.6"/><path d="M21 16l-5-5-8 8"/>'),
   construct: svg('<path d="M3 15l6-6h12l-6 6z"/><path d="M12 3v18" stroke-dasharray="2 2"/>'),
   transform: svg('<path d="M12 3l3 3h-2v4h4V8l3 3-3 3v-2h-4v4h2l-3 3-3-3h2v-4H7v2l-3-3 3-3v2h4V6H9z"/>'),
+  wrench: svg('<path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.8-3.8a6 6 0 0 1-7.9 7.9l-6.9 6.9a2.1 2.1 0 0 1-3-3l6.9-6.9a6 6 0 0 1 7.9-7.9z"/>'),
   tools: svg('<path d="M14 7l3-3 3 3-3 3M4 20l9-9"/><path d="M5 4l4 4-2 2-4-4z"/>'),
   section: svg('<path d="M4 8l8-4 8 4v8l-8 4-8-4z"/><path d="M4 12h16" stroke-dasharray="2 2"/>'),
   bim: svg('<path d="M12 3l8 4.5v9L12 21l-8-4.5v-9z"/><path d="M4 7.5l8 4.5 8-4.5M12 12v9"/><path d="M8 5.3l8 4.5"/>'),

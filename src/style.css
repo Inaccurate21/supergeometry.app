@@ -5636,6 +5636,10 @@ body.items-open #items-btn {
   user-select: none;
   -webkit-touch-callout: none;
 }
+/* Down the right edge the wheels sit close: an open one is over a folded one's icon. */
+.wheel-root.folded {
+  z-index: 47;
+}
 /* No tap flash: a phone's browser otherwise lights up the whole drawing (a
    blue square over the wheel) on every tap; the cells show what was tapped. */
 .wheel-root,
