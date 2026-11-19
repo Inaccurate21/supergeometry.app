@@ -955,10 +955,11 @@ export function bodyColor(hex: string | undefined): string | undefined {
 
 /** The see-through levels offered next to Color (1 = solid). */
 export const BODY_OPACITY: { name: string; value: number }[] = [
+  // (Named by how see-through, as the Transparency list says: 25% lets a little through.)
   { name: "Solid", value: 1 },
-  { name: "75%", value: 0.75 },
+  { name: "25%", value: 0.75 },
   { name: "50%", value: 0.5 },
-  { name: "25%", value: 0.25 },
+  { name: "75%", value: 0.25 },
 ];
 
 export interface HistoryGroup {
