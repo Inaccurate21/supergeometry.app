@@ -1,7 +1,7 @@
 // Quick actions: a short row of round buttons right beside whatever is
 // picked - on the model a face, an edge, a point, a body, a sketch's shape, a
 // plane, an axis, an image; in a sketch its curves and points - with the two
-// tools most likely next for it (a flat face: Sketch, Shell; a round one:
+// tools most likely next for it (a flat face: Sketch, Shell, Move; a round one:
 // Thread; an edge: Chamfer, Move; a body: Shell, Fillet; a sketch's curves:
 // Construction, Delete). The most likely of all already has its handle on it
 // (a face's arrow, an edge's fillet dot, a gimbal): these are the next ones, a
@@ -16,7 +16,7 @@ import { clampToFree } from "./annotate";
 
 /** By kind of pick: the tools to offer, best first (the first two there are and can be used now). */
 export const QUICK = {
-  face: ["thread", "sketch", "shell", "fillet", "editFreeform", "thicken"],
+  face: ["thread", "sketch", "shell", "move", "fillet", "editFreeform", "thicken"],
   edge: ["chamfer", "thread", "move", "connect"],
   vertex: ["moveVertex", "delete"],
   body: ["shell", "fillet", "mirror"],
@@ -40,8 +40,9 @@ export interface QuickPlace {
   gap?: number;
 }
 
-/** At most this many: only the important things (more is the wheel's job). */
+/** At most this many: only the important things (more is the wheel's job). A flat face: Sketch, Shell and Move/Rotate. */
 const MOST = 2;
+const MOST_OF: Partial<Record<QuickKind, number>> = { face: 3 };
 
 export class QuickActions {
   private readonly box = document.createElement("div");
@@ -57,7 +58,7 @@ export class QuickActions {
       }
     };
     walk(items);
-    const picked = (QUICK[kind] as readonly string[]).map((id) => byId.get(id)).filter((it): it is ToolItem => !!it && !it.disabled && !!it.run && !it.beta).slice(0, MOST);
+    const picked = (QUICK[kind] as readonly string[]).map((id) => byId.get(id)).filter((it): it is ToolItem => !!it && !it.disabled && !!it.run && !it.beta).slice(0, MOST_OF[kind] ?? MOST);
     return picked.length ? new QuickActions(view, picked, at, place) : null;
   }
 

@@ -1,6 +1,7 @@
 import { isTouchDevice } from "./device";
 import { circleAxis } from "./tools/slots";
 import { CurvePointPlaneOp, EdgeAnglePlaneOp, FacePointPlaneOp, ThreePointPlaneOp } from "./tools/planeOps";
+import { PlanesAxisOp, TwoPointAxisOp, surfaceAxis } from "./tools/axisOps";
 import { ImprintOp, WrapOp } from "./tools/wrapOps";
 import { DocStore, parseProject } from "./doc/store";
 import { SUPPORT, openSupport } from "./ui/support";
@@ -1071,29 +1072,28 @@ export class App implements AppContext {
             id: "axis",
             label: "Axis",
             icon: "axis",
-            // An axis along X, Y or Z needs nothing to pick: in an empty
-            // project (a jet engine's centre line, first thing) "select face
-            // or edge" was a dead end.
+            // (Along X, Y or Z: the origin's own axes, tapped in the view.)
             children: [
-              ...(["X", "Y", "Z"] as const).map((k, i) => ({
-                id: `axis${k}`,
-                label: `Along ${k}`,
-                icon: "axis" as const,
-                sub: "through a point you type",
-                run: () => this.setTool(new AxisOp(this, [0, 0, 0], [i === 0 ? 1 : 0, i === 1 ? 1 : 0, i === 2 ? 1 : 0])),
-              })),
-              { id: "axisPick", label: "From Face or Edge", icon: "axis" as const, run: wait("Axis", ["face", "edge"], () => {
-              const s = this.selection[0];
-              if (s.kind === "face") {
-                const f = this.view.body(s.body)?.faces[s.face];
-                if (f) this.setTool(new AxisOp(this, f.center, f.normal));
-              } else if (s.kind === "edge") {
-                const e = this.view.body(s.body)?.edges[s.edge];
-                // A round edge: through its centre.
+              { id: "axisFace", label: "Square to Face", short: "Face", icon: "axis" as const, run: wait("Axis Square to Face", ["face"], () => {
+                const s = this.selection[0];
+                const f = s?.kind === "face" ? this.view.body(s.body)?.faces[s.face] : undefined;
+                if (f) this.setTool(new AxisOp(this, f.center, f.plane?.normal ?? f.normal));
+              }) },
+              { id: "axisEdge", label: "Along Edge", short: "Edge", icon: "axis" as const, run: wait("Axis Along Edge", ["edge"], () => {
+                const s = this.selection[0];
+                const e = s?.kind === "edge" ? this.view.body(s.body)?.edges[s.edge] : undefined;
+                // A round edge: through its centre, square to it.
                 const ax = e && (e.type === "CIRCLE" ? circleAxis(e.start, e.mid, e.end, e.dir) : { origin: e.start, dir: e.dir });
                 if (ax) this.setTool(new AxisOp(this, ax.origin, ax.dir));
-              }
-            }) },
+              }) },
+              { id: "axisRound", label: "Cylinder / Cone", icon: "axis" as const, run: wait("Axis of Cylinder / Cone", ["face"], () => {
+                const s = this.selection[0];
+                const ax = s?.kind === "face" ? surfaceAxis(this, s.body, s.face) : null;
+                if (ax) this.setTool(new AxisOp(this, ax.origin, ax.dir));
+                else this.ui.toast("Tap a round face - a cylinder, a hole or a cone - for the axis through its middle", "error");
+              }) },
+              { id: "axis2pt", label: "Point to Point", icon: "axis" as const, run: () => this.setTool(new TwoPointAxisOp(this)) },
+              { id: "axisPlanes", label: "Intersection of 2 Planes", short: "2 Planes", icon: "axis" as const, run: () => this.setTool(new PlanesAxisOp(this)) },
             ],
           },
         ],
