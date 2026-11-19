@@ -5,7 +5,7 @@
 // edges, and the rest of the body, don't move.
 
 import type { FaceFreeformFeature, FaceRef, Vec3 } from "../doc/types";
-import { FreeformTool, layFaceCage } from "./freeform";
+import { FreeformTool, layFaceCage, type EditKeep } from "./freeform";
 import { faceRefOf, type AppContext, type Sel, type Tool } from "./tool";
 
 /** The triangles of face `i` of a body as shown (the cage goes only where the face is). */
@@ -36,7 +36,7 @@ function nearestFace(faces: { center: Vec3; normal: Vec3 }[], ref: FaceRef): num
  * `existing`, a Freeform Face step to change (its face found on the body by
  * the step that made it). Null (after saying why) when no cage fits the face.
  */
-export function faceFreeformTool(app: AppContext, face: Extract<Sel, { kind: "face" }> | null, existing?: FaceFreeformFeature): Tool | null {
+export function faceFreeformTool(app: AppContext, face: Extract<Sel, { kind: "face" }> | null, existing?: FaceFreeformFeature, keep?: EditKeep): Tool | null {
   if (existing) {
     const faces = app.view.body(existing.face.body)?.faces ?? [];
     let i = faces.findIndex((f) => f.step === existing.id);
@@ -52,7 +52,7 @@ export function faceFreeformTool(app: AppContext, face: Extract<Sel, { kind: "fa
       feature.cage = laid.cage;
       feature.grid = laid.n;
     }
-    return new FreeformTool(app, { face: { feature, existing: true, tris } });
+    return new FreeformTool(app, { face: { feature, existing: true, tris, keep } });
   }
   const ref = face && (faceRefOf(app, face) as FaceRef | null);
   if (!face || !ref) return null;

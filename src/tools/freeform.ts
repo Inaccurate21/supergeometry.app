@@ -11,7 +11,7 @@
 import { Box3, BufferAttribute, BufferGeometry, DoubleSide, Sprite, LineBasicMaterial, LineSegments, type Material, Mesh, MeshBasicMaterial, MeshStandardMaterial, Points, Raycaster, Vector2, Vector3 } from "three";
 import { LineSegments2 } from "three/examples/jsm/lines/LineSegments2.js";
 import { LineSegmentsGeometry } from "three/examples/jsm/lines/LineSegmentsGeometry.js";
-import type { FaceFreeformFeature, Feature, FreeformFeature, PlaneDef, TransformFeature, Vec3 } from "../doc/types";
+import type { FaceFreeformFeature, Feature, FreeformEditFeature, FreeformFeature, PlaneDef, TransformFeature, Vec3 } from "../doc/types";
 import { faceCage } from "../freeform/faceGrid";
 import { applyPlan, archBridge, planeCage, borderChains, cachedPlan, planIndices, smoothNormals, type SubdivPlan, bridgeChains, bridgeFaces, moveTurnScale, shapeCage, sweepFace, type Chain, boundaryEdges, bridgeLoops, cageEdgeKey, extendBorder, cageEdges, deleteFaces, extrudeFaces, fillHole, holeLoops, insertEdgeLoop, insetFaces, isClosed, primitiveCage, refineCage, selfCrossings, subdivide, type Cage, type CagePrimitive } from "../freeform/cage";
 import { add, cross, dot, len, niceStep, norm, scale, sub, xDirFor } from "../geom";
@@ -53,7 +53,17 @@ export interface FaceShaping {
   /** Editing a step already in History (else a new one). */
   existing: boolean;
   tris: [Vec3, Vec3, Vec3][];
+  /** How an edit is kept (see FreeformTool's `keep`). */
+  keep?: EditKeep;
 }
+
+/**
+ * How Done keeps an edit of a freeform made earlier: as a new Edit Freeform
+ * step in History (the default), into an Edit Freeform step opened from
+ * History (`edit`: its id), or into the step itself (`inPlace`: the step
+ * opened from History).
+ */
+export type EditKeep = { edit?: string; inPlace?: boolean };
 
 /**
  * A cage `n` across over a face's triangles (relative to `center`) - or, if
@@ -162,8 +172,9 @@ export class FreeformTool implements Tool {
 
   constructor(
     private app: AppContext,
-    from: { primitive: CagePrimitive } | { feature: FreeformFeature } | { face: FaceShaping },
+    from: { primitive: CagePrimitive } | { feature: FreeformFeature; keep?: EditKeep } | { face: FaceShaping },
   ) {
+    this.keep = ("keep" in from ? from.keep : "face" in from ? from.face.keep : undefined) ?? {};
     if ("face" in from) {
       this.face = from.face;
       const f = from.face.feature;
@@ -209,8 +220,28 @@ export class FreeformTool implements Tool {
     for (const o of [this.markDots, this.hoverDots]) o.renderOrder = 71;
   }
 
+  private keep: EditKeep;
+
   get editingId(): string | undefined {
-    return this.existing?.id ?? (this.face?.existing ? this.face.feature.id : undefined);
+    return this.keep.edit ?? this.existing?.id ?? (this.face?.existing ? this.face.feature.id : undefined);
+  }
+
+  /** The edit of a step made earlier, kept as `keep` says. */
+  private saveEdit(target: string, patch: FreeformEditFeature["patch"]): void {
+    const store = this.app.store;
+    if (this.keep.edit) store.update(this.keep.edit, { patch } as Partial<FreeformEditFeature>);
+    else if (this.keep.inPlace) store.update(target, patch as Partial<FreeformFeature>);
+    else store.add({ ...store.newIdentity("freeformEdit"), type: "freeformEdit", target, patch });
+  }
+
+  /** The steps as they would be with this edit kept (for a preview). */
+  private withEdit(target: string, patch: FreeformEditFeature["patch"]): Feature[] {
+    const list = [...this.app.store.features];
+    const at = (id: string) => list.findIndex((x) => x.id === id);
+    if (this.keep.edit && at(this.keep.edit) >= 0) list[at(this.keep.edit)] = { ...(list[at(this.keep.edit)] as FreeformEditFeature), patch };
+    else if (this.keep.inPlace && at(target) >= 0) list[at(target)] = { ...list[at(target)], ...patch } as Feature;
+    else list.push({ id: "freeform-edit-draft", name: "Edit Freeform", type: "freeformEdit", target, patch } as FreeformEditFeature);
+    return list;
   }
 
   /**
@@ -547,9 +578,8 @@ export class FreeformTool implements Tool {
   /** The body previewed with the face shaped as the cage is now. */
   private previewFace(): void {
     const draft = this.faceDraft();
-    const list = [...this.app.store.features];
-    const k = list.findIndex((x) => x.id === draft.id);
-    if (k >= 0) list[k] = draft;
+    let list = [...this.app.store.features];
+    if (this.face?.existing) list = this.withEdit(draft.id, { cage: draft.cage, grid: draft.grid });
     else list.push(draft);
     void this.app.preview(list).then((r) => {
       if (!r || this.gone) return;
@@ -1588,7 +1618,7 @@ export class FreeformTool implements Tool {
       }
       const f = this.faceDraft();
       // A new step that shapes nothing: no step at all.
-      if (this.face.existing) this.app.store.update(f.id, { cage: f.cage, grid: f.grid } as Partial<FaceFreeformFeature>);
+      if (this.face.existing) this.saveEdit(f.id, { cage: f.cage, grid: f.grid });
       else if (!this.flat()) this.app.store.add(f);
       this.app.setTool(null);
       return f.face.body;
@@ -1604,7 +1634,7 @@ export class FreeformTool implements Tool {
     let id: string;
     if (this.existing) {
       id = this.existing.id;
-      this.app.store.update(id, { cage, ...extra } as Partial<FreeformFeature>);
+      this.saveEdit(id, { cage, ...extra });
     } else {
       const f: FreeformFeature = { ...this.app.store.newIdentity("freeform", isClosed(cage) ? "Freeform" : "Freeform surface"), type: "freeform", cage, ...extra };
       this.app.store.add(f);

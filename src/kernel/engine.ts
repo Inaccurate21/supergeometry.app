@@ -55,6 +55,7 @@ import type {
   Vec3,
 } from "../doc/types";
 import { fillEdgeKey } from "../doc/types";
+import { applyFreeformEdits } from "../doc/freeformEdits";
 import { add, cross, dist, dot, len, norm, scale, sub, toWorld, xDirFor } from "../geom";
 import { outlineOffsetCurves, projectPolyline } from "../sketch/edit";
 import { solveFine } from "../sketch/constraints";
@@ -215,6 +216,8 @@ interface CacheEntry {
 const meshCache = new WeakMap<Shape3D, BodyMesh>();
 /** The Freeform Face steps of the project being rebuilt (their faces are patches of one smooth surface). */
 let smoothSteps = new Set<string>();
+/** Freeform and Freeform Face steps that are on (what an Edit Freeform step can edit). */
+let editable = new Set<string>();
 /** The next mesh's key (see BodyMesh.key). */
 let meshKey = 1;
 const importCache = new Map<string, Shape3D>();
@@ -803,6 +806,9 @@ async function run(features: Feature[], saved = false) {
   useReleases();
   // Steps after the History's breakpoint: off, like suppressed ones.
   if (features.some((f) => f.rolledBack)) features = features.map((f) => (f.rolledBack && !f.suppressed ? { ...f, suppressed: true } : f));
+  // Edit Freeform steps: put into the freeforms they edit (those build with the new cage).
+  features = applyFreeformEdits(features);
+  editable = new Set(features.filter((f) => (f.type === "freeform" || f.type === "faceFreeform") && !f.suppressed).map((f) => f.id));
   const errors: FeatureError[] = [];
   const notes: FeatureError[] = [];
   let ctx: Ctx = fork({ bodies: new Map(), sketches: new Map(), planes: new Map(), axes: new Map(), freeforms: new Map(), sweeps: new Map() });
@@ -1678,6 +1684,11 @@ async function apply(f: Feature, ctx: Ctx): Promise<void> {
 
     case "image":
       return; // drawn by the UI only
+
+    case "freeformEdit":
+      // (Put into its freeform before the rebuild: nothing more to do here.)
+      if (!editable.has(f.target)) throw new Error("The freeform this edits is gone (deleted, or switched off)");
+      return;
 
     case "freeform":
       bodies.set(f.id, freeformShape(f, AFFINE_ID));

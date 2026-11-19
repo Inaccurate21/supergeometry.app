@@ -83,6 +83,11 @@ export function freeformBodies(features: readonly Feature[], upto = features.len
       out.set(f.id, { feature: f, m: ID });
       continue;
     }
+    // An Edit Freeform step: the freeform (and its copies) with the new cage.
+    if (f.type === "freeformEdit") {
+      for (const [id, ff] of out) if (ff.feature.id === f.target) out.set(id, { ...ff, feature: { ...ff.feature, ...f.patch } });
+      continue;
+    }
     if (f.type === "transform") {
       const step = stepAffine(f.op);
       for (const id of f.bodies) {

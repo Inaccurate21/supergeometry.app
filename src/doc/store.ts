@@ -57,6 +57,7 @@ const LABELS: Record<FeatureType, string> = {
   fill: "Fill",
   connect: "Connect",
   faceFreeform: "Freeform Face",
+  freeformEdit: "Edit Freeform",
   thread: "Thread",
   imprint: "Project as Edge",
   wrap: "Wrap & Emboss",

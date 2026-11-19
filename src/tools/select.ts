@@ -2,7 +2,8 @@ import { QuickActions, type QuickKind, type QuickPlace } from "./quickActions";
 import { circleAxis } from "./slots";
 import { isTouchDevice } from "../device";
 import { BODY_COLORS, BODY_OPACITY, bodyColor } from "../doc/types";
-import type { DeleteGeomFeature, EdgeLink, FreeformFeature, EdgeRef, ExtrudeSource, FaceRef, ImageFeature, PlaneDef, PlaneFeature, SketchFeature, Vec3 } from "../doc/types";
+import type { DeleteGeomFeature, EdgeLink, FaceFreeformFeature, FreeformFeature, EdgeRef, ExtrudeSource, FaceRef, ImageFeature, PlaneDef, PlaneFeature, SketchFeature, Vec3 } from "../doc/types";
+import { editedStep } from "../doc/freeformEdits";
 import { arrangement } from "../sketch/regions";
 import { projectPolyline, uid } from "../sketch/edit";
 import type { MenuRow, ToolItem } from "../ui/ui";
@@ -808,7 +809,11 @@ export class SelectTool implements Tool {
     const axis = info?.round && one ? roundAxis(app, s.body, s.face) : null;
     // A face a Freeform Face step made: that step opens again to reshape it.
     const shaped = info?.step ? app.store.find(info.step) : undefined;
-    const editFree: ToolItem[] = shaped?.type === "faceFreeform" && one ? [{ id: "editFreeform", label: "Edit Freeform", icon: "editFreeform", active: true, beta: true, run: () => app.editStep(shaped.id) }] : [];
+    const editFree: ToolItem[] = shaped?.type === "faceFreeform" && one ? [{ id: "editFreeform", label: "Edit Freeform", icon: "editFreeform", active: true, beta: true, run: () => {
+      // (A new Edit Freeform step in History, from the shape as its edits have left it.)
+      const t = faceFreeformTool(app, null, editedStep<FaceFreeformFeature>(app.store.features, shaped.id));
+      if (t) app.setTool(t);
+    } }] : [];
     // What only a flat face can take (a sketch, an extrude, a plane on it) isn't
     // offered for a round or curved one at all, the way the body's tools aren't
     // offered for an edge: only what the face can do is listed.
@@ -1387,7 +1392,7 @@ export class SelectTool implements Tool {
   /** The freeform a body is made from (its own, or the one a copy was made of). */
   private freeformOf(body: string): FreeformFeature | undefined {
     const f = this.app.store.find<FreeformFeature>(body);
-    if (f?.type === "freeform") return f;
+    if (f?.type === "freeform") return editedStep<FreeformFeature>(this.app.store.features, f.id);
     return freeformBodies(this.app.store.features).get(body)?.feature;
   }
 
@@ -1397,7 +1402,7 @@ export class SelectTool implements Tool {
    */
   private ownFreeform(body: string): FreeformFeature | undefined {
     const f = this.app.store.find<FreeformFeature>(body);
-    if (f?.type === "freeform") return f;
+    if (f?.type === "freeform") return editedStep<FreeformFeature>(this.app.store.features, f.id);
     const id = this.app.store.newIdentity("freeform").id;
     const out = detachFreeformCopy(this.app.store.doc, body, id);
     if (!out) return freeformBodies(this.app.store.features).get(body)?.feature;

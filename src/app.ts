@@ -11,6 +11,7 @@ import { showAbout } from "./ui/about";
 import { findAction, openCommandSearch, showShortcuts } from "./ui/commands";
 import type { EdgeFeature, EdgeRef, ExtrudeFeature, ExtrudeSource, Feature, FillToPlaneFeature, ImageFeature, LoftFeature, PathRef, PinDef, PlaneDef, PlaneFeature, ProjectDoc, RevolveFeature, ShellFeature, SketchEntity, SketchFeature, SplitFeature, SweepFeature, TransformFeature, Units, Vec3 } from "./doc/types";
 import { emptyDoc } from "./doc/types";
+import { editedStep } from "./doc/freeformEdits";
 import { createVariable, insertFile, insertImage } from "./io/insert";
 import { RefImages } from "./ui/refImages";
 import { numpadVariables } from "./ui/numpad";
@@ -665,7 +666,7 @@ export class App implements AppContext {
       if (!b.openEdges?.length) return false;
       // A surface on purpose (or a copy of one) isn't meant to be closed.
       const f = this.store.find(b.id);
-      const ff = f?.type === "freeform" ? f : freeformBodies(this.store.features).get(b.id)?.feature;
+      const ff = f?.type === "freeform" ? editedStep<typeof f>(this.store.features, f.id) : freeformBodies(this.store.features).get(b.id)?.feature;
       return !(ff?.surface && !ff.thickness);
     });
   }
@@ -896,12 +897,23 @@ export class App implements AppContext {
         return this.setTool(new ReplaceFaceOp(this, f.face, f));
       case "image":
         return this.setTool(new ImageOp(this, f as ImageFeature));
+      // (Opened from History: that step itself is edited.)
       case "freeform":
-        return this.setTool(new FreeformTool(this, { feature: f }));
+        return this.setTool(new FreeformTool(this, { feature: f, keep: { inPlace: true } }));
+      case "freeformEdit": {
+        // The shape as this edit left it; Done keeps the change in this step.
+        const t = editedStep(this.store.features, f.target, f.id);
+        if (t?.type === "freeform") return this.setTool(new FreeformTool(this, { feature: t, keep: { edit: f.id } }));
+        if (t?.type === "faceFreeform") {
+          const tool = faceFreeformTool(this, null, t, { edit: f.id });
+          return tool ? this.setTool(tool) : undefined;
+        }
+        return this.ui.toast("The freeform this edits is gone");
+      }
       case "connect":
         return this.setTool(new ConnectOp(this, [], f));
       case "faceFreeform":
-        return this.setTool(faceFreeformTool(this, null, f));
+        return this.setTool(faceFreeformTool(this, null, f, { inPlace: true }));
       case "moveFace": {
         const target = f.face ? { face: f.face, plane: { origin: f.face.center, normal: f.face.normal, xDir: xDirFor(f.face.normal) } } : f.edge ? { edge: f.edge } : f.vertex ? { vertex: f.vertex } : null;
         if (target) return this.setTool(new MoveFaceOp(this, target, f));

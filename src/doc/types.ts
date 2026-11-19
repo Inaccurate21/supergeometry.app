@@ -454,6 +454,19 @@ export interface FreeformFeature extends FeatureBase {
 }
 
 /**
+ * Edit Freeform done on a freeform (or a Freeform Face step) made earlier: its
+ * new cage, a step of its own in History. The shape is the earlier step's with
+ * this put in (see applyFreeformEdits): delete or roll back this step and the
+ * shape is as it was before the edit.
+ */
+export interface FreeformEditFeature extends FeatureBase {
+  type: "freeformEdit";
+  /** The freeform / Freeform Face step it edits. */
+  target: string;
+  patch: Partial<Pick<FreeformFeature, "cage" | "surface" | "thickness" | "thickSide" | "symmetry">> & { grid?: number };
+}
+
+/**
  * Scale one flat face within its own plane (factors along its u and v axes);
  * the flat faces around it tilt to follow its edges.
  */
@@ -602,6 +615,7 @@ export type Feature =
   | ScaleFaceFeature
   | ReplaceFaceFeature
   | FreeformFeature
+  | FreeformEditFeature
   | DeleteGeomFeature
   | MoveFaceFeature
   | SketchFeature
