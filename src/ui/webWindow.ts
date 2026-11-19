@@ -56,8 +56,7 @@ export function pageFor(text: string): { src: string; shown: string; video?: "yo
   if (yt && /^[\w-]{6,}$/.test(yt)) {
     const start = parseInt(u.searchParams.get("t") ?? u.searchParams.get("start") ?? "", 10);
     const list = u.searchParams.get("list");
-    // (enablejsapi: a tap on the window plays or pauses it from here.)
-    const q = new URLSearchParams({ autoplay: "1", rel: "0", enablejsapi: "1", origin: location.origin, ...(start > 0 ? { start: String(start) } : {}), ...(list ? { list } : {}) });
+    const q = new URLSearchParams({ autoplay: "1", rel: "0", ...(start > 0 ? { start: String(start) } : {}), ...(list ? { list } : {}) });
     return { src: `https://www.youtube.com/embed/${yt}?${q}`, shown: u.href, video: "youtube" };
   }
   if (host.endsWith("youtube.com"))
@@ -90,9 +89,6 @@ export class WebWindow {
   private fold!: HTMLButtonElement;
   /** Over the page: a press held (or dragged) there moves the window - the page itself never tells this one what the pointer does. */
   private grab!: HTMLElement;
-  /** A video player shown (a tap plays or pauses it, a double tap fills the screen), and whether it is playing. */
-  private video: "youtube" | "vimeo" | null = null;
-  private playing = true;
   private wired = false;
   private s: Saved = { url: "", x: 0, y: 0, w: 0, h: 0, min: false, open: false };
 
@@ -220,8 +216,6 @@ export class WebWindow {
       this.note.hidden = true;
       this.frame.hidden = false;
       this.frame.src = p.src;
-      this.video = p.video ?? null;
-      this.playing = true;
       this.arm(true);
     } else {
       this.frame.hidden = true;
@@ -275,19 +269,20 @@ export class WebWindow {
 
   /**
    * The layer over the page: pressed and dragged, or held, the window moves
-   * with the pointer. A tap on a video plays or pauses it, two fill the screen
-   * with it (the strip along its bottom is the player's own: seek, volume...).
-   * A tap on a page lets it be used (the layer steps aside) until the pointer
+   * with the pointer. A tap lets the page or the video be used (the layer
+   * steps aside: the player's own buttons, volume and all) until the pointer
    * is back on the model or anything else here.
    */
   private holdToMove(grab: HTMLElement): void {
-    let lastTap = 0;
-    let tapTimer = 0;
     grab.addEventListener("pointerdown", (e) => {
       if (e.button !== 0) return;
       e.preventDefault();
       const start = { x: e.clientX, y: e.clientY, dx: e.clientX - this.s.x, dy: e.clientY - this.s.y };
-      grab.setPointerCapture(e.pointerId);
+      try {
+        grab.setPointerCapture(e.pointerId);
+      } catch {
+        // (a pointer already gone)
+      }
       let moving = false;
       const lift = () => {
         if (moving) return;
@@ -310,25 +305,12 @@ export class WebWindow {
         this.el?.classList.remove("moving", "lifted");
         if (moving) return this.save();
         if (u.type !== "pointerup") return;
-        // A tap.
-        if (!this.video) return this.arm(false);
-        const now = performance.now();
-        clearTimeout(tapTimer);
-        if (now - lastTap < 300) {
-          lastTap = 0;
-          return this.fullScreen();
-        }
-        lastTap = now;
-        tapTimer = window.setTimeout(() => this.playPause(), 300);
+        // A tap: the page (or the video, with its own controls - volume, seek, full screen) is yours to use.
+        this.arm(false);
       };
       grab.addEventListener("pointermove", move);
       grab.addEventListener("pointerup", up);
       grab.addEventListener("pointercancel", up);
-    });
-    this.frame.addEventListener("load", () => {
-      // (Asked to say what it is doing.)
-      if (this.video === "youtube") this.tell({ event: "listening" });
-      if (this.video === "vimeo") for (const value of ["play", "pause", "ended"]) this.tell({ method: "addEventListener", value });
     });
     // (The page-wide listeners once, however often the window is opened again.)
     if (this.wired) return;
@@ -340,44 +322,11 @@ export class WebWindow {
     };
     window.addEventListener("pointerdown", back, true);
     window.addEventListener("pointermove", back, true);
-    // What the player says it is doing (paused from its own controls: the next tap plays it).
-    window.addEventListener("message", (e) => {
-      if (!this.el || e.source !== this.frame.contentWindow) return;
-      let d: { event?: string; info?: { playerState?: number } } | null = null;
-      try {
-        d = typeof e.data === "string" ? JSON.parse(e.data) : e.data;
-      } catch {
-        return;
-      }
-      if (d?.event === "infoDelivery" && typeof d.info?.playerState === "number") this.playing = d.info.playerState === 1 || d.info.playerState === 3;
-      if (d?.event === "play" || d?.event === "playing") this.playing = true;
-      if (d?.event === "pause" || d?.event === "ended") this.playing = false;
-    });
   }
 
-  /** The layer over the page on (taps there are this window's), or stepped aside (taps go to the page). A video's is always on. */
+  /** The layer over the page on (a hold or a drag there moves the window), or stepped aside (taps go to the page). */
   private arm(on: boolean): void {
-    this.grab.classList.toggle("on", on || !!this.video);
-    this.grab.classList.toggle("video", !!this.video);
-  }
-
-  private tell(msg: object): void {
-    const origin = this.video === "vimeo" ? "https://player.vimeo.com" : "https://www.youtube.com";
-    // (YouTube's player answers only what comes on its "widget" channel.)
-    this.frame.contentWindow?.postMessage(this.video === "youtube" ? JSON.stringify({ ...msg, id: 1, channel: "widget" }) : msg, origin);
-  }
-
-  private playPause(): void {
-    const play = !this.playing;
-    if (this.video === "youtube") this.tell({ event: "command", func: play ? "playVideo" : "pauseVideo", args: [] });
-    else if (this.video === "vimeo") this.tell({ method: play ? "play" : "pause" });
-    this.playing = play;
-  }
-
-  /** The video over the whole screen (Esc, or the player's own button, brings it back). */
-  private fullScreen(): void {
-    if (document.fullscreenElement) void document.exitFullscreen();
-    else void this.frame.requestFullscreen?.().catch(() => {});
+    this.grab.classList.toggle("on", on);
   }
 
   /** Moved with a press on the bar (not on its box or buttons). While moving, the page doesn't take the pointer. */

@@ -6391,10 +6391,6 @@ circle.wheel-plate {
 .web-grab.on {
   display: block;
 }
-/* A video's: the strip along its bottom is the player's own (seek, volume, full screen). */
-.web-grab.video {
-  bottom: 52px;
-}
 .web-win.lifted {
   box-shadow: 0 0 0 2px var(--accent), 0 16px 40px rgba(0, 0, 0, 0.55);
 }
