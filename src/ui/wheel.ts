@@ -1124,14 +1124,14 @@ export class Wheel implements WheelHandle {
     const group = (id: string, label: string, icon: IconName, why: string): Sector => ({ id, label, icon, cells: cells[id], why: cells[id].length ? undefined : why, mark: false });
     const sectors: Sector[] = [];
     if (p.done) sectors.push({ id: "done", label: "Done", icon: "check", cells: [], item: { id: "ff-done", label: "Done", icon: "check", shortcut: "Enter", run: p.done }, mark: true });
+    // (Shape's tools - Extrude face, Inset, Add detail... - and the rest (More)
+    // are the window's: the wheel doesn't say them all again.)
     sectors.push(
-      group("shape", "Shape", "extrude", "Pick faces, edges or points to shape"),
       group("holes", "Holes", "fill", "Pick a hole's rim, two borders, or faces"),
       group("move", "Move", "move", "Pick points, edges or faces to move them"),
       group("symmetry", "Symmetry", "mirror", "Not while the shape is being placed or set up"),
       group("solid", "Solid", "shell", "A closed shape is solid already"),
     );
-    if (cells.more.length) sectors.push(group("more", "More", "more", ""));
     if (selectAll) sectors.push({ id: "select", label: "Select all", icon: "selectAll", cells: [], item: selectAll, mark: false });
     if (p.cancel) sectors.push({ id: "cancel", label: "Cancel", icon: "close", cells: [], item: { id: "ff-cancel", label: "Cancel", icon: "close", shortcut: "Esc", run: p.cancel }, mark: false });
     return { sectors, pick: "" };
