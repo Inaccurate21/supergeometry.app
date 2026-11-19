@@ -182,6 +182,8 @@ export class ExtrudeOp extends FeatureOp<ExtrudeFeature> {
     if (this.offsetsFace()) return "Drag the arrow or type a distance to push or pull the face. The faces around it follow.";
     if (this.feature.extent === "through") return "It goes through every body in its way. Flip direction turns it the other way.";
     if (this.feature.extent === "to") return "It stops at the face or plane picked (a round face too).";
+    // (A bin drafted 5 came out narrowing to the top: which way a sign leans wasn't said.)
+    if (this.feature.draft) return `Draft ${Math.abs(this.feature.draft)}°: the sides lean ${this.feature.draft > 0 ? "in" : "out"} towards the far end - type ${this.feature.draft > 0 ? "a minus angle to lean them out" : "a plus angle to lean them in"}.`;
     if (this.feature.symmetric) return "Symmetric: the distance goes each way from the shape - type half the whole width.";
     return "Drag the arrow or type a distance to make it 3D. A negative distance cuts into the body.";
   }

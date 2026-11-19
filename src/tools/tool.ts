@@ -286,7 +286,20 @@ export function sourceFrame(app: AppContext, src: ExtrudeSource): { base: Vec3; 
 /** Body that a source "sits on" (joins/cuts default to it). */
 export function targetOf(app: AppContext, src: ExtrudeSource): string | undefined {
   if (src.kind === "face") return src.face.body;
-  return app.store.find<SketchFeature>(src.sketch)?.attachedTo?.body;
+  const on = app.store.find<SketchFeature>(src.sketch)?.attachedTo?.body;
+  if (on) return on;
+  // Drawn on its own, but a body was made from the same region of it (a cookie
+  // cutter's wall, 2 high with its flange, then taken on up to 15): that body.
+  // Auto otherwise cut the region out of it, and what went past wasn't added.
+  const key = (r: { c: number[]; k?: string[] }) => (r.k?.length ? [...r.k].sort().join("|") : r.c.map((v) => v.toFixed(3)).join(","));
+  const mine = new Set(src.regions.map(key));
+  for (const f of app.store.features) {
+    if ((f.type !== "extrude" && f.type !== "revolve" && f.type !== "sweep") || f.source.kind !== "profile" || f.source.sketch !== src.sketch || f.mode === "cut" || f.mode === "intersect") continue;
+    if (!f.source.regions.some((r) => mine.has(key(r)))) continue;
+    const body = f.target ?? f.id;
+    if (app.view.body(body)) return body;
+  }
+  return undefined;
 }
 
 /** Bodies referenced by the selection (faces/edges/vertices count for their body). */

@@ -907,8 +907,12 @@ async function run(features: Feature[], saved = false) {
               const inPlace = f.type === "extrude" && f.source.kind === "face" && f.mode !== "new" && f.target === f.source.face.body;
               let kept: Shape3D | null;
               try {
-                kept = guardEdit(before, after, !NO_SPLIT.has(f.type) && !inPlace);
+                kept = guardEdit(before, after, !NO_SPLIT.has(f.type) && !inPlace, f.type !== "fillet" && f.type !== "chamfer");
               } catch (err) {
+                // Rounds or chamfers that tear the body open ran into each other (a
+                // cookie cutter's 1.2 wall, both its top edges rounded 1): a flat face
+                // patched over the gap isn't what was asked for - said, not repaired.
+                if ((f.type === "fillet" || f.type === "chamfer") && !isFault(err) && /tear the body open/.test(errorText(err))) throw new Error(f.type === "fillet" ? EDGES_CLASH.replace("@", "rounds") : EDGES_CLASH.replace("@", "chamfers"));
                 // A shell that came out torn or broken: its walls ran into each other ("would tear the body open" said nothing of walls).
                 if (f.type !== "shell" || isFault(err)) throw err;
                 throw new Error(/break the body into pieces/.test(errorText(err)) ? SHELL_LOOSE : WALLS_CLASH);
@@ -4773,7 +4777,9 @@ const NO_SPLIT = new Set<string>(["fillet", "chamfer", "shell", "moveFace", "sca
  * (invalid, hair-thin faces, split by an edit that shouldn't split) makes the
  * step stop with a message instead of leaving a damaged body to build on.
  */
-function guardEdit(before: Shape3D | undefined, after: Shape3D, mayPart: boolean): Shape3D | null {
+const EDGES_CLASH = "That size is too big here: the @ run into each other or past a face (a wall thinner than two of them?) - try a smaller one";
+
+function guardEdit(before: Shape3D | undefined, after: Shape3D, mayPart: boolean, mendTears = true): Shape3D | null {
   const oc = getOC();
   // A new body (made by this edit): held to being a good solid, like an edited one.
   const was = before ? subShapes(before, "SOLID").length : Math.max(1, subShapes(after, "SOLID").length);
@@ -4829,7 +4835,10 @@ function guardEdit(before: Shape3D | undefined, after: Shape3D, mayPart: boolean
     return r.shape;
   };
   // Gaps it didn't have before (an edge with a face on one side only).
-  if (openEdges(after).length > (before ? openEdges(before).length : 0)) return fixOr("That edit would tear the body open - try a smaller value, or another face");
+  if (openEdges(after).length > (before ? openEdges(before).length : 0)) {
+    if (!mendTears) throw new Error("That edit would tear the body open - try a smaller value, or another face");
+    return fixOr("That edit would tear the body open - try a smaller value, or another face");
+  }
   const validBefore = before ? shapeValid(before) : true;
   if (validBefore && !shapeValid(after)) return fixOr("That edit would damage the body (the faces don't meet up) - try a different value");
   const thinBefore = before ? hairThin(before) : 0;
