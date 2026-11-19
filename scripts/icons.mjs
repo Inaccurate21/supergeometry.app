@@ -1,15 +1,18 @@
-// Make the PNG app icons (home screen / install) from the shapes in public/icon.svg.
+// Make the PNG app icons (home screen / install) from the paths in public/icon.svg
+// (scripts/logo.py writes that file).
 // Run: node scripts/icons.mjs
 import { deflateSync } from "node:zlib";
-import { writeFileSync } from "node:fs";
+import { readFileSync, writeFileSync } from "node:fs";
 
 const hex = (h) => [parseInt(h.slice(1, 3), 16), parseInt(h.slice(3, 5), 16), parseInt(h.slice(5, 7), 16)];
-const BG = hex("#1f2125");
-const shapes = [
-  [hex("#3d8bff"), [[32, 10], [51, 21], [51, 43], [32, 54], [13, 43], [13, 21]]],
-  [hex("#8bb8ff"), [[32, 10], [51, 21], [32, 32], [13, 21]]],
-  [hex("#2a63c4"), [[32, 32], [32, 54], [13, 43], [13, 21]]],
-];
+const svg = readFileSync("public/icon.svg", "utf8");
+const BG = hex(svg.match(/<rect[^>]*fill="(#[0-9a-f]{6})"/i)[1]);
+// Every filled path, in drawing order, with its bounding box (to skip it quickly).
+const shapes = [...svg.matchAll(/<path d="M([^"]+)Z" fill="(#[0-9a-f]{6})"/gi)].map(([, d, fill]) => {
+  const P = d.split("L").map((q) => q.trim().split(/\s+/).map(Number));
+  const xs = P.map((p) => p[0]), ys = P.map((p) => p[1]);
+  return [hex(fill), P, [Math.min(...xs), Math.min(...ys), Math.max(...xs), Math.max(...ys)]];
+});
 const inPoly = (x, y, P) => {
   let c = false;
   for (let i = 0, j = P.length - 1; i < P.length; j = i++) {
@@ -35,7 +38,7 @@ function render(n, { rounded = true, scale = 1 } = {}) {
           // The logo, scaled about the middle (smaller for maskable icons).
           const lu = 32 + (u - 32) / scale, lv = 32 + (v - 32) / scale;
           let c = BG;
-          for (const [col, P] of shapes) if (inPoly(lu, lv, P)) c = col;
+          for (const [col, P, b] of shapes) if (lu >= b[0] && lu <= b[2] && lv >= b[1] && lv <= b[3] && inPoly(lu, lv, P)) c = col;
           r += c[0]; g += c[1]; b += c[2]; a += 255;
         }
       const k = S * S, o = (y * n + x) * 4;
