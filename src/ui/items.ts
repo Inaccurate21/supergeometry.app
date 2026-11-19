@@ -241,16 +241,36 @@ export class ItemsPanel {
     li.append(eye, label, ren, del);
     li.dataset.id = r.id;
     li.classList.toggle("selected", this.selectedIds.has(r.id));
+    li.classList.toggle("flash", this.revealed.has(r.id));
     this.list.append(li);
   }
 
   /**
    * Reveal in Items: the panel opens, the folders and headings holding the
-   * rows unfold, and the first is scrolled to and flashes.
+   * rows unfold, and the first is scrolled to. The rows pulse until the
+   * next thing done (a tap anywhere, a key).
    */
+  private revealed = new Set<string>();
+  private unreveal: (() => void) | null = null;
   reveal(ids: string[]): void {
     this.toggle(true);
     const want = new Set(ids);
+    this.unreveal?.();
+    this.revealed = want;
+    const stop = () => {
+      this.unreveal = null;
+      this.revealed = new Set();
+      removeEventListener("pointerdown", stop, true);
+      removeEventListener("keydown", stop, true);
+      for (const li of this.list.querySelectorAll<HTMLElement>("li.flash")) li.classList.remove("flash");
+    };
+    this.unreveal = stop;
+    // (After the tap that asked for it has ended.)
+    setTimeout(() => {
+      if (this.unreveal !== stop) return;
+      addEventListener("pointerdown", stop, true);
+      addEventListener("keydown", stop, true);
+    });
     const byId = new Map(this.folders.map((f) => [f.id, f]));
     for (const f of this.folders)
       if (f.items.some((i) => want.has(i))) for (let g: ItemFolder | undefined = f; g; g = g.parent ? byId.get(g.parent) : undefined) this.collapsed.delete(g.id);
@@ -263,11 +283,8 @@ export class ItemsPanel {
       this.render(this.last);
       li = find();
     }
-    if (!li) return;
-    li.scrollIntoView({ block: "center" });
-    li.classList.remove("flash");
-    void li.offsetWidth;
-    li.classList.add("flash");
+    for (const r of this.list.querySelectorAll<HTMLElement>("li[data-id]")) r.classList.toggle("flash", want.has(r.dataset.id!));
+    li?.scrollIntoView({ block: "center" });
   }
 
   /** What's selected in the view (a body double-clicked, a plane…): its row lights up. */

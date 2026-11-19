@@ -1,7 +1,7 @@
 import { QuickActions, type QuickKind, type QuickPlace } from "./quickActions";
 import { circleAxis } from "./slots";
 import { isTouchDevice } from "../device";
-import { BODY_COLORS, BODY_OPACITY, bodyColor } from "../doc/types";
+import { BODY_COLORS, BODY_OPACITY, DEFAULT_BODY_COLOR, bodyColor } from "../doc/types";
 import type { DeleteGeomFeature, EdgeLink, FaceFreeformFeature, FreeformFeature, EdgeRef, ExtrudeSource, FaceRef, ImageFeature, PlaneDef, PlaneFeature, SketchFeature, Vec3 } from "../doc/types";
 import { editedStep } from "../doc/freeformEdits";
 import { arrangement } from "../sketch/regions";
@@ -997,16 +997,18 @@ export class SelectTool implements Tool {
           label: c.name,
           icon: "color",
           swatch: c.hex,
-          active: (bodyColor((app.store.doc.colors ?? {})[bodies[0]]) ?? BODY_COLORS[0].hex) === c.hex,
+          active: bodyColor((app.store.doc.colors ?? {})[bodies[0]]) === c.hex,
+          // (Tapped again while lit: back to the grey every body has to start with.)
           run: () =>
             app.store.commit((d) => {
               const colors = { ...(d.colors ?? {}) };
-              for (const b of bodies) if (i === 0) delete colors[b];
+              const off = bodies.every((b) => bodyColor(colors[b]) === c.hex);
+              for (const b of bodies) if (off) delete colors[b];
               else colors[b] = c.hex;
               d.colors = colors;
             }),
         })),
-        // Any colour (a dark lamp base, a brass shade): the ten soft ones
+        // Any colour (a dark lamp base, a brass shade): the seven soft ones
         // couldn't give what a model made by code had.
         ((): ToolItem => {
           const now = bodyColor((app.store.doc.colors ?? {})[bodies[0]]);
@@ -1025,7 +1027,7 @@ export class SelectTool implements Tool {
                 d.colors = colors;
               };
               // One undo step for the whole pick: live while choosing, kept on Done.
-              const hex = await pickColor("Custom colour", now ?? BODY_COLORS[0].hex, (h) => app.store.transient(write(h)));
+              const hex = await pickColor("Custom colour", now ?? DEFAULT_BODY_COLOR, (h) => app.store.transient(write(h)));
               if (hex) app.store.commit(write(hex));
               else app.store.commit((d) => (d.colors = before));
             },

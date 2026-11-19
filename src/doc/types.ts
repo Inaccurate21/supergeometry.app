@@ -922,10 +922,10 @@ export interface MaterialDef {
   specificHeat?: number;
 }
 
-/** The body colours offered by the Color tool (first = default). */
+/** The body colours offered by the Color tool: seven, Custom the eighth (no Grey - a body is grey until given one; a tap on its lit colour makes it grey again). Bodies given another before keep it (shown as Custom). */
+export const DEFAULT_BODY_COLOR = "#b9bec7";
 export const BODY_COLORS: { name: string; hex: string }[] = [
   // Soft, muted tones (easy on the eyes, still easy to tell apart).
-  { name: "Grey", hex: "#b9bec7" },
   { name: "Red", hex: "#b9726b" },
   { name: "Orange", hex: "#c29069" },
   { name: "Yellow", hex: "#c4b277" },
@@ -933,8 +933,6 @@ export const BODY_COLORS: { name: string; hex: string }[] = [
   { name: "Teal", hex: "#71a39c" },
   { name: "Blue", hex: "#7c98c2" },
   { name: "Violet", hex: "#9a8bc0" },
-  { name: "Pink", hex: "#bb8aa9" },
-  { name: "Brown", hex: "#93806e" },
 ];
 
 /** The first, brighter palette → its softer version (projects saved before keep their choice). */

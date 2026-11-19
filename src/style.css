@@ -1682,14 +1682,16 @@ body.items-open #bottom-left {
 .items-row.selected .items-name {
   color: var(--accent);
 }
-/* Reveal in Items: the row flashes once. */
+/* Reveal in Items: the row pulses until the next tap or key. */
 .items-row.flash {
-  animation: items-flash 1.2s ease-out;
+  animation: items-flash 1.1s ease-in-out infinite alternate;
 }
 @keyframes items-flash {
-  0%,
-  30% {
-    background: var(--accent);
+  from {
+    background: transparent;
+  }
+  to {
+    background: color-mix(in srgb, var(--accent) 55%, transparent);
   }
 }
 .items-row.in-folder {
@@ -5533,7 +5535,9 @@ html[data-screen="phone"] .bim-props {
    for a column (the selection tool's, the sketch's), the column and the bar
    at the bottom left step aside: their tools are on the wheel. */
 body.wheel-covers #toolbar,
-body.wheel-covers #bottom-left {
+body.wheel-covers #bottom-left,
+body.wheel-options #toolbar,
+body.wheel-options #bottom-left {
   display: none !important;
 }
 /* With the wheel on, no right column: its lists and switches (snapping, units,

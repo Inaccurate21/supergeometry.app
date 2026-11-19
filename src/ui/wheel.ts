@@ -565,6 +565,9 @@ export class Wheel implements WheelHandle {
     if (kind === "options") {
       const before = host.ui.onPanel;
       host.ui.onPanel = () => (before?.(), this.sync(), this.itemsChanged());
+      // (Another tool's column changed - Measure opened: its Exit is on this wheel.)
+      const was = host.ui.onTools;
+      host.ui.onTools = () => (was?.(), this.sync(), this.itemsChanged());
     }
     // (A setting changed: the mode itself, or what Settings shows - the unit, the numpad on or off.)
     settings.onChange(() => (this.sync(), this.itemsChanged()));
@@ -638,7 +641,8 @@ export class Wheel implements WheelHandle {
       // Up only while the open tool has a window with something to set; the window itself then stays out of sight.
       // (Not while the window holds a text box to type into - a sketch's Text: the window shows, with all of it.)
       const typing = !!document.querySelector("#panel .text-input");
-      const has = this.on && this.host.ui.panelOpen && !typing && this.content().sectors.length > 0;
+      // (Another tool open - Measure, Section View, Variables: no column of its own shows, so the wheel is up even with no window.)
+      const has = this.on && (this.host.ui.panelOpen || (toolsLayout === null && usable(this.host.ui.shown().column).length > 0)) && !typing && this.content().sectors.length > 0;
       document.body.classList.toggle("wheel-options", has);
       if (!has) return this.hide();
     }
@@ -816,7 +820,10 @@ export class Wheel implements WheelHandle {
    */
   private optionsContent(): { sectors: Sector[]; pick: string } {
     const ui = this.host.ui;
-    const p = ui.panelContent();
+    // Another tool open (not the selection, a sketch or a freeform, whose wheel has their own):
+    // its column (Exit Measure…) is on this wheel too, as the column itself steps aside.
+    const own = toolsLayout === null ? usable(ui.shown().column).filter(notSep) : [];
+    const p = ui.panelContent() ?? (own.length ? { title: "", items: [], actions: [] as ToolItem[], done: undefined, cancel: undefined } : null);
     if (!p) return { sectors: [], pick: "" };
     let k = 0;
     // ("opt-": set right there, the wheel stays open showing it.)
@@ -882,6 +889,8 @@ export class Wheel implements WheelHandle {
     // (One value: Values is it - a tap and its box is up.)
     else if (valueCells.length === 1) sectors.push({ id: "values", label: valueCells[0].item.label, icon: "numpad", cells: [], item: valueCells[0].item, mark: false });
     else if (valueCells.length) sectors.push({ id: "values", label: "Values", icon: "numpad", cells: valueCells, mark: false });
+    // (The column's own ways out, unless the window has Done or Cancel for that.)
+    if (!p.done && !p.cancel) for (const item of own) sectors.push({ id: `own-${item.id}`, label: item.label, icon: item.icon, cells: kidsOf(item).map((c) => ({ item: c })), item: opens(item) ? undefined : item, mark: false });
     if (p.cancel && !ff) sectors.push({ id: "cancel", label: "Cancel", icon: "close", cells: [], item: { id: "cancel", label: "Cancel", icon: "close", shortcut: "Esc", run: p.cancel }, mark: false });
     if (p.done && !ff) sectors.push({ id: "done", label: "Done", icon: "check", cells: [], item: { id: "done", label: "Done", icon: "check", shortcut: "Enter", run: p.done }, mark: false });
     // (Only Done or Cancel: nothing to set - no wheel; the tool's own ways to finish stay.)
