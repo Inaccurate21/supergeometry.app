@@ -1330,6 +1330,7 @@ export class SketchTool implements Tool {
       // What it is with the pointer where it is now (it follows the pointer until typed).
       value: this.locks[key] ?? value ?? this.liveValue(key, this.lockedCursor()) ?? 0,
       kind,
+      ...(this.locks[key] === undefined && value === undefined ? { follows: true } : {}),
         onInput: (v) => {
           this.locks[key] = v;
           // A polygon's size is one or the other: to a corner, or across the flats.

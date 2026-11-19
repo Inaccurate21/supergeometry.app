@@ -773,7 +773,8 @@ export class Wheel implements WheelHandle {
         };
         const kind = it.type === "slider" || it.kind === "int" || it.kind === "number" ? "number" : it.kind === "angle" ? "angle" : "length";
         const now = it.type === "number" && kind === "length" ? String(+toDisplay(it.value).toFixed(4)) : String(+it.value.toFixed(4));
-        valueCells.push({ item: opt(it.label, () => this.typeValue(it.label, now, kind, put), false, show, "numpad") });
+        const follows = it.type === "number" && !!it.follows;
+        valueCells.push({ item: opt(it.label, () => this.typeValue(it.label, now, kind, put, follows), false, show, "numpad") });
       }
     }
     // Room on the ring: past six of its own, the rest of the window's switches and buttons go under More.
@@ -803,7 +804,7 @@ export class Wheel implements WheelHandle {
    * Type a value right on the wheel: a small box by the pointer, the value
    * in it selected. Enter (or tapping away) sets it, Esc leaves it as it was.
    */
-  private typeValue(label: string, now: string, kind: "length" | "angle" | "number", put: (v: number) => void): void {
+  private typeValue(label: string, now: string, kind: "length" | "angle" | "number", put: (v: number) => void, follows = false): void {
     this.typerEnd?.(false);
     const box = el("div", "wheel-type");
     box.append(el("span", "wheel-type-label", label));
@@ -814,6 +815,7 @@ export class Wheel implements WheelHandle {
     input.spellcheck = false;
     input.value = now;
     input.dataset.kind = kind === "number" ? "number" : kind;
+    if (follows) input.dataset.follows = "1";
     numpadInput(input);
     box.append(input);
     const unit = kind === "length" ? UNIT_LABEL[units()] : kind === "angle" ? "°" : "";

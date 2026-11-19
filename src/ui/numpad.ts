@@ -207,7 +207,8 @@ class Numpad {
     this.setFx(/[a-z_]/i.test(input.value.replace(/(\d)\s*(mm|cm|m|in|ft)\b/gi, "$1")));
     // All of it selected, so typing overrides it - but a minus stays: the
     // number after it is what's selected (⌫ first clears it all, sign too).
-    this.selStart = input.value.startsWith("-") ? 1 : 0;
+    // (Not a box that only shows where the finger is: digits type it over whole.)
+    this.selStart = input.value.startsWith("-") && input.dataset.follows !== "1" ? 1 : 0;
     this.selEnd = input.value.length;
     this.showSelection();
     this.el.hidden = false;
@@ -316,7 +317,9 @@ class Numpad {
     let e = Math.min(this.selEnd, v.length);
     // First key after opening: a digit or point types over the number (a
     // minus in front stays); ⌫ clears it all, sign too - then type it positive.
-    if (this.fresh && (k === "." || /^\d$/.test(k))) [s, e] = [v.startsWith("-") ? 1 : 0, v.length];
+    // (A line's Up showing -2.7, only where the finger last was: 34 typed
+    // went down, -34 - the outline drawn upside down.)
+    if (this.fresh && (k === "." || /^\d$/.test(k))) [s, e] = [v.startsWith("-") && t.dataset.follows !== "1" ? 1 : 0, v.length];
     // A variable tapped first: the box becomes it.
     if (this.fresh && varHooks?.names().includes(k)) [s, e] = [0, v.length];
     if (this.fresh && k === "⌫") [s, e] = [0, v.length];

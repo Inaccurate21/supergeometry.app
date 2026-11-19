@@ -65,6 +65,12 @@ export type PanelItem =
       onExpr?(expr: string | null): void;
       /** The same value as the value box on the model: left out of the list attached to it. */
       inBox?: boolean;
+      /**
+       * Nothing set yet: the value only shows where the pointer is (a line's
+       * Across / Up). Digits typed start it over, sign and all - a set value
+       * keeps its minus.
+       */
+      follows?: boolean;
     }
   | { type: "slot"; label: string; value: string; active: boolean; filled: boolean; onClick(): void }
   | { type: "choice"; label?: string; options: { id: string; label: string }[]; value: string; onChange(id: string): void; /** Always a drop-down. */ list?: boolean }
@@ -1145,6 +1151,7 @@ export class UI {
     input.value = f.expr ?? shown(f.value, kind);
     input.dataset.index = String(index);
     input.dataset.kind = kind;
+    if (f.follows) input.dataset.follows = "1";
     if (f.expr) input.classList.add("has-expr");
     const apply = () => {
       const v = evaluate(input.value, kind === "length" ? "length" : kind === "angle" ? "angle" : "number");
