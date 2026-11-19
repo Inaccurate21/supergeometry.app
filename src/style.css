@@ -6287,3 +6287,96 @@ circle.wheel-plate {
     height: 32px;
   }
 }
+
+/* ---------------------------------------------------------------- browser */
+/* A web page or a video in a window over the model: the address along its bar. */
+.web-win {
+  min-width: 220px;
+}
+.web-win.min {
+  min-width: 220px;
+}
+.web-go {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  padding: 4px 4px 4px 6px;
+}
+.web-go input {
+  width: 100%;
+  height: 25px;
+  padding: 0 9px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: rgba(0, 0, 0, 0.25);
+  color: var(--text);
+  font-size: 12.5px;
+  -webkit-user-select: text;
+  user-select: text;
+  cursor: text;
+}
+.web-go input:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+.web-body {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  background: #fff;
+}
+.web-win.min .web-body {
+  display: none;
+}
+.web-body iframe {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  border: 0;
+  background: #fff;
+}
+/* Moving or resizing: the page doesn't take the pointer from the drag. */
+.web-win.moving iframe {
+  pointer-events: none;
+}
+.web-note {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  padding: 20px;
+  background: #15161a;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.5;
+  text-align: center;
+}
+.web-note[hidden],
+.web-body iframe[hidden] {
+  display: none;
+}
+.web-note p {
+  margin: 0;
+  max-width: 420px;
+}
+.web-open {
+  padding: 8px 14px;
+  border: 0;
+  border-radius: 8px;
+  background: var(--accent);
+  color: #fff;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+/* (Over a white page the corner's lines need a backing to be seen.) */
+.web-win .ref-grip {
+  z-index: 1;
+  background-color: rgba(21, 22, 26, 0.75);
+  border-top-left-radius: 8px;
+}

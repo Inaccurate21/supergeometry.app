@@ -92,6 +92,8 @@ export const icons = {
   image: svg('<rect x="3" y="5" width="18" height="14" rx="1"/><circle cx="8.5" cy="10" r="1.6"/><path d="M21 16l-5-5-8 8"/>'),
   construct: svg('<path d="M3 15l6-6h12l-6 6z"/><path d="M12 3v18" stroke-dasharray="2 2"/>'),
   transform: svg('<path d="M12 3l3 3h-2v4h4V8l3 3-3 3v-2h-4v4h2l-3 3-3-3h2v-4H7v2l-3-3 3-3v2h4V6H9z"/>'),
+  browser: svg('<circle cx="12" cy="12" r="9"/><path d="M3 12h18"/><path d="M12 3c2.6 2.6 3.8 5.6 3.8 9s-1.2 6.4-3.8 9c-2.6-2.6-3.8-5.6-3.8-9s1.2-6.4 3.8-9z"/>'),
+  reload: svg('<path d="M20 12a8 8 0 1 1-2.3-5.7"/><path d="M20 4v5h-5"/>'),
   minimize: svg('<path d="M6 13h12"/>'),
   restore: svg('<rect x="5" y="6" width="14" height="12" rx="1.5"/><path d="M5 9.5h14"/>'),
   refImage: svg('<rect x="3" y="5" width="18" height="15" rx="1.5"/><path d="M3 8.5h18"/><circle cx="8.5" cy="12.5" r="1.4"/><path d="M21 18l-5-4.5-7 6.5"/>'),

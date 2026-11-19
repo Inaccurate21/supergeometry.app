@@ -14,6 +14,7 @@ import { emptyDoc } from "./doc/types";
 import { editedStep } from "./doc/freeformEdits";
 import { createVariable, insertFile, insertImage } from "./io/insert";
 import { RefImages } from "./ui/refImages";
+import { WebWindow } from "./ui/webWindow";
 import { numpadVariables } from "./ui/numpad";
 import { variableTags } from "./doc/varAnchors";
 import { VariableTags } from "./tools/variableTags";
@@ -80,6 +81,7 @@ export class App implements AppContext {
   readonly optionsWheel = new Wheel({ ui: this.ui, mainTools: () => [] }, "options");
   /** Pictures to look at while modelling, each in a window over the model (under the buttons). */
   readonly refImages = new RefImages((text, kind) => this.ui.toast(text, kind));
+  readonly web = new WebWindow();
   private input: InputRouter;
   result: RegenResult | null = null;
   selection: Sel[] = [];
@@ -1166,6 +1168,8 @@ export class App implements AppContext {
               { id: "file", label: "File", icon: "file", sub: "STEP, STL, OBJ, 3MF, DXF, SVG", run: () => void insertFile(this) },
               { id: "project", label: "Project", icon: "file", sub: ".super", run: () => void insertFile(this) },
               { id: "refImage", label: "Reference Image", icon: "refImage", sub: "a picture in its own window, over the model", run: () => void this.refImages.open() },
+              // A web page or a video in a window over the model (open already: brought up again).
+              { id: "browser", label: "Browser", icon: "browser", sub: "a web page or a video, in a window over the model", active: this.web.isOpen, run: () => this.web.open() },
             ],
           },
           {
