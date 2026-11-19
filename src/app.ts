@@ -1502,6 +1502,28 @@ export class App implements AppContext {
       name.scrollLeft = 0;
     };
     name.addEventListener("blur", rename);
+    // On a small screen, while it is being renamed, it opens over the buttons
+    // beside it (File, Items, History, More) to the bar's end; they stay where
+    // they are under it, kept in place by a spot of its old width.
+    const spot = document.createElement("span");
+    spot.className = "project-name-spot";
+    name.addEventListener("focus", () => {
+      if (!matchMedia("(max-width: 720px), (pointer: coarse)").matches) return;
+      const bar = name.parentElement!;
+      spot.style.width = `${name.offsetWidth}px`;
+      spot.style.marginRight = getComputedStyle(name).marginRight;
+      const left = name.offsetLeft;
+      name.before(spot);
+      name.classList.add("wide");
+      name.style.left = `${left}px`;
+      name.style.width = `${bar.clientWidth - left - 4}px`;
+    });
+    name.addEventListener("blur", () => {
+      if (!name.classList.contains("wide")) return;
+      name.classList.remove("wide");
+      name.style.left = name.style.width = "";
+      spot.remove();
+    });
     name.addEventListener("keydown", (e) => {
       e.stopPropagation();
       if (e.key === "Enter") e.preventDefault(), name.blur();

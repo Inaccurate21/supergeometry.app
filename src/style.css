@@ -3785,6 +3785,20 @@ html body #topbar .project-name {
   flex: 0 1 auto;
   width: 320px;
   min-width: 90px;
+  /* (Its size never follows what's typed: a long name pushed File, Items,
+     History and More off over the view cube. It shows the start, cut short.) */
+  contain: inline-size;
+}
+/* Being renamed on a small screen: over the buttons beside it, to the bar's
+   end, so the whole name can be read - back in its place once done. */
+html body #topbar .project-name.wide {
+  position: absolute;
+  z-index: 2;
+  min-width: 0;
+  flex: none;
+}
+.project-name-spot {
+  flex: none;
 }
 @media (max-width: 720px) {
   html body #topbar .project-name {
