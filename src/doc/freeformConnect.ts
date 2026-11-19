@@ -88,12 +88,19 @@ export function connectEdges(doc: ProjectDoc, picks: PickedEdge[]): ConnectResul
   }
   if (!Q) return { doc: store(doc, P.feature, next, P.m), body: P.feature.id };
   // Two freeforms → one: the later step keeps it, the earlier one goes.
-  const ia = doc.features.indexOf(P.feature);
-  const ib = doc.features.indexOf(Q.feature);
-  const [keep, drop, mKeep] = ia < ib ? [Q.feature, P.feature, Q.m] : [P.feature, Q.feature, P.m];
-  const users = doc.features.filter((f) => f !== drop && JSON.stringify(f).includes(`"${drop.id}`) && !(f.type === "transform" && !f.copy && ["move", "scale", "mirror", "scaleXYZ"].includes(f.op.kind)));
+  // (By id: an edited freeform's feature here is its step with the edits put in, not the step itself.)
+  const at = (id: string) => doc.features.findIndex((f) => f.id === id);
+  const [keep, drop, mKeep] = at(P.feature.id) < at(Q.feature.id) ? [Q.feature, P.feature, Q.m] : [P.feature, Q.feature, P.m];
+  // Its Edit Freeform steps and its own moves are in the merged cage: they don't keep it from going.
+  const users = doc.features.filter(
+    (f) =>
+      f.id !== drop.id &&
+      !(f.type === "freeformEdit" && (f.target === drop.id || f.target === keep.id)) &&
+      JSON.stringify(f).includes(`"${drop.id}"`) &&
+      !(f.type === "transform" && !f.copy && ["move", "scale", "mirror", "scaleXYZ"].includes(f.op.kind)),
+  );
   if (users.length) return { error: `“${drop.name}” is used by “${users[0].name}” later on - it can't be merged into the other surface` };
-  const out = store(doc, keep, next, mKeep, { surface: !!(keep.surface || drop.surface) });
+  const out = store({ ...doc, features: doc.features.filter((f) => !(f.type === "freeformEdit" && f.target === drop.id)) }, keep, next, mKeep, { surface: !!(keep.surface || drop.surface) });
   // The dropped one's own moves go with it (they are already in the merged cage).
   out.features = out.features
     .filter((f) => f.id !== drop.id)
@@ -103,9 +110,13 @@ export function connectEdges(doc: ProjectDoc, picks: PickedEdge[]): ConnectResul
   return { doc: out, body: keep.id };
 }
 
-/** Put a world-space cage back into a freeform step (in its own coordinates). */
+/**
+ * Put a world-space cage back into a freeform step (in its own coordinates).
+ * Its Edit Freeform steps go: their edits are in that cage already (and a
+ * later one would otherwise put its own cage back over it).
+ */
 function store(doc: ProjectDoc, f: FreeformFeature, cage: Cage, m: number[], extra: Partial<FreeformFeature> = {}): ProjectDoc {
   const inv = invertAffine(m);
   const updated: FreeformFeature = { ...f, ...extra, cage: { faces: cage.faces, verts: cage.verts.map((v) => applyAffine(inv, v)) } };
-  return { ...doc, features: doc.features.map((x): Feature => (x.id === f.id ? updated : x)) };
+  return { ...doc, features: doc.features.filter((x) => !(x.type === "freeformEdit" && x.target === f.id)).map((x): Feature => (x.id === f.id ? updated : x)) };
 }
