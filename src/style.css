@@ -6441,12 +6441,14 @@ body.sentence-ui #panel:not(:has(.text-input)) {
 #sentence {
   --sn-h: 48px;
   position: fixed;
-  left: 50%;
+  /* (Between undo and History: its left and right are set as those move; in the middle of that room.) */
+  left: 132px;
+  right: 132px;
+  margin-inline: auto;
   bottom: calc(10px + var(--safe-b));
-  transform: translateX(-50%);
-  width: max-content;
-  min-width: 260px;
-  max-width: min(980px, calc(100vw - 268px));
+  width: fit-content;
+  min-width: min(260px, 100%);
+  max-width: 980px;
   z-index: 12;
   display: flex;
   flex-direction: column;
@@ -6840,7 +6842,7 @@ body.sn-open .copy-toggle {
 html[data-screen="phone"] #sentence {
   left: calc(6px + var(--safe-l));
   right: calc(6px + var(--safe-r));
-  transform: none;
+  margin-inline: 0;
   width: auto;
   max-width: none;
   min-width: 0;
@@ -6872,9 +6874,6 @@ html[data-screen="phone"] .sn-sheet.sn-all {
   .sn-sheet {
     max-height: 56vh;
   }
-}
-body.items-open #sentence {
-  margin-left: 120px;
 }
 @media (prefers-reduced-motion: reduce) {
   .sn-word,
@@ -6928,4 +6927,40 @@ body.items-open #sentence {
 }
 .sn-word.sn-slot:not(.on) .sn-text {
   min-width: 52px;
+}
+
+/* More of the line out of sight: a button at that end (for a mouse; a finger slides it). */
+.sn-edge {
+  display: none;
+  flex: 0 0 auto;
+  align-self: center;
+  width: 26px;
+  height: 38px;
+  margin: 0 2px;
+  padding: 0;
+  border: 0;
+  border-radius: 9px;
+  background: rgba(255, 255, 255, 0.07);
+  color: var(--text);
+  cursor: pointer;
+  place-items: center;
+}
+.sn-edge svg {
+  width: 16px;
+  height: 16px;
+}
+.sn-edge-back svg {
+  transform: scaleX(-1);
+}
+.sn-edge:hover {
+  background: rgba(255, 255, 255, 0.16);
+}
+@media (hover: hover) and (pointer: fine) {
+  .sn-more .sn-edge {
+    display: grid;
+    visibility: hidden;
+  }
+  .sn-more .sn-edge.show {
+    visibility: visible;
+  }
 }

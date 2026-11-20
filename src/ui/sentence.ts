@@ -137,6 +137,9 @@ export class Sentence {
   private readonly line = el("div", "sn-line");
   private readonly row = el("div", "sn-row");
   private readonly end = el("div", "sn-end");
+  /** More of the line to the left, to the right: a button each (a mouse has no finger to slide it with). */
+  private readonly back = el("button", "sn-edge sn-edge-back");
+  private readonly fore = el("button", "sn-edge sn-edge-fore");
   private readonly thread = document.createElementNS("http://www.w3.org/2000/svg", "svg");
   private readonly threadPath = document.createElementNS("http://www.w3.org/2000/svg", "path");
   private readonly threadDot = document.createElementNS("http://www.w3.org/2000/svg", "circle");
@@ -157,7 +160,24 @@ export class Sentence {
   constructor(private readonly host: SentenceHost) {
     this.root.id = "sentence";
     this.root.hidden = true;
-    this.line.append(this.row, this.end);
+    this.back.innerHTML = this.fore.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 5l7 7-7 7"/></svg>';
+    this.back.title = "Earlier in the line";
+    this.fore.title = "More of the line";
+    this.line.append(this.back, this.row, this.fore, this.end);
+    const slide = (by: number) => this.row.scrollBy({ left: by * Math.max(160, this.row.clientWidth * 0.7), behavior: calm() ? "auto" : "smooth" });
+    this.back.addEventListener("click", () => slide(-1));
+    this.fore.addEventListener("click", () => slide(1));
+    // A mouse's wheel slides the line (it has only up and down to give).
+    this.row.addEventListener(
+      "wheel",
+      (e) => {
+        if (this.row.classList.contains("sn-wrap") || this.row.scrollWidth <= this.row.clientWidth + 1) return;
+        e.preventDefault();
+        this.row.scrollLeft += Math.abs(e.deltaX) > Math.abs(e.deltaY) ? e.deltaX : e.deltaY;
+        this.edges();
+      },
+      { passive: false },
+    );
     this.root.append(this.sheet, this.line);
     this.sheet.hidden = true;
     this.thread.id = "sentence-thread";
@@ -200,8 +220,14 @@ export class Sentence {
     new ResizeObserver(() => document.body.style.setProperty("--sn-line", `${Math.round(this.line.getBoundingClientRect().height)}px`)).observe(this.line);
     host.view.frameHooks.add(() => this.drawThread());
     // (The line slid along: the thread still starts at its subject, or at the line's near end once that is out of sight.)
-    this.row.addEventListener("scroll", () => ((this.threadSig = ""), this.drawThread()), { passive: true });
+    this.row.addEventListener("scroll", () => ((this.threadSig = ""), this.drawThread(), this.edges()), { passive: true });
+    new ResizeObserver(() => this.edges()).observe(this.row);
+    // (Items or History opened or closed: the room for the line changed.)
+    new MutationObserver(() => this.place()).observe(document.body, { attributes: true, attributeFilter: ["class"] });
+    // (And the kind of screen: a phone's line is laid out by the stylesheet.)
+    new MutationObserver(() => this.place()).observe(document.documentElement, { attributes: true, attributeFilter: ["data-screen"] });
     addEventListener("resize", () => {
+      this.place();
       this.viewAt = null;
       if (this.on) ((this.threadSig = ""), this.drawThread());
     });
@@ -228,6 +254,32 @@ export class Sentence {
       return;
     }
     this.changed();
+  }
+
+  /**
+   * Where the line goes on a wide screen: in the middle of the room between
+   * undo (which steps aside for Items) and History when that is open, never
+   * over either. (A phone's line has the whole bottom edge: the stylesheet's.)
+   */
+  private placed = "";
+  private place(): void {
+    if (!this.on) return;
+    let to = "";
+    if (document.documentElement.dataset.screen !== "phone") {
+      const dock = document.getElementById("undo-dock")?.getBoundingClientRect();
+      const hist = document.body.classList.contains("history-open") ? document.getElementById("history")?.getBoundingClientRect() : undefined;
+      const left = Math.round((dock && dock.width ? dock.right : 0) + 10);
+      const right = Math.round(hist && hist.width && hist.left > innerWidth / 2 ? innerWidth - hist.left + 10 : left > 140 ? 12 : left);
+      to = `${left}|${right}|${innerWidth}`;
+    }
+    if (to === this.placed) return;
+    this.placed = to;
+    const [l, r] = to.split("|");
+    this.root.style.left = to ? `${l}px` : "";
+    this.root.style.right = to ? `${r}px` : "";
+    // (No wider than that room: past it the line slides.)
+    this.root.style.maxWidth = to ? `${Math.max(200, Math.min(980, innerWidth - Number(l) - Number(r)))}px` : "";
+    this.threadSig = "";
   }
 
   /** Something it shows changed: drawn again once, after whatever else changes with it. */
@@ -511,6 +563,8 @@ export class Sentence {
       this.end.append(x);
     }
     this.drawSheet();
+    this.place();
+    this.edges();
     this.anchor = b.subject.key === "s-pick" ? this.host.anchor() : null;
     this.threadSig = "";
     this.viewAt = null;
@@ -518,6 +572,16 @@ export class Sentence {
     // (A blank to fill: it is brought into sight.)
     const blank = this.row.querySelector<HTMLElement>(".sn-word.blank");
     if (blank) this.reveal(blank);
+  }
+
+  /** Is there more of the line out of sight, either way? Its end buttons show only then. */
+  private edges(): void {
+    const r = this.row;
+    const more = !r.classList.contains("sn-wrap") && r.scrollWidth > r.clientWidth + 1;
+    // (Both keep their room while there is more either way: one coming or going must not change how much fits.)
+    this.line.classList.toggle("sn-more", more);
+    this.back.classList.toggle("show", more && r.scrollLeft > 2);
+    this.fore.classList.toggle("show", more && r.scrollLeft < r.scrollWidth - r.clientWidth - 2);
   }
 
   private endButton(icon: IconName, title: string, run: () => void): HTMLButtonElement {
