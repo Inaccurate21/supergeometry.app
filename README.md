@@ -231,6 +231,10 @@ sketch. A sketch stays in view until every region of it is used.
 - **Fillet / Chamfer** - tap edges, drag the dot (outward rounds, inward
   bevels) or type a size in the box on the model; variables work too. A
   fillet that can't be made leaves the edge sharp with a note in History.
+- **Direct touch** - what is picked is dragged by itself: a face pushed or
+  pulled, a sketch's shape pulled up into a solid, an edge rounded, a body
+  slid over the floor. On a touch screen press and hold a face, shape or edge
+  and pull, in one touch. (More, Direct touch switches it off.)
 - **Faces** - drag the arrow to push/pull a face: its neighbours follow,
   curved ones included; fillets next to it are kept. **Move/Rotate Face**
   (a gimbal on the face) moves it every way and turns it about its normal. A

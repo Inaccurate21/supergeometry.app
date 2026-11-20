@@ -526,7 +526,20 @@ export class ExtrudeOp extends FeatureOp<ExtrudeFeature> {
     return this;
   }
 
+  /** Started by dragging the face or shape itself: the press that opened this drags it, wherever on it it is. */
+  private grabbed = false;
+  grabAnywhere(): this {
+    this.grabbed = true;
+    return this;
+  }
+
   down(p: ToolPointer): boolean {
+    if (this.grabbed) {
+      this.grabbed = false;
+      this.dragging = { from: p, d0: this.feature.distance };
+      this.handle.setHot(true);
+      return true;
+    }
     if (!this.handle.hit(p)) return false;
     // The second tap of a double tap on a small shape lands on the arrow just
     // drawn there: a tap still (to open the sketch), not a grab of the arrow.
@@ -1850,9 +1863,18 @@ export class TransformOp extends FeatureOp<TransformFeature> {
     else super.hover(p);
   }
 
+  /** Started by dragging the body itself: the press that opened this slides it over the floor (seen from the side: across the screen). */
+  private grabbed = false;
+  grabAnywhere(): this {
+    this.grabbed = true;
+    return this;
+  }
+
   down(p: ToolPointer): boolean {
     const o = this.feature.op;
-    const part = this.gimbal?.hit(p);
+    const flat = Math.abs(this.app.view.cam.viewDir().z) > 0.25;
+    const part: GimbalPart | null | undefined = this.grabbed ? (flat ? { kind: "plane", i: 2 } : { kind: "center" }) : this.gimbal?.hit(p);
+    this.grabbed = false;
     if (!part || o.kind !== "move") return false;
     // A different rotation axis than the one already used: start from the current angle 0 on that axis.
     if (part.kind === "ring" && o.rotate && o.rotate.angle && axisIndex(o.rotate.axis) !== part.i) {

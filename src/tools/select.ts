@@ -1,6 +1,7 @@
 import { QuickActions, type QuickKind, type QuickPlace } from "./quickActions";
 import { circleAxis } from "./slots";
 import { isTouchDevice } from "../device";
+import { settings } from "../settings";
 import { BODY_COLORS, BODY_OPACITY, DEFAULT_BODY_COLOR, bodyColor } from "../doc/types";
 import type { DeleteGeomFeature, EdgeLink, FaceFreeformFeature, FreeformFeature, EdgeRef, ExtrudeSource, FaceRef, ImageFeature, PlaneDef, PlaneFeature, SketchFeature, Vec3 } from "../doc/types";
 import { editedStep } from "../doc/freeformEdits";
@@ -117,6 +118,12 @@ export class SelectTool implements Tool {
   }
 
   dragStart(p: ToolPointer): boolean {
+    // Direct touch: a picked body dragged by itself slides over the floor.
+    if (this.gimbal && !this.gimbal.hit(p) && this.app.selection[0]?.kind === "body" && this.onPick(p)) {
+      const op = new TransformOp(this.app, "move", bodiesOf(this.app.selection), undefined, undefined, copyMode.on).grabAnywhere();
+      this.app.setTool(op);
+      return op.down(p);
+    }
     if (this.gimbal?.hit(p)) {
       const s = this.app.selection[0];
       const img = s?.kind === "image" ? this.app.store.find<ImageFeature>(s.id) : undefined;
@@ -136,10 +143,37 @@ export class SelectTool implements Tool {
       this.app.setTool(op);
       return op.down(p);
     }
-    if (!this.handle?.hit(p) || !this.handleAction) return false;
+    if (!this.handleAction) return false;
+    // Direct touch: the picked face, shape or edge dragged by itself is its arrow or dot dragged.
+    const direct = !this.handle?.hit(p) && this.onPick(p);
+    if (!this.handle?.hit(p) && !direct) return false;
     const op = this.handleAction();
+    if (direct) (op as { grabAnywhere?(): unknown }).grabAnywhere?.();
     this.app.setTool(op);
     return op.down?.(p) ?? false;
+  }
+
+  /** Direct touch is on and the press is on what is picked (the thing its arrow or dot is for). */
+  private onPick(p: ToolPointer): boolean {
+    if (!settings.value.direct || this.pending || p.shift) return false;
+    const picked = (s: Sel | null) => !!s && this.app.selection.some((x) => sameSel(x, s) || (x.kind === "body" && "body" in s && s.body === x.body && s.kind !== "vertex"));
+    if (picked(hitToSel(this.pickAt(p)))) return true;
+    // (A face or body picked that has a sketch lying on it: the press is on it all the same.)
+    return (this.app.selection[0]?.kind === "face" || this.app.selection[0]?.kind === "body") && picked(hitToSel(this.app.view.pick(p.x, p.y, { profiles: false, planes: false, axes: false, curves: false, edgeTolPx: p.tol })));
+  }
+
+  /**
+   * A finger held still on a face, a sketch's shape or an edge (direct
+   * touch): it is picked, and - where the pick has something to drag - the
+   * same touch goes on to drag it. (Else the hold is the menu, as before.)
+   */
+  grab(p: ToolPointer): boolean {
+    if (!settings.value.direct || this.pending || this.adding) return false;
+    if (this.gimbal?.hit(p) || this.handle?.hit(p)) return false;
+    const s = hitToSel(this.pickAt(p));
+    if (!s || (s.kind !== "face" && s.kind !== "profile" && s.kind !== "edge")) return false;
+    if (!this.app.selection.some((x) => sameSel(x, s))) this.app.setSelection([s]);
+    return !!this.handleAction;
   }
 
   /** Sketch curves win near them; a face outline copied into a sketch ("bnd-…") is the body's edge. */
@@ -643,6 +677,11 @@ export class SelectTool implements Tool {
     const n = sel.length;
     const tap = isTouchDevice ? "tap" : "click";
     const or = this.quick ? `or ${tap} a button beside it` : "or pick a tool";
+    const direct = settings.value.direct;
+    if (direct && first.kind === "profile") return `Drag the shape (or its arrow) to pull it into 3D, ${or}.`;
+    if (direct && first.kind === "face" && n === 1 && offsettable(this.app.view.body(first.body)?.faces[first.face]?.type) && !this.freeformOf(first.body)) return `Drag the face (or its arrow) to push or pull it, ${or}.`;
+    if (direct && first.kind === "edge" && !this.freeformOf(first.body)) return `Drag ${n > 1 ? "an edge" : "the edge"} (or its dot) to round ${n > 1 ? "them" : "it"}, ${or}.`;
+    if (direct && first.kind === "body") return `Drag it to slide it over the floor, or its arrows and arcs to move and turn it, ${or}.`;
     if (first.kind === "profile") return `Drag the arrow to extrude, ${or}.`;
     if (first.kind === "face" && n === 1 && offsettable(this.app.view.body(first.body)?.faces[first.face]?.type) && !this.freeformOf(first.body)) return `Drag the arrow to move the face, ${or}.`;
     if (first.kind === "face" && n === 2 && sel[1].kind === "face") return "The distance between the faces is shown. Pick a tool for them.";

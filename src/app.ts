@@ -1633,6 +1633,15 @@ export class App implements AppContext {
       paintHints();
       this.ui.refreshHint();
     });
+    // Direct touch: what is picked is dragged by itself (not only by its arrow or dot).
+    const directState = document.getElementById("m-direct-state")!;
+    const paintDirect = () => (directState.textContent = settings.value.direct ? "On" : "Off");
+    paintDirect();
+    moreItem("m-direct", () => {
+      settings.set("direct", !settings.value.direct);
+      paintDirect();
+      if (this.tool === this.selectTool) this.selectTool.refresh();
+    });
     // Offline mode: the app kept on this device, so it works with no connection.
     const offlineState = document.getElementById("m-offline-state")!;
     const offline = new Offline((t, k) => this.ui.toast(t, k), (state) => (offlineState.textContent = state));

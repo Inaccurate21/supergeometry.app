@@ -63,6 +63,12 @@ export interface Settings {
    * for the code that asks).
    */
   sentence: boolean;
+  /**
+   * Direct touch: what is picked is dragged by itself, not only by its arrow
+   * or dot - a face pulled, a shape pulled up, an edge rounded - and a finger
+   * pressed and held on one picks it and pulls in the same touch.
+   */
+  direct: boolean;
 }
 
 const DEFAULTS: Settings = {
@@ -96,6 +102,7 @@ const DEFAULTS: Settings = {
   offline: false,
   wheel: true,
   sentence: true,
+  direct: true,
   version: 5,
 };
 

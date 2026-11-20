@@ -31,6 +31,13 @@ export interface PointerHandler {
    * plain tap on the same thing still selects it.
    */
   dragStart?(from: ToolPointer): boolean;
+  /**
+   * A finger or pen pressed and held still: return true to take hold of what
+   * is under it (it is picked now) - moved from here, the same touch drags
+   * it (`dragStart`); lifted, it stays picked. False: the hold is the
+   * right-click (`context`).
+   */
+  grab?(p: ToolPointer): boolean;
   /** Box (window) selection with mouse/pen; `final` on release. */
   box?(a: { x: number; y: number }, b: { x: number; y: number }, final: boolean, add: boolean): void;
   /** A finger's drag on empty space draws the box too (instead of orbiting): a phone has no mouse to draw one. */
@@ -156,6 +163,7 @@ export class InputRouter {
       return;
     }
     this.mode = "pending";
+    this.held = false;
     // Fingers, pens and a headset's controller have no right button: press
     // and hold still is the right-click (the same menu). (A headset's browser
     // may report its controller as a mouse.)
@@ -164,6 +172,12 @@ export class InputRouter {
       this.holdTimer = setTimeout(() => {
         if (this.mode !== "pending" || this.pointers.get(t.id) !== t || this.pointers.size !== 1) return;
         if (Math.hypot(t.x - t.x0, t.y - t.y0) >= TAP_SLOP[t.type]) return;
+        // Taken hold of: the touch goes on (a move from here drags it, a lift leaves it picked).
+        if (this.handler.grab?.(this.tp(t))) {
+          this.held = true;
+          navigator.vibrate?.(12);
+          return;
+        }
         this.mode = "ended";
         navigator.vibrate?.(12);
         this.handler.context?.(this.tp(t));
@@ -172,6 +186,8 @@ export class InputRouter {
   }
 
   private holdTimer: ReturnType<typeof setTimeout> | undefined;
+  /** This touch took hold of what was under it (see `grab`): lifted without moving, it is not a tap. */
+  private held = false;
 
   private onMove(e: PointerEvent): void {
     const [x, y] = this.local(e);
@@ -273,7 +289,8 @@ export class InputRouter {
     const mode = this.mode;
     this.mode = "idle";
     if (mode === "captured") this.handler.up?.(this.tp(t));
-    if (mode === "pending") this.emitTap(t);
+    if (mode === "pending" && !this.held) this.emitTap(t);
+    this.held = false;
     if (mode === "rpending") this.handler.context?.(this.tp(t));
     if (mode === "box") {
       this.marquee.hidden = true;
