@@ -397,8 +397,8 @@ export class FreeformTool implements Tool {
     }
     if (this.placing) return this.app.ui.setHint("First drag the arrows to put it in place. Then tap its points, edges or faces to shape it.");
     // A phone has no Shift: there every tap adds, a second tap drops it.
-    if (this.live && this.live.kind !== "shape" && this.live.kind !== "sheet") return this.app.ui.setHint("Shape it with its values under Values on the wheel. Tap the model to keep it.");
-    if (this.live) return this.app.ui.setHint("Set the size and rows under Values on the wheel, then tap faces to shape it.");
+    if (this.live && this.live.kind !== "shape" && this.live.kind !== "sheet") return this.app.ui.setHint("Shape it with its values on the line at the bottom. Tap the model to keep it.");
+    if (this.live) return this.app.ui.setHint("Set the size and rows on the line at the bottom, then tap faces to shape it.");
     const more = isCoarse ? "Tap more to add; tap a face again for the one behind it" : "Shift+tap adds; click a face again for the one behind it";
     this.app.ui.setHint(
       this.picks.length
@@ -673,7 +673,7 @@ export class FreeformTool implements Tool {
       const q = this.cage.faces[picked[0]].map((v) => this.cage.verts[v]);
       const size = (len(sub(q[0], q[2])) + len(sub(q[1], q[3]))) / 2 / Math.SQRT2;
       this.startLive({ kind: "sweep", base: this.cage, face: picked[0], steps: 4, length: Math.round(size * 2), bend: 0, taper: 1, size });
-      this.app.ui.toast("Pulled out - Length, Bend and Taper under Values on the wheel shape it (a spout: bend it up)");
+      this.app.ui.toast("Pulled out - Length, Bend and Taper on the line at the bottom shape it (a spout: bend it up)");
       return;
     }
     const out = extrudeFaces(this.cage, this.pickedFaces(), this.edgeSize() * 0.4);
@@ -712,7 +712,7 @@ export class FreeformTool implements Tool {
     // Facing each other (a tunnel): straight across.
     const same = dot(this.faceNormalOf(a), this.faceNormalOf(b)) > 0.3;
     this.startLive({ kind: "bridge", base: this.cage, fa: a, fb: b, arch: same ? Math.round(span * 0.9) : 0, segments: same ? 6 : 1, span });
-    this.app.ui.toast(same ? "Bridged into a handle - Arch under Values on the wheel sets how far it reaches out" : "Bridged - the two faces are joined by a tube");
+    this.app.ui.toast(same ? "Bridged into a handle - Arch on the line at the bottom sets how far it reaches out" : "Bridged - the two faces are joined by a tube");
   }
 
   private faceNormalOf(f: number): Vec3 {
@@ -1041,7 +1041,7 @@ export class FreeformTool implements Tool {
         this.setSymmetry(scale(add(a, b), 0.5), sub(b, a));
         return;
       }
-      return this.app.ui.toast("Tap a cage edge (the mirror goes across its middle), or pick X / Y / Z under Symmetry on the wheel");
+      return this.app.ui.toast("Tap a cage edge (the mirror goes across its middle), or pick X / Y / Z under Symmetry on the line at the bottom");
     }
     if (this.choosingPlane) {
       const at = this.planeAt(p);

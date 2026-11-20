@@ -644,7 +644,7 @@ export class SelectTool implements Tool {
     if (first.kind === "face" && n === 2 && sel[1].kind === "face") return "The distance between the faces is shown. Pick a tool for them.";
     if (first.kind === "edge" && !this.freeformOf(first.body)) return `Drag the dot to round ${n > 1 ? "the edges" : "the edge"}, ${or}.`;
     if (first.kind === "body") return `Drag the arrows or arcs to move it, ${or}.`;
-    return this.quick ? `${cap(tap)} a button beside it, or pick a tool on the wheel.` : `Pick a tool for ${n > 1 ? "them" : "it"}, or ${tap} more to add.`;
+    return this.quick ? `${cap(tap)} a button beside it, or pick a tool on the line at the bottom.` : `Pick a tool for ${n > 1 ? "them" : "it"}, or ${tap} more to add.`;
   }
 
   /** Called by the app when a top-level tool needs a selection first. */

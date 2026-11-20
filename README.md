@@ -43,7 +43,7 @@ Almost everything follows the same rhythm:
    (*Revolve*), or move it along a path (*Sweep*).
 3. **Select something and change it** - tap a face, an edge or a whole body:
    its handle (an arrow, a dot) is ready to drag or type, the buttons beside
-   it hold the next likely tools, and the tool wheel only what fits it.
+   it hold the next likely tools, and the line at the bottom only what fits it.
 4. **Every step is remembered** in *History*, so you can go back and change a
    size later - everything after it updates.
 
@@ -53,13 +53,13 @@ There's no wrong order. Undo (bottom left) is always one tap away.
 
 ## Your first part: a box with a hole
 
-1. Tap **Sketch** on the tool wheel, then tap the blue **XY** square near the
+1. Tap **Sketch** on the line at the bottom, then tap the blue **XY** square near the
    middle of the screen. The view turns to look straight down at that plane.
-2. Tap **Rectangle**, tap one corner, tap the opposite corner. While you draw,
+2. Tap **Draw**, then **Rectangle**; tap one corner, tap the opposite corner. While you draw,
    type a number for an exact size (e.g. `40`, Tab, `30`).
-3. Tap **Circle**, tap a centre inside the rectangle, tap again for the size
+3. Tap **Draw**, then **Circle**; tap a centre inside the rectangle, tap again for the size
    (or type `8`).
-4. Closing the rectangle already ended the line; tap **Exit** on the wheel -
+4. Closing the rectangle already ended the line; tap **Exit** at the end of the line -
    or just tap an empty spot while looking at it from the side.
 5. Tap inside the rectangle (but outside the circle): that region turns blue
    and an **arrow** appears. Drag the arrow up, or type `20`: drawn on a
@@ -119,14 +119,17 @@ folders to group; each kind - Bodies, Sketches, Planes & axes, Images - folds
 away under its heading), **History**, **More** (fullscreen, Help, About,
 support).
 
-**Three wheels**, in a column left of History (on a phone the tool wheel
-waits folded at the left): the **tool wheel** (tap a group, its tools fan
-out, tap one), **Options** (the open tool's values and choices) and
-**Settings** (snapping, units, look, screenshot, the numpad). With something
-picked the tool wheel shows only what fits it; in a sketch it holds the
-sketch tools. Its **View** group has Section View, Measure, Variables and
-Isolate. Tap a wheel's middle to fold or open it; drag it by the middle to
-put it anywhere.
+**The line at the bottom** is how every tool is reached. Tap part of the
+model: a tag over the line names what is picked, and the line shows the
+groups - Sketch, Freeform, Transform, Construct, Modify, Combine, Create -
+each holding only what can be done with that pick (a group with nothing for
+it is dimmed; tap it to see why). **More**, at the end of the line, shows
+everything at once, with Section View, Measure, Variables and Isolate. Tap a
+tool and the line becomes its settings: tap a number to type it or drag it
+sideways, tap a word to change it, tap the model to fill a blank; the tick
+finishes, the cross takes it back. In a sketch the line holds Draw, Modify
+and Transform. **Settings** (snapping, units, look, screenshot, the numpad)
+are the buttons down the right edge.
 
 **Quick buttons** - round buttons beside a pick with its next two likeliest
 tools: a flat face Sketch and Shell, a round face Thread, an edge Chamfer and
@@ -198,7 +201,7 @@ contradicts those already there isn't added - remove the old one first, or
 switch **Auto constrain** off; a typed value that can't be met is refused
 rather than bending the sketch. Their marks are small and faint, a colour per
 kind, and never catch a tap meant for the drawing. Show or hide their column
-with **More → Constraints** on the sketch's wheel.
+with the **Constraints** button at the right edge while sketching.
 
 Any closed shape becomes a **region** (blue when selected) you can extrude,
 revolve, sweep or loft. Overlapping shapes split into separate regions.
@@ -316,7 +319,7 @@ sketch. A sketch stays in view until every region of it is used.
   The card has New Variable and the whole list; tap Variables again to switch off.
   Type them into any field (`wall * 2`) or pick them from the **ƒx** menu
   next to a value. Change the variable later and everything using it updates.
-- The **on-screen numpad** (Numpad on the Settings wheel - tap it
+- The **on-screen numpad** (the Numpad button at the right edge - tap it
   on or off) replaces the system keyboard for value boxes. It's on by default
   on phones, tablets and headsets. Tapping a box selects its value, so typing
   replaces it; nothing is applied until you press ↵. After the second tap of
@@ -379,7 +382,7 @@ can't be rebuilt after a change, it's marked and the reason is shown.
   tablets the app offers to be **installed on the home screen** (or More →
   Install app); on iPhone/iPad it's *Share → Add to Home Screen*.
 - The window the app opens with has a **Full screen** button.
-- Fit frames the model in the part of the screen the wheels and bars leave
+- Fit frames the model in the part of the screen the bars leave
   free.
 - Meta Quest: open the site in the Quest browser; buttons and pick distances
   are bigger, and the numpad is on.
@@ -426,7 +429,7 @@ OpenCascade (via replicad) running in a Web Worker; the UI is plain DOM over a
 three.js view. Units are millimetres internally; the display unit is a setting.
 
 **Interaction model.**
-- Nothing selected → the tool wheel shows creation tools: Sketch, Freeform,
+- Nothing selected → the line at the bottom offers what makes something new (Sketch, Freeform, Construct); the rest once something is picked: Sketch, Freeform,
   Extrude, Revolve, Sweep, Loft, Shell, Transform ▸ (Move/Rotate, Scale,
   Translate, Mirror, Rotate Around Axis, Patterns), Boolean ▸ (Union,
   Subtract, Intersect), Construct ▸ (planes, axes), Insert ▸ (variables,
@@ -439,7 +442,7 @@ three.js view. Units are millimetres internally; the display unit is a setting.
   Revolve / Sweep / Loft.
 - Every operation is a *feature* in History; editing a feature replays
   everything after it.
-- Values: type while dragging, or on the wheel (the tool's options); expressions and
+- Values: type while dragging, or tap a number on the line at the bottom (the tool's options); expressions and
   variables are accepted everywhere a number is.
 
 **Project file (`.super`, JSON).**
