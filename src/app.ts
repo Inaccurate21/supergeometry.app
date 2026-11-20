@@ -78,7 +78,7 @@ export class App implements AppContext {
   readonly wheel = new Wheel({ ui: this.ui, mainTools: () => this.mainTools(), onFold: () => this.tool === this.selectTool && this.selectTool.refresh() });
   /** The Settings wheel: always on the screen while the wheel is on (folded to its cog unless opened). */
   readonly settingsWheel = new Wheel({ ui: this.ui, mainTools: () => [] }, "settings");
-  /** The sentence bar (More: Sentence bar): the pick, then what it offers, on one line - in place of the wheel while it is on. */
+  /** The sentence bar: the pick, then what it offers, on one line - the way to the tools. */
   sentence!: Sentence;
   /** Where the view was last tapped (the sentence bar starts a sketch tool that acts where it is tapped right there). */
   private lastTapAt: { x: number; y: number; type: "mouse" | "pen" | "touch" } | null = null;
@@ -320,14 +320,6 @@ export class App implements AppContext {
     if (h === this.hover || (h && this.hover && sameSel(h, this.hover))) return;
     this.hover = h;
     this.refreshHighlights();
-  }
-
-  /** The sentence bar on or off (More: Sentence bar). Off, the tool wheel is back. */
-  setSentence(on: boolean): void {
-    if (on === settings.value.sentence) return;
-    settings.set("sentence", on);
-    // (The guide text and what the pick offers are said for the one that is on.)
-    if (this.tool === this.selectTool) this.selectTool.refresh();
   }
 
   /** Where the last thing picked is on the model (the sentence bar's thread runs to it). */
@@ -1499,12 +1491,6 @@ export class App implements AppContext {
       paintHints();
       this.ui.refreshHint();
     });
-    // The sentence bar: what is picked and what can be done with it, on one line (in place of the tool wheel).
-    const sentenceState = document.getElementById("m-sentence-state")!;
-    const paintSentence = () => (sentenceState.textContent = settings.value.sentence ? "On" : "Off");
-    paintSentence();
-    settings.onChange(paintSentence);
-    moreItem("m-sentence", () => this.setSentence(!settings.value.sentence));
     // Offline mode: the app kept on this device, so it works with no connection.
     const offlineState = document.getElementById("m-offline-state")!;
     const offline = new Offline((t, k) => this.ui.toast(t, k), (state) => (offlineState.textContent = state));

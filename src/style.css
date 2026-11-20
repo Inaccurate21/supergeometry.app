@@ -6425,8 +6425,8 @@ circle.wheel-plate {
 }
 
 /* ------------------------------------------------------------ sentence bar */
-/* (More: Sentence bar. The app worked by finishing a sentence: the pick, what
-   it offers, the tool's options as words. Nothing here applies while it is off.) */
+/* (The app worked by finishing a sentence: the pick, what it offers, the
+   tool's options as words. It is the way to the tools, always on.) */
 
 body.sentence-ui #toolbar,
 body.sentence-ui #bottom-left,

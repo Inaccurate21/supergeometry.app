@@ -16,8 +16,8 @@
 //
 // It shows the very ToolItems and window parts the other ways of working
 // hold (`ui.shown()`, `ui.panelContent()`), so a tool added to the app is in
-// the sentence by itself. On only while its switch is (More: Sentence bar);
-// off, nothing of it is on the page.
+// the sentence by itself. Always on (the setting is kept for the code that
+// asks): it is the only way to the tools.
 
 import { settings } from "../settings";
 import type { Vec3 } from "../doc/types";

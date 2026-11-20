@@ -57,9 +57,10 @@ export interface Settings {
    */
   wheel: boolean;
   /**
-   * The sentence (More: Sentence bar): a line at the bottom that says what is
-   * picked and what can be done with it, in place of the tool wheel. Off
-   * unless switched on.
+   * The sentence bar: a line at the bottom that says what is picked and what
+   * can be done with it. Always on - it is the only way to the tools (the tool
+   * wheel it took over from stays in the code, never shown; kept as a setting
+   * for the code that asks).
    */
   sentence: boolean;
 }
@@ -94,7 +95,7 @@ const DEFAULTS: Settings = {
   showHints: true,
   offline: false,
   wheel: true,
-  sentence: false,
+  sentence: true,
   version: 5,
 };
 
@@ -124,6 +125,8 @@ class SettingsStore {
     // The wheel is the only way to the tools now (More no longer turns it off): on for
     // anyone who had turned it off before.
     this.value.wheel = true;
+    // The sentence bar is the only way to the tools (its switch in More is gone): on for everyone.
+    this.value.sentence = true;
   }
 
   set<K extends keyof Settings>(key: K, v: Settings[K]): void {
