@@ -400,6 +400,32 @@ export async function openDrawing(app: AppContext, which?: string): Promise<void
       applyCamera();
     }
     if (!fetching) name.textContent = `Drawing · ${drawingOptions(doc).title}`;
+    // Its number or its words are what a dimension or a note is grabbed by: a see-through pad round each, a finger
+    // wide on the screen (the text of a dimension is 3 mm tall on the paper - a few pixels with the sheet all in view).
+    if (s) {
+      const pad = Math.max(1.2, tolerance() * 0.6);
+      for (const g of Array.from(s.querySelectorAll<SVGGElement>("[data-ann]"))) {
+        for (const tx of Array.from(g.querySelectorAll<SVGTextElement>("text"))) {
+          let b: DOMRect;
+          try {
+            b = tx.getBBox();
+          } catch {
+            continue;
+          }
+          if (!b.width && !b.height) continue;
+          const r = document.createElementNS("http://www.w3.org/2000/svg", "rect");
+          r.setAttribute("x", String(b.x - pad));
+          r.setAttribute("y", String(b.y - pad));
+          r.setAttribute("width", String(b.width + pad * 2));
+          r.setAttribute("height", String(b.height + pad * 2));
+          r.setAttribute("fill", "transparent");
+          r.setAttribute("class", "bim-ann-pad");
+          const tf = tx.getAttribute("transform");
+          if (tf) r.setAttribute("transform", tf);
+          tx.before(r);
+        }
+      }
+    }
     if (s) s.insertAdjacentHTML("beforeend", picksSVG());
     hoverKey = "";
     drawHover();
@@ -462,7 +488,7 @@ export async function openDrawing(app: AppContext, which?: string): Promise<void
 
   // ---- Tapping and dragging on the sheet
   let frame = 0;
-  let drag: { id: number; x: number; y: number; target: string; moved: boolean; start: DrawingOptions } | null = null;
+  let drag: { id: number; x: number; y: number; target: string; moved: boolean; start: DrawingOptions; tap?: { q: P2; e: PointerEvent } } | null = null;
   /** The fingers (or the mouse) down on the paper, where they are (px). */
   const fingers = new Map<number, [number, number]>();
   let pinch: { d: number; mid: [number, number] } | null = null;
@@ -505,6 +531,15 @@ export async function openDrawing(app: AppContext, which?: string): Promise<void
     const q = sheetPoint(e);
     if (!q || !layout) return;
     if (tool) {
+      // A dimension, a note or a picture already on the sheet, pressed with a tool still on: dragged from there it
+      // moves (the tool stays on); just tapped, the tap is the tool's as ever. (A dimension is put on, and the next
+      // thing a hand does is drag it where it reads well - which put on another, or did nothing.)
+      const there = (e.target as Element).closest?.("[data-ann]")?.getAttribute("data-ann");
+      if (there && !picks.length) {
+        e.preventDefault();
+        drag = { id: e.pointerId, x: q[0], y: q[1], target: there, moved: false, start: structuredClone(curDrawing() ?? {}), tap: { q, e } };
+        return;
+      }
       // Off the paper (the grey round it): nothing to pick, no note out there.
       const [W, H] = sheetSize(opts());
       if (q[0] < 0 || q[1] < 0 || q[0] > W || q[1] > H) return;
@@ -573,6 +608,13 @@ export async function openDrawing(app: AppContext, which?: string): Promise<void
     if (!drag || e.pointerId !== drag.id || !layout) return;
     const q = sheetPoint(e);
     if (!q) return;
+    // (A dimension, a note or a picture stays on the paper: dragged past its edge it stops there - one pulled off
+    // the sheet was out of the print, and with a tool on could not be got back.)
+    if (!drag.target.startsWith("view:")) {
+      const [W, H] = sheetSize(opts());
+      q[0] = Math.min(W - 2, Math.max(2, q[0]));
+      q[1] = Math.min(H - 2, Math.max(2, q[1]));
+    }
     const dx = q[0] - drag.x;
     const dy = q[1] - drag.y;
     if (!drag.moved && Math.hypot(dx, dy) < tolerance() / 4) return;
@@ -644,10 +686,12 @@ export async function openDrawing(app: AppContext, which?: string): Promise<void
     }
     if (!drag || e.pointerId !== drag.id) return;
     const moved = drag.moved;
+    const tap = drag.tap;
     drag = null;
     const d = draft;
     draft = null;
     if (moved && d) store.commit((doc) => putDrawing(doc, current, d));
+    else if (tap && tool) useTool(tap.q, tap.e);
     else render();
   };
   paper.addEventListener("pointerup", endDrag);
@@ -1223,8 +1267,12 @@ export async function openDrawing(app: AppContext, which?: string): Promise<void
     chip.hidden = true;
     if (tool) return;
     hint.innerHTML = "";
-    hint.hidden = !selected;
-    if (!selected) return;
+    hint.hidden = false;
+    if (!selected) {
+      // Nothing picked, no tool on: what can be done from here (it said nothing, and the sheet looked like a picture).
+      hint.append(el("span", "bim-idle-hint", "Drag a dimension or a note to move it. Tap a view for its handle. Double-tap text to edit it. Tools are on the left."));
+      return;
+    }
     const id = selected;
     const o = opts();
     const button = (label: string, run: () => void, on = false) => {
@@ -1511,6 +1559,26 @@ export async function openDrawing(app: AppContext, which?: string): Promise<void
       e.preventDefault();
       e.stopPropagation();
       removeSelected();
+    } else if (e.key.startsWith("Arrow") && selected && !tool && !selected.startsWith("view:")) {
+      // The arrows nudge what is picked: half a millimetre on the paper (Shift: five). A note or a picture any
+      // way; a dimension nearer to or further from what it measures (up and right: further).
+      e.preventDefault();
+      e.stopPropagation();
+      const step = e.shiftKey ? 5 : 0.5;
+      const dx = e.key === "ArrowLeft" ? -step : e.key === "ArrowRight" ? step : 0;
+      const dy = e.key === "ArrowUp" ? -step : e.key === "ArrowDown" ? step : 0;
+      const o = opts();
+      const id = selected;
+      const note = o.notes.find((n) => n.id === id);
+      const img = o.images.find((m) => m.id === id);
+      const dim = dimsOf(o).find((d) => d.id === id);
+      if (note) set({ notes: o.notes.map((n) => (n === note ? { ...n, x: note.x + dx, y: note.y + dy } : n)) });
+      else if (img) set({ images: o.images.map((m) => (m === img ? { ...m, x: img.x + dx, y: img.y + dy } : m)) });
+      else if (dim) {
+        const out = dx - dy;
+        const far = Math.max(1, Math.abs(dim.offset) + out);
+        set(withDim(o, { ...dim, offset: (Math.sign(dim.offset) || 1) * far }));
+      }
     } else if (!e.ctrlKey && !e.metaKey && !e.altKey && ["+", "=", "-", "_", "f", "F", "0"].includes(e.key)) {
       // Zoom in / out, all of the sheet.
       e.preventDefault();
@@ -1543,7 +1611,13 @@ export async function openDrawing(app: AppContext, which?: string): Promise<void
       into.append(b);
     };
     button("Exit Drawing", "close", shut);
-    const pick = (t: ToolId, label: string, icon: IconName) => button(label, icon, () => startTool(tool === t ? null : t), { on: tool === t, sub: true });
+    // (A phone: a group's tools are listed by name over the sheet; one picked, the list folds away and the sheet is
+    // clear to tap - the bar at the top says which tool is on.)
+    const pick = (t: ToolId, label: string, icon: IconName) =>
+      button(label, icon, () => {
+        if (document.documentElement.dataset.screen === "phone" && tool !== t) open = null;
+        startTool(tool === t ? null : t);
+      }, { on: tool === t, sub: true });
     button("Views", "views", () => ((open = open === "views" ? null : "views"), renderTools()), { on: open === "views" || tool === "section" || tool === "detail" || tool === "base" || tool === "projection" });
     if (open === "views") {
       const toggle = (k: "front" | "top" | "side" | "iso", label: string) =>

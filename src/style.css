@@ -6925,3 +6925,48 @@ html[data-screen="phone"] body.sentence-ui #toast {
 #popover .pop-note {
   margin-top: 6px;
 }
+
+/* A drawing: what can be dragged says so under the pointer - a dimension, a note or a picture lights up (no tool on),
+   and the see-through pad round its text is part of it. */
+.bim-drawing-paper:not(.picking) .bim-drawing-svg [data-ann]:hover {
+  filter: drop-shadow(0 0 0.5px #3d8bff) drop-shadow(0 0 0.5px #3d8bff);
+}
+.bim-drawing-svg .bim-ann-pad {
+  pointer-events: all;
+}
+.bim-idle-hint {
+  color: var(--muted);
+  font-size: 12.5px;
+}
+
+/* A drawing on a phone: the tools are a strip of pictures - with a group open (Views, Dimensions, Centrelines) the
+   strip comes out over the sheet with every tool's name beside its picture (ten dimension tools were ten pictures,
+   two pairs of them the same). The sheet keeps its place under it. */
+html[data-screen="phone"] .bim-dwork {
+  position: relative;
+}
+html[data-screen="phone"] .bim-dwork:has(.bim-dtools .bim-dtool.sub) {
+  padding-left: calc(52px + var(--safe-l));
+}
+html[data-screen="phone"] .bim-dtools:has(.bim-dtool.sub) {
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: min(230px, 72vw);
+  z-index: 6;
+  background: var(--chrome-solid, #1c1e22);
+  box-shadow: 12px 0 28px rgba(0, 0, 0, 0.45);
+}
+html[data-screen="phone"] .bim-dtools:has(.bim-dtool.sub) .bim-dtool {
+  justify-content: flex-start;
+  padding: 10px 10px;
+  gap: 10px;
+}
+html[data-screen="phone"] .bim-dtools:has(.bim-dtool.sub) .bim-dtool span {
+  display: inline;
+  font-size: 13.5px;
+}
+html[data-screen="phone"] .bim-dtools:has(.bim-dtool.sub) .bim-dtool.sub {
+  padding-left: 22px;
+}
