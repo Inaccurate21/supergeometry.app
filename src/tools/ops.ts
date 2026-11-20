@@ -35,6 +35,9 @@ const MODES = [
   { id: "intersect", label: "Intersect" },
 ];
 
+/** Any body in the project: with none, a new shape can only be a body of its own (no Operation to choose). */
+const anyBody = (app: AppContext, self?: string) => app.view.bodyList.some((b) => b.id !== self);  // (its own preview is not one)
+
 /**
  * The result choice, "Operation"; `plain`: without Intersect (a tool that only
  * adds, cuts or stands alone). `auto`: what Auto does here now ("Cut", "Add",
@@ -204,7 +207,7 @@ export class ExtrudeOp extends FeatureOp<ExtrudeFeature> {
     // (Auto goes by the way it is pulled: which way does what.)
     if (this.feature.mode !== "auto") return "Drag the arrow or type a distance.";
     if (!this.feature.byDirection) return "Drag the arrow or type a distance; - cuts.";
-    return this.feature.target || this.feature.source.kind === "face" ? "Drag the arrow or type a distance: out adds, in cuts." : "Drag the arrow or type a distance: + a new body, - a cut.";
+    return this.feature.target || this.feature.source.kind === "face" ? "Drag the arrow or type a distance: out adds, in cuts." : anyBody(this.app, this.feature.id) ? "Drag the arrow or type a distance: + a new body, - a cut." : "Drag the arrow or type a distance.";
   }
 
   protected items(): PanelItem[] {
@@ -234,13 +237,13 @@ export class ExtrudeOp extends FeatureOp<ExtrudeFeature> {
           this.showOps();
         },
       },
-      modeChoice(
+      ...(anyBody(this.app, this.feature.id) ? [modeChoice(
         () => this.feature.mode,
         (m) => this.setMode(m),
         () => this.render(),
         false,
         () => (this.shownEffect = this.autoEffect()),
-      ),
+      )] : []),
       // Every shape in the sketch at once (a scale, lettering: hundreds of them,
       // far too many to tap) - holes stay holes.
       ...(src.kind === "profile" && !this.existing ? [{ type: "button" as const, label: "All shapes", onClick: () => this.allShapes() }] : []),
@@ -335,9 +338,10 @@ export class ExtrudeOp extends FeatureOp<ExtrudeFeature> {
       {
         type: "choice" as const,
         label: "Ends",
+        // (Through all: through the bodies there are - with none, not offered.)
         options: [
           { id: "distance", label: "Distance" },
-          { id: "through", label: "Through all" },
+          ...(ext === "through" || anyBody(this.app, f.id) ? [{ id: "through", label: "Through all" }] : []),
           { id: "to", label: "Up to" },
         ],
         value: ext,
@@ -772,7 +776,8 @@ export class EdgeOp extends FeatureOp<EdgeFeature> {
             { type: "button" as const, label: fillet ? "Flip ends" : "Flip sides", icon: "flip" as const, onClick: () => ((f.flip = !f.flip || undefined), this.update()) },
           ]
         : []),
-      ...(fillet ? [this.num("Corner setback", "setback", "length", { min: 0 })] : []),
+      // (Setback is for a corner where three rounded edges meet: offered once three are picked, or while it is set.)
+      ...(fillet && ((f.edges?.length ?? 0) >= 3 || (f.setback ?? 0) > 0) ? [this.num("Corner setback", "setback", "length", { min: 0 })] : []),
     ];
   }
 
@@ -1111,7 +1116,7 @@ export class RevolveOp extends FeatureOp<RevolveFeature> {
     return [
       this.num("Angle", "angle", "angle"),
       this.num("Travel", "travel", "length", { onInput: (v) => this.setTravel(v), inBox: true }),
-      modeChoice(() => this.feature.mode, (m) => ((this.feature.mode = m), this.update()), () => this.render(), false, () => autoAddsOrNew(this.feature.target)),
+      ...(anyBody(this.app, this.feature.id) ? [modeChoice(() => this.feature.mode, (m) => ((this.feature.mode = m), this.update()), () => this.render(), false, () => autoAddsOrNew(this.feature.target))] : []),
     ];
   }
 
@@ -1217,7 +1222,20 @@ export class SweepOp extends FeatureOp<SweepFeature> {
     return "The shape follows the path. Tap more lines to make the path longer.";
   }
 
+  /** The path turns a corner somewhere: more than one piece, or a polyline. */
+  private cornered(): boolean {
+    const p = this.path;
+    if (!p) return false;
+    if (p.kind === "edges") return p.edges.length > 1;
+    if (p.entities.length > 1) return true;
+    const sk = this.app.store.features.find((f) => f.id === p.sketch) as { entities?: { id: string; kind: string }[] } | undefined;
+    return sk?.entities?.find((e) => e.id === p.entities[0])?.kind === "polyline";
+  }
+
   protected items(): PanelItem[] {
+    // (Nothing to set before there is a path: how the shape goes along it comes once it has one.)
+    const p = this.path;
+    if (!p || (p.kind === "sketch" ? !p.entities.length : !p.edges.length)) return [];
     return [
       { type: "number", label: "End size", value: this.feature.scale ?? 1, kind: "number", min: 0.01, onInput: (v) => ((this.feature.scale = v > 0 ? v : 1), this.update()) },
       { type: "number", label: "Twist", value: this.feature.twist ?? 0, kind: "angle", onInput: (v) => ((this.feature.twist = v || undefined), this.update()) },
@@ -1241,17 +1259,18 @@ export class SweepOp extends FeatureOp<SweepFeature> {
         value: this.feature.orientation ?? "normal",
         onChange: (v) => ((this.feature.orientation = v === "parallel" ? "parallel" : undefined), this.update()),
       },
-      {
-        type: "choice",
+      // (Round or mitred where the path turns a corner: only for a path of more than one piece.)
+      ...(this.cornered() ? [{
+        type: "choice" as const,
         label: "Corners",
         options: [
           { id: "round", label: "Round" },
           { id: "mitre", label: "Mitre" },
         ],
         value: this.feature.corner ?? "round",
-        onChange: (v) => ((this.feature.corner = v === "mitre" ? "mitre" : undefined), this.update()),
-      },
-      modeChoice(() => this.feature.mode, (m) => ((this.feature.mode = m), this.update()), () => this.render(), false, () => autoAddsOrNew(this.feature.target)),
+        onChange: (v: string) => ((this.feature.corner = v === "mitre" ? "mitre" : undefined), this.update()),
+      }] : []),
+      ...(anyBody(this.app, this.feature.id) ? [modeChoice(() => this.feature.mode, (m) => ((this.feature.mode = m), this.update()), () => this.render(), false, () => autoAddsOrNew(this.feature.target))] : []),
     ];
   }
 }
@@ -1409,13 +1428,14 @@ export class LoftOp extends FeatureOp<LoftFeature> {
     const held = this.extra.rails || this.extra.conns;
     return [
       ...(f.closed || guided || held ? [] : [{ type: "toggle" as const, label: "Straight sides", value: f.ruled, onChange: (v: boolean) => ((f.ruled = v), this.render(), this.update()) }]),
-      ...(held ? [] : [{ type: "toggle" as const, label: "Closed loop", value: !!f.closed, onChange: (v: boolean) => ((f.closed = v || undefined), this.render(), this.update()) }]),
+      // (A closed loop needs three shapes at least: with two it would only come back the way it went.)
+      ...(held || (f.sections.length < 3 && !f.closed) ? [] : [{ type: "toggle" as const, label: "Closed loop", value: !!f.closed, onChange: (v: boolean) => ((f.closed = v || undefined), this.render(), this.update()) }]),
       // How it leaves the first shape and meets the last (free, tangent, or smoother still).
       ...(f.closed || guided || held || f.ruled ? [] : this.continuityItems()),
       { type: "button", label: guided ? "Remove centre line" : "Centre line", icon: guided ? "close" : "sweep", onClick: () => this.toggleExtra("guide") },
       { type: "button", label: this.extra.rails ? "Remove guide curves" : "Guide curves", icon: this.extra.rails ? "close" : "sweep", onClick: () => this.toggleExtra("rails") },
       { type: "button", label: this.extra.conns ? "Remove connections" : "Connections", icon: this.extra.conns ? "close" : "sweep", onClick: () => this.toggleExtra("conns") },
-      modeChoice(() => this.feature.mode, (m) => ((this.feature.mode = m), this.update()), () => this.render(), false, () => autoAddsOrNew(this.feature.target)),
+      ...(anyBody(this.app, this.feature.id) ? [modeChoice(() => this.feature.mode, (m) => ((this.feature.mode = m), this.update()), () => this.render(), false, () => autoAddsOrNew(this.feature.target))] : []),
     ];
   }
 }
@@ -2837,10 +2857,12 @@ export class SplitOp extends FeatureOp<SplitFeature> {
         return true;
       },
     };
+    // (Bodies to cut along: only when there is another body to cut along.)
+    const others = !!f.tools?.length || app.view.bodyList.some((b) => b.id !== body && !own(b.id));
     this.slots = [
       first,
       { ...more, multi: true, describe: () => (f.planes?.length ? `${f.planes.length} more` : "Optional - tap more planes or flat faces"), filled: () => true },
-      tools,
+      ...(others ? [tools] : []),
     ];
   }
 
@@ -2908,7 +2930,7 @@ export class ConnectOp extends FeatureOp<ConnectFeature> {
   protected items(): PanelItem[] {
     const f = this.feature;
     return [
-      modeChoice(() => f.mode, (m) => (f.mode = m), () => (this.render(), this.update()), true),
+      ...(anyBody(this.app, f.id) ? [modeChoice(() => f.mode, (m) => (f.mode = m), () => (this.render(), this.update()), true)] : []),
       // Without a guide it bows out by Bend; with one, the guide can be let go again.
       ...(f.guide
         ? [{ type: "button" as const, label: "No guide", icon: "close" as const, onClick: () => ((f.guide = undefined), this.render(), this.update()) }]

@@ -33,7 +33,6 @@ import { ImprintOp, ProjectSketchOp, WrapOp } from "./wrapOps";
 import { materialOf } from "../bim/materials";
 import { bodiesOf, edgeRefOf, faceRefOf, hitToSel, oppositeFace, sameSel, sourceFrame, sourcesOf, viewMenu, type AppContext, type Sel, type Tool } from "./tool";
 
-const SOON = "Coming soon";
 /** How see-through an opacity is, as the Transparency list names it ("40%"). */
 const seeThrough = (opacity: number) => `${Math.round((1 - opacity) * 100)}%`;
 
@@ -847,7 +846,6 @@ export class SelectTool implements Tool {
       { id: "move", label: "Move/Rotate Face", icon: "moveFace", shortcut: "M", ...needFlat, run: () => ref && info?.plane && app.setTool(new MoveFaceOp(app, { face: ref, plane: info.plane })) },
       // Scales just this face, within its plane; the sides tilt to follow.
       { id: "scale", label: "Scale Face", icon: "scale", ...needFlat, run: () => ref && info?.plane && app.setTool(new ScaleFaceOp(app, ref, info.plane)) },
-      { id: "align", label: "Align", icon: "align", disabled: true, why: SOON },
       { id: "thread", label: "Thread", icon: "thread", disabled: !one || !info?.round, why: "Needs one round face (a shank or a hole)", run: () => app.startThread() },
       { id: "offsetFace", label: "Offset Face", icon: "offsetFace", shortcut: "E", active: !editFree.length, disabled: !one || !offsettable(info?.type), why: "Needs one flat or round face", run: () => src && app.setTool(new ExtrudeOp(app, src)) },
       // A line on this face, parallel to an edge (tapped next): Offset Edge started from the face.

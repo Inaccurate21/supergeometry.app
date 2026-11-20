@@ -1175,16 +1175,18 @@ export class SketchTool implements Tool {
     const isCons = sel.length ? sel.every((e) => e.construction) : this.construction;
     const mixed = sel.length > 0 && !isCons && sel.some((e) => e.construction);
     app.ui.setBottom([
-      {
+      // (Curves picked: their own Construction switch is with them - not a second one here.)
+      ...(sel.length ? [] : [{
         id: "construction",
-        label: sel.length ? (isCons ? "Construction" : "Regular") : this.construction ? "Construction" : "Regular",
+        // (Named for what it switches, lit while on: "Regular" alone said nothing on the wheel.)
+        label: "Construction",
         // The icon is the line type it is now; ⟲ + the type a tap switches to follow the text.
         icon: isCons ? "lineDashed" : "line",
         trailing: ["swap", isCons ? "line" : "lineDashed"],
         sub: sel.length ? (mixed ? "Mixed · tap to switch" : "Tap to switch") : "New lines · tap to switch",
         active: isCons,
         run: () => this.toggleConstruction(),
-      },
+      } as ToolItem]),
       { id: "look", label: "Normal to Sketch", icon: "normal", run: () => this.plane && app.view.cam.lookAlong(this.plane.normal, this.plane.xDir) },
     ]);
   }

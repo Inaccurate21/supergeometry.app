@@ -170,7 +170,7 @@ const SLOTS: Record<string, string[]> = {
   combine: ["subtract", "union", "intersect", "split"],
   modify: ["fillet", "chamfer", "shell", "offsetFace", "offsetEdge", "thread", "wrap", "fix", "replace"],
   construct: ["plane", "axis"],
-  transform: ["move", "circular", "mirror", "linear", "scale", "translate", "rotate", "align"],
+  transform: ["move", "circular", "mirror", "linear", "scale", "translate", "rotate"],
   freeform: ["ff-box", "ff-cylinder", "ff-sphere", "ff-torus", "ff-plane", "faceFreeform", "connect", "editFreeform"],
 };
 /**
@@ -274,7 +274,7 @@ const opens = (it: ToolItem) => kidsOf(it).length > 0;
  * (Measure, Section View). Every other tool opens its options as the next
  * ring, so its name ends with the arrow.
  */
-const NO_RING = new Set(["deselect", "delete", "deleteBody", "isolate", "wholePattern", "measure", "section", "bimSheet", "bimDrawings", "bimAssemblies", "drawing", "image", "file", "project", "refImage", "browser", "union", "repair"]);
+const NO_RING = new Set(["reveal", "deselect", "delete", "deleteBody", "isolate", "wholePattern", "measure", "section", "bimSheet", "bimDrawings", "bimAssemblies", "drawing", "image", "file", "project", "refImage", "browser", "union", "repair"]);
 const marked = (cells: Cell[]) => cells.some((c) => !!c.item.active || !!c.item.pulse);
 /** The next step is in here: a tool of it (or a kind of one) pulses. */
 const pulsing = (items: ToolItem[]): boolean => items.some((it) => !!it.pulse || pulsing(kidsOf(it)));
@@ -1135,11 +1135,18 @@ export class Wheel implements WheelHandle {
     };
     look(items);
     const used = new Set<ToolItem>();
+    // A kind on a group's ring by itself (Pattern's Circular) is named with its tool - "Pattern – Circular" -
+    // the same whether it is on or greyed, and as a picked body or face names it.
+    const kindOf = (id: string) => [...known.values()].find((p) => !SLOTS[p.id] && p.id !== "moveKinds" && p.children?.some((c) => c.id === id));
+    const named = (it: ToolItem, id: string): ToolItem => {
+      const parent = kindOf(id);
+      return parent?.label && !it.label.startsWith(`${parent.label} – `) ? { ...it, label: `${parent.label} – ${it.label}` } : it;
+    };
     const ring = slots.map((id): Cell => {
       const it = found.get(id);
       if (it) {
         used.add(top.get(it) ?? it);
-        return { item: it };
+        return { item: top.get(it) !== it ? named(it, id) : it };
       }
       const base = known.get(id);
       // (Not there, but one of its kinds is - an edge's "Plane – Through Edge" for Plane: that one takes the place, not a greyed Plane beside it.)
@@ -1148,7 +1155,7 @@ export class Wheel implements WheelHandle {
         used.add(kind);
         return { item: kind };
       }
-      return { item: { id, label: base?.label ?? "", icon: base?.icon ?? "more" }, off: why(id) };
+      return { item: named({ id, label: base?.label ?? "", icon: base?.icon ?? "more" }, id), off: why(id) };
     });
     const extras = items
       .filter((it) => !used.has(it))

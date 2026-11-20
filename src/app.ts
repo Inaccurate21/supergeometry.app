@@ -65,7 +65,6 @@ import { VRMode, vrSupported } from "./view/xr";
 /** The page's own title, from index.html (it names the app for search results). */
 const PAGE_TITLE = document.title;
 
-const SOON = "Coming soon";
 
 export class App implements AppContext {
   readonly store = new DocStore();
@@ -1028,7 +1027,11 @@ export class App implements AppContext {
               },
             ],
           },
-          { id: "replace", label: "Replace Face", icon: "replaceFace", disabled: true, why: SOON },
+          { id: "replace", label: "Replace Face", icon: "replaceFace", run: wait("Replace Face", ["face"], () => {
+            const s = this.selection[0];
+            const ref = s?.kind === "face" ? faceRefOf(this, s) : null;
+            if (ref) this.setTool(new ReplaceFaceOp(this, ref));
+          }) },
         ],
       },
       {
@@ -1070,7 +1073,6 @@ export class App implements AppContext {
               { id: "circular", label: "Circular", icon: "patternCircular", run: transform("circular", "Pattern – Circular") },
             ],
           },
-          { id: "align", label: "Align", icon: "align", disabled: true, why: SOON },
         ],
       },
       {
