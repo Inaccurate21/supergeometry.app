@@ -6904,3 +6904,24 @@ html[data-screen="phone"] body.sentence-ui #toast {
 .quick-action.quick-more {
   border-style: dashed;
 }
+
+/* A list at the right edge (Settings and its pages, Display): its parts apart - a grey line over each heading but
+   the first (Units from Grid from Degree format; Snap to from Show; Shaders from Options from Analysis). */
+#popover .pop-heading:not(:first-child) {
+  margin-top: 8px;
+  padding-top: 12px;
+  border-top: 1px solid rgba(255, 255, 255, 0.14);
+}
+#popover .pop-back + .pop-heading {
+  margin-top: 0;
+  padding-top: 8px;
+  border-top: 0;
+}
+#popover .pop-back {
+  border-bottom: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 0;
+  margin-bottom: 4px;
+}
+#popover .pop-note {
+  margin-top: 6px;
+}
