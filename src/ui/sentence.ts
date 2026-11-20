@@ -1029,7 +1029,9 @@ export class Sentence {
       if (w.rest?.length) blocks.push({ cap: `Other ${(w.cap ?? w.label).toLowerCase()} tools (each asks for its own pick)`, words: w.rest });
     }
     this.sheet.hidden = false;
-    this.sheet.className = `sn-sheet sn-${o.kind}`;
+    // (More is a list like any other on the line: a card over its button, as big as what is in it. It was the whole
+    // line's width, for a handful of buttons.)
+    this.sheet.className = "sn-sheet sn-kids";
     const old = Array.from(this.sheet.children) as HTMLElement[];
     const had = old.filter((c) => c.classList.contains("sn-group"));
     const same = !rise && had.length === blocks.length && had.every((c, i) => c.dataset.cap === blocks[i].cap);
@@ -1058,8 +1060,8 @@ export class Sentence {
     if (rise && !calm()) this.sheet.animate([{ opacity: 0, transform: "translateY(10px)" }, { opacity: 1, transform: "none" }], { duration: 140, easing: "ease-out" });
     // (One word's kinds: over that word.)
     this.sheet.style.setProperty("--sn-at", "50%");
-    if (o.kind === "kids") {
-      const d = this.row.querySelector<HTMLElement>(`[data-key="${CSS.escape(o.key)}"]`);
+    {
+      const d = o.kind === "all" ? this.end.querySelector<HTMLElement>(".sn-all") : this.row.querySelector<HTMLElement>(`[data-key="${CSS.escape((o as { key: string }).key)}"]`);
       const lr = this.line.getBoundingClientRect();
       if (d) {
         const r = d.getBoundingClientRect();
@@ -1069,7 +1071,7 @@ export class Sentence {
         const w = this.sheet.offsetWidth;
         this.sheet.style.marginLeft = getComputedStyle(this.sheet).alignSelf === "stretch" ? "" : `${Math.round(Math.max(0, Math.min(lr.width - w, r.left + r.width / 2 - lr.left - w / 2)))}px`;
       }
-    } else this.sheet.style.marginLeft = "";
+    }
     this.lift();
   }
 
