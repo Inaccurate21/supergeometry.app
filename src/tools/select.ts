@@ -96,6 +96,8 @@ export class SelectTool implements Tool {
     const hit = this.pickAt(p);
     this.lastHover = { x: p.x, y: p.y, hit };
     this.app.setHover(hitToSel(hit));
+    // Direct touch: over what is picked and can be dragged by itself, the pointer says so.
+    if ((this.handleAction || (this.gimbal && this.app.selection[0]?.kind === "body")) && this.onPick(p, hit)) this.app.view.canvas.style.cursor = "grab";
   }
 
   /** What the last hover highlighted, and where: tapping there selects exactly that. */
@@ -154,10 +156,12 @@ export class SelectTool implements Tool {
   }
 
   /** Direct touch is on and the press is on what is picked (the thing its arrow or dot is for). */
-  private onPick(p: ToolPointer): boolean {
+  private onPick(p: ToolPointer, hit: ReturnType<SelectTool["pickAt"]> = this.pickAt(p)): boolean {
     if (!settings.value.direct || this.pending || p.shift) return false;
     const picked = (s: Sel | null) => !!s && this.app.selection.some((x) => sameSel(x, s) || (x.kind === "body" && "body" in s && s.body === x.body && s.kind !== "vertex"));
-    if (picked(hitToSel(this.pickAt(p)))) return true;
+    if (picked(hitToSel(hit))) return true;
+    // (Only a sketch's shape can lie over the pick: anything else under the press is what it is.)
+    if (hit && hit.kind !== "profile" && hit.kind !== "curve") return false;
     // (A face or body picked that has a sketch lying on it: the press is on it all the same.)
     return (this.app.selection[0]?.kind === "face" || this.app.selection[0]?.kind === "body") && picked(hitToSel(this.app.view.pick(p.x, p.y, { profiles: false, planes: false, axes: false, curves: false, edgeTolPx: p.tol })));
   }
