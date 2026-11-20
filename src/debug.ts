@@ -135,8 +135,6 @@ export function installDebug(app: App): void {
       return `ran ${hit.path}`;
     },
 
-    /** The tool wheel: where its groups and fanned-out tools are on the page, to point and tap at. */
-    wheel: () => app.wheel.describe(),
     /** The sentence bar: what it says now (its words, where each is). */
     sentence: () => app.sentence.describe(),
 
@@ -326,12 +324,9 @@ export function installDebug(app: App): void {
       return out;
     },
 
-    /** Every tool the wheel offers now, by where it is ("Tools › Fillet"): the same as sg.actions(), arranged its way. */
-    wheelTools: () => app.wheel.tools(),
     /** The reference image windows and their tabs; refAdd(name, dataUrl) opens one as Insert › Reference Image does. */
     refImages: () => app.refImages.describe(),
     refAdd: (name: string, src: string) => void app.refImages.add(name, src),
-    settingsWheel: () => app.settingsWheel.describe(),
 
     /** Pick things, as taps would (sg.sel builds them). */
     select(...sel: Sel[]) {

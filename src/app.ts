@@ -45,7 +45,6 @@ import { bodiesOf, edgeRefOf, edgesOfFace, faceRefOf, sameSel, sourceFrame, sour
 import { setupRightColumn } from "./ui/panels";
 import type { ToolItem } from "./ui/ui";
 import { UI } from "./ui/ui";
-import { Wheel } from "./ui/wheel";
 import { Sentence } from "./ui/sentence";
 import { Ghost } from "./tools/ghost";
 import { arrangement, drawnRegions, materialRegions } from "./sketch/regions";
@@ -75,11 +74,6 @@ export class App implements AppContext {
   readonly kernel = new KernelClient();
   readonly view: Viewport;
   readonly ui = new UI();
-  /** The tool wheel: the tools in a ring round the pointer (the only way to them). */
-  // (Folded or unfolded: the guide says what to tap - the pulsing button, or the tool on the wheel.)
-  readonly wheel = new Wheel({ ui: this.ui, mainTools: () => this.mainTools(), onFold: () => this.tool === this.selectTool && this.selectTool.refresh() });
-  /** The Settings wheel: always on the screen while the wheel is on (folded to its cog unless opened). */
-  readonly settingsWheel = new Wheel({ ui: this.ui, mainTools: () => [] }, "settings");
   /** The sentence bar: the pick, then what it offers, on one line - the way to the tools. */
   sentence!: Sentence;
   /** The look ahead a tool under the pointer is showing on the model (see ghost.ts). */
@@ -450,11 +444,6 @@ export class App implements AppContext {
       if (document.getElementById("items")?.classList.contains("open")) this.items.toggle(false);
     }
     next.enter?.();
-    // With the tool wheel on, a tool with a window of its own (the selection tool, a sketch and a
-    // freeform shape
-    // say for themselves what the wheel shows) keeps the wheel's handle: Settings stay in reach.
-    // (Unless it gave way to another tool as it started: the wheel is that one's to set.)
-    if (this.tool === next && next !== this.selectTool && !(next instanceof SketchTool) && !(next instanceof FreeformTool)) this.wheel.cover(false);
     this.updateUndo();
     // Leaving an operation drops its preview.
     if (leavingOp && next === this.selectTool) void this.regenerate();

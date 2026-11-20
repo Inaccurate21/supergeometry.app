@@ -565,7 +565,7 @@ export class SketchTool implements Tool {
       // (With the wheels, the card's plane buttons are on the options wheel, out
       // of sight: the floor is mostly behind the front plane from the usual
       // view, and a tap for it took the front - said where the names are.)
-      this.app.ui.setHint(document.body.classList.contains("wheel-ui") ? "Tap a plane or a flat face to draw on - or XY (floor), XZ or YZ by name on the wheel." : "Tap a plane or a flat face to draw on.");
+      this.app.ui.setHint("Tap a plane or a flat face to draw on.");
       // The three origin planes as buttons too: in a 3D view they overlap near
       // the origin, and a tap meant for the floor can land on the front plane.
       const pick = (id: string) => () => {
@@ -594,7 +594,6 @@ export class SketchTool implements Tool {
   exit(): void {
     this.clearQuick();
     this.dropOffsetGrip();
-    this.app.wheel.cover(false);
     this.regionArrow?.handle.dispose();
     this.regionArrow = null;
     // A fillet being sized is kept (before the constraint UI goes away).
@@ -1114,9 +1113,6 @@ export class SketchTool implements Tool {
 
   private updateMenu(): void {
     const app = this.app;
-    // With the tool wheel on, it holds these tools (by what they are for) once there is a plane
-    // to draw on; while the plane is asked for, the column (Exit Sketch) shows, and the wheel is just its Settings.
-    app.wheel.cover(this.phase === "plane" ? false : "sketch");
     const exit: ToolItem = { id: "exit", label: "Exit Sketch", icon: "exit", shortcut: "Esc", pulse: this.exitPulse, run: () => app.setTool(null) };
     if (this.phase === "plane") {
       app.ui.setTools([exit]);
@@ -1308,15 +1304,14 @@ export class SketchTool implements Tool {
    * an empty sketch, then Exit once a shape is closed.
    */
   private journeyHint(): string | undefined {
-    const wheel = document.body.classList.contains("wheel-ui");
     // (The sentence bar: Exit is at the end of the line, the drawing tools are under Draw.)
     if (document.body.classList.contains("sentence-ui")) {
       if (this.exitPulse && this.kind === "select") return "Shape closed. Tap Exit (pulsing, at the end of the line): its arrow is ready to pull it into 3D.";
       if (!this.entities.length && this.kind === "select") return "Tap Draw, then Line: tap points, and end on the first one to close the shape.";
     }
-    if (this.exitPulse && this.kind === "select") return wheel ? "Shape closed. Tap Exit (pulsing on the wheel) to leave the sketch - then pull the shape into 3D." : "Shape closed. Tap Exit Sketch (pulsing) - then pull the shape into 3D.";
+    if (this.exitPulse && this.kind === "select") return "Shape closed. Tap Exit Sketch (pulsing) - then pull the shape into 3D.";
     if (this.entities.length) return undefined;
-    if (this.kind === "select") return wheel ? "Tap Draw (pulsing on the wheel): Line is ready - tap points, and end on the first one to close the shape." : "Tap Line (pulsing), then tap points - end on the first one to close the shape.";
+    if (this.kind === "select") return "Tap Line (pulsing), then tap points - end on the first one to close the shape.";
     if (this.kind === "line" && !this.pts.length) return "Line is on: tap points on the grid, and end on the first one to close the shape.";
     return undefined;
   }

@@ -51,16 +51,9 @@ export interface Settings {
   /** Offline mode: the app's files are kept on this device (More → Offline mode). */
   offline: boolean;
   /**
-   * The tool wheel: the tools come up in a ring round the pointer where the
-   * model is tapped, in place of the column. Always on - it is the only way to
-   * the tools (kept as a setting for the code that asks).
-   */
-  wheel: boolean;
-  /**
    * The sentence bar: a line at the bottom that says what is picked and what
-   * can be done with it. Always on - it is the only way to the tools (the tool
-   * wheel it took over from stays in the code, never shown; kept as a setting
-   * for the code that asks).
+   * can be done with it. Always on - it is the only way to the tools (kept as a
+   * setting for the code that asks).
    */
   sentence: boolean;
   /**
@@ -101,7 +94,6 @@ const DEFAULTS: Settings = {
   numpad: isTouchDevice,
   showHints: true,
   offline: false,
-  wheel: true,
   sentence: true,
   direct: true,
   version: 5,
@@ -128,11 +120,6 @@ class SettingsStore {
     if ((saved.version ?? 1) < 3) this.value = { ...this.value, numpad: isTouchDevice, version: 3 };
     // v4: the Constraints column starts closed (it got in the way; the Constraints button opens it).
     if ((saved.version ?? 1) < 4) this.value = { ...this.value, showConstraints: false, version: 4 };
-    // v5: the tool wheel is how the app is worked.
-    if ((saved.version ?? 1) < 5) this.value = { ...this.value, wheel: true, version: 5 };
-    // The wheel is the only way to the tools now (More no longer turns it off): on for
-    // anyone who had turned it off before.
-    this.value.wheel = true;
     // The sentence bar is the only way to the tools (its switch in More is gone): on for everyone.
     this.value.sentence = true;
     // Direct touch is how the app is worked too (it had a switch in More for a while: one saved as off is on again).

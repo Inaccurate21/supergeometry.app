@@ -305,9 +305,6 @@ export function simplifyStroke(raw: Vec2[], tol: number, closeTol = tol * 6): Fr
   return { pieces, closed: closed && pieces.length > 0 };
 }
 
-export function startOf(e: FreehandPiece): Vec2 {
-  return e.kind === "spline" ? e.points[0] : e.kind === "circle" ? e.center : e.a;
-}
 export function endOf(e: FreehandPiece): Vec2 {
   return e.kind === "spline" ? e.points[e.points.length - 1] : e.kind === "circle" ? e.center : e.b;
 }

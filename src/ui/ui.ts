@@ -4,7 +4,7 @@ import type { Feature, HistoryGroup } from "../doc/types";
 import { screenClass, watchScreenClass } from "../device";
 import type { FeatureError } from "../kernel/protocol";
 import { evaluate, toDisplay, trim, UNIT_LABEL, units } from "../units";
-import { iconNameFor, icons, type IconName } from "./icons";
+import { icons, type IconName } from "./icons";
 import { DIALOG_ACTION } from "./dialogAction";
 import { numpadInput, typingInto } from "./numpad";
 import { selectAll, textField } from "./textField";
@@ -97,8 +97,6 @@ export type PanelItem =
       onChange(id: string): void;
       /** Always a drop-down. */
       list?: boolean;
-      /** Its name on the Options wheel, when not its label (what it does now: "Cut", "Add"…). */
-      wheelName?: string;
     }
   | { type: "toggle"; label: string; value: boolean; onChange(v: boolean): void }
   /**
@@ -465,8 +463,6 @@ export class UI {
     b.addEventListener("click", () => {
       // Popovers stay open until their button is clicked again.
       if (this.popoverOwner === id) return this.closePopover();
-      // (A window opened from the wheel's Settings gives way to the list beside the column.)
-      if (this.popover.classList.contains("at-point")) this.closePopover();
       this.popoverOwner = id;
       this.popoverFill = () => {
         this.popover.innerHTML = "";
@@ -503,153 +499,18 @@ export class UI {
 
   private popoverFill: (() => void) | null = null;
 
-  /** The right column's lists and switches, by id: the tool wheel's Settings opens them too. */
+  /** The right column's lists and switches, by id (Settings opens the ones that have no button of their own). */
   private rightEntries = new Map<string, { open: (host: HTMLElement) => void; label?: () => string }>();
-  private popAway: (() => void) | null = null;
 
   /** One of the right column's actions run by id (Screenshot, from Print / Share). */
   runRight(id: string): void {
     this.rightEntries.get(id)?.open(el("div", ""));
   }
 
-  /** What a right-column button says under its icon now (the unit, the shader). */
-  rightLabel(id: string): string | undefined {
-    return this.rightEntries.get(id)?.label?.();
-  }
-
-  /**
-   * One of the right column's lists as wheel cells: each switch and choice
-   * in it a tool that sets it (lit while on), a new part of the list where
-   * the list has a heading. What only a slider or a typed value sets is left
-   * to `more` (the list's window), under More… at the end.
-   */
-  optionItems(id: string, more: () => void): { item: ToolItem; gap?: boolean }[] {
-    const entry = this.rightEntries.get(id);
-    if (!entry) return [];
-    const host = el("div", "");
-    entry.open(host);
-    const out: { item: ToolItem; gap?: boolean }[] = [];
-    let part = "";
-    let gap = false;
-    let rest = false;
-    let n = 0;
-    for (const row of Array.from(host.querySelectorAll<HTMLElement>(".pop-heading, .pop-row"))) {
-      if (row.classList.contains("pop-heading")) {
-        part = row.textContent ?? "";
-        gap = out.length > 0;
-        continue;
-      }
-      const toggle = row.classList.contains("toggle-row");
-      if (!toggle && !row.classList.contains("choice-row")) {
-        rest = true;
-        continue;
-      }
-      const k = n++;
-      const on = row.classList.contains(toggle ? "on" : "active");
-      const label = (toggle ? row.firstElementChild?.textContent : row.textContent) ?? "";
-      out.push({
-        gap,
-        item: {
-          id: `opt-${id}-${k}`,
-          label,
-          icon: iconNameFor(label) ?? (on ? "check" : toggle ? "close" : "options"),
-          sub: toggle ? `${part} · ${on ? "On" : "Off"}` : part,
-          active: on,
-          // (The list drawn again, its row clicked: what the window's own row would do.)
-          run: () => {
-            const h = el("div", "");
-            entry.open(h);
-            h.querySelectorAll<HTMLElement>(".toggle-row, .choice-row")[k]?.click();
-          },
-        },
-      });
-      gap = false;
-    }
-    if (rest) out.push({ gap: true, item: { id: `opt-${id}-more`, label: "More…", icon: "more", run: more } });
-    return out;
-  }
-
-  /** Where a window from the wheel's Settings was last dragged to (the next one opens there). */
-  private popSpot: { x: number; y: number } | null = null;
-
-  /**
-   * One of the right column's lists (Snapping, Units & grid, Appearance,
-   * Display modes) opened as a window of its own instead of beside its
-   * button: the tool wheel's Settings. It has a title bar to drag it by and a
-   * close button, and stays open while the model is worked on; Esc closes it
-   * too. One that is a switch (NumPad, Constraints) is just switched.
-   */
-  popAt(id: string, x: number, y: number, title = ""): void {
-    const entry = this.rightEntries.get(id);
-    if (!entry) return;
-    this.closePopover();
-    this.popoverOwner = id;
-    const bar = el("div", "pop-window-bar");
-    bar.append(el("span", "pop-window-title", title));
-    const close = el("button", "pop-window-close");
-    close.title = "Close";
-    close.innerHTML = icons.close;
-    close.onclick = () => this.closePopover();
-    bar.append(close);
-    const body = el("div", "pop-window-body");
-    this.popoverFill = () => {
-      body.innerHTML = "";
-      entry.open(body);
-      this.popover.replaceChildren(bar, body);
-    };
-    this.popoverFill();
-    if (!body.childElementCount) return this.closePopover();
-    this.popover.hidden = false;
-    this.popover.classList.add("at-point");
-    this.popover.style.right = "auto";
-    const place = (px: number, py: number) => {
-      this.popover.style.left = `${Math.round(Math.max(8, Math.min(px, innerWidth - this.popover.offsetWidth - 8)))}px`;
-      const top = Math.round(Math.max(8, Math.min(py, innerHeight - 160)));
-      this.popover.style.top = `${top}px`;
-      // (Dragged low, it gets shorter and scrolls: the whole window stays on the screen.)
-      this.popover.style.maxHeight = `${innerHeight - top - 8}px`;
-    };
-    place(this.popSpot?.x ?? x, this.popSpot?.y ?? y);
-    // Dragged by its title bar.
-    bar.onpointerdown = (e) => {
-      if ((e.target as Element).closest(".pop-window-close")) return;
-      e.preventDefault();
-      const r = this.popover.getBoundingClientRect();
-      const dx = e.clientX - r.left;
-      const dy = e.clientY - r.top;
-      try {
-        bar.setPointerCapture(e.pointerId);
-      } catch {
-        // (A pointer the page no longer has: the drag still follows the bar.)
-      }
-      bar.onpointermove = (m) => {
-        place(m.clientX - dx, m.clientY - dy);
-        this.popSpot = { x: parseFloat(this.popover.style.left), y: parseFloat(this.popover.style.top) };
-      };
-      bar.onpointerup = bar.onpointercancel = () => {
-        bar.onpointermove = null;
-        bar.onpointerup = bar.onpointercancel = null;
-      };
-    };
-    const esc = (e: KeyboardEvent) => {
-      if (e.key !== "Escape") return;
-      // Spent on closing it: it doesn't also step back out of the tool that is open.
-      e.preventDefault();
-      e.stopPropagation();
-      this.closePopover();
-    };
-    addEventListener("keydown", esc, true);
-    this.popAway = () => removeEventListener("keydown", esc, true);
-  }
-
   closePopover(): void {
     // An action button (no popover shown) must not stay the owner: its next click would only "close".
     this.popoverOwner = null;
-    this.popAway?.();
-    this.popAway = null;
     if (this.popover.hidden) return;
-    // (Opened at a point: back to its place beside the right column for next time.)
-    this.popover.classList.remove("at-point");
     this.popover.style.left = "";
     this.popover.style.maxHeight = "";
     this.popover.hidden = true;

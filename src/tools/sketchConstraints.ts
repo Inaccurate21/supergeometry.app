@@ -113,10 +113,6 @@ export function existingConstraints(type: ConstraintType | "hv", constraints: Sk
   });
 }
 
-export function buttonEnabled(type: ConstraintType | "hv", pts: PointRef[], curves: SketchEntity[]): boolean {
-  return buildConstraints(type, pts, curves).length > 0;
-}
-
 /** Upsert a driving dimension on one entity (length / radius / w / h / …). */
 export function setDim(list: SketchConstraint[], entity: string, prop: string, value: number, expr?: string | null): SketchConstraint[] {
   const i = list.findIndex((c) => c.type === "dim" && c.curves?.[0] === entity && c.curves.length === 1 && c.prop === prop);

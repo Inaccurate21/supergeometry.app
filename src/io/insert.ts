@@ -229,16 +229,6 @@ export async function editVariables(app: AppContext): Promise<void> {
   }
 }
 
-export async function editImage(app: AppContext, f: ImageFeature): Promise<void> {
-  const v = await app.ui.dialog("Image", [
-    { key: "width", label: "Width (mm)", value: String(f.width) },
-    { key: "opacity", label: "Opacity (0–1)", value: String(f.opacity) },
-  ]);
-  if (!v) return;
-  const width = Number(v.width) || f.width;
-  app.store.update(f.id, { width, height: (f.height * width) / f.width, opacity: Math.min(1, Math.max(0.05, Number(v.opacity) || f.opacity)) });
-}
-
 // -------------------------------------------------------------------- DXF
 
 /** Minimal ASCII DXF reader: LINE, CIRCLE, ARC, LWPOLYLINE, POLYLINE, SPLINE, ELLIPSE. */

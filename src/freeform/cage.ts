@@ -648,37 +648,6 @@ export function smoothNormals(pos: Float32Array, tri: Uint32Array, out?: Float32
   return nrm;
 }
 
-/** Triangles of the subdivided surface (for the live preview). */
-export function previewMesh(s: Subdivided): { positions: Float32Array; normals: Float32Array; indices: Uint32Array } {
-  const positions = new Float32Array(s.points.flat());
-  const idx: number[] = [];
-  for (const g of s.grids)
-    for (let i = 0; i < s.n; i++)
-      for (let j = 0; j < s.n; j++) {
-        const a = g[i][j];
-        const b = g[i + 1][j];
-        const c = g[i + 1][j + 1];
-        const d = g[i][j + 1];
-        idx.push(a, b, c, a, c, d);
-      }
-  // Smooth normals: area-weighted average of the triangles around each point.
-  const nrm = new Float32Array(positions.length);
-  for (let t = 0; t < idx.length; t += 3) {
-    const [a, b, c] = [idx[t], idx[t + 1], idx[t + 2]].map((k) => s.points[k]);
-    const u: Vec3 = [b[0] - a[0], b[1] - a[1], b[2] - a[2]];
-    const v: Vec3 = [c[0] - a[0], c[1] - a[1], c[2] - a[2]];
-    const n: Vec3 = [u[1] * v[2] - u[2] * v[1], u[2] * v[0] - u[0] * v[2], u[0] * v[1] - u[1] * v[0]];
-    for (const k of [idx[t], idx[t + 1], idx[t + 2]]) for (let q = 0; q < 3; q++) nrm[k * 3 + q] += n[q];
-  }
-  for (let k = 0; k < nrm.length; k += 3) {
-    const l = Math.hypot(nrm[k], nrm[k + 1], nrm[k + 2]) || 1;
-    nrm[k] /= l;
-    nrm[k + 1] /= l;
-    nrm[k + 2] /= l;
-  }
-  return { positions, normals: nrm, indices: new Uint32Array(idx) };
-}
-
 /** Cage edges (each once), for drawing and picking. */
 export function cageEdges(cage: Cage): [number, number][] {
   const seen = new Set<string>();

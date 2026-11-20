@@ -56,22 +56,13 @@ export class SelectTool implements Tool {
 
   constructor(private app: AppContext) {}
 
-  /** In use (not stepped aside for another tool). */
-  private live = false;
-
   enter(): void {
-    this.live = true;
-    // With the tool wheel on, it stands in for this tool's column.
-    this.app.wheel.cover("model", () => this.wheelExtras());
     this.refresh();
   }
 
   exit(): void {
-    this.live = false;
     // Another tool started: a tool that was waiting for a pick (Plane's Offset Plane) waits no more.
     this.pending = null;
-    this.app.wheel.beckon(false);
-    this.app.wheel.cover(false);
     this.clearHandle();
     this.app.ui.setHint(null);
     this.app.setHover(null);
@@ -207,37 +198,10 @@ export class SelectTool implements Tool {
   tap(p: ToolPointer, count: number): void {
     // The cut face of a section: its arrow to move the cut, and its buttons (Add Plane, Flip...).
     if (!p.add && this.onCut(p)) {
-      this.app.wheel.takeDismissed();
       this.app.setSelection([]);
-      return this.app.setTool(new SectionTool(this.app as AppContext & SectionHost, true));
+      return this.app.setTool(new SectionTool(this.app as AppContext & SectionHost));
     }
-    const wheel = this.app.wheel;
-    if (!wheel.on) return void this.pick(p, count);
-    // The tool wheel: the tap picks as ever, then the wheel comes up round it
-    // with what the pick offers - or, on an empty spot with nothing picked, the
-    // main tools. A press that closed an open wheel only closes it there.
-    const dismissed = wheel.takeDismissed();
-    const hadPick = this.app.selection.length > 0;
-    // (A list of overlapping faces is up, or another tool took over: a sketch opened, a waiting tool got its pick.)
-    if (!this.pick(p, count) || !this.live) return;
-    // Shift / Ctrl add to the pick without the wheel coming up each time; a tool still waiting for its pick keeps waiting.
-    if (this.app.selection.length ? !p.add && !this.pending : !hadPick && !dismissed) this.openWheel(p);
-  }
-
-  /**
-   * The tool wheel round a point of the view (held: under a finger still down,
-   * which can slide to a tool; summon: asked for, so one kept somewhere and
-   * folded unfolds).
-   */
-  private openWheel(p: { x: number; y: number; type: ToolPointer["type"] }, held = false, summon = false): void {
-    const r = this.app.view.canvas.getBoundingClientRect();
-    this.app.wheel.open(r.left + p.x, r.top + p.y, { type: p.type, held, summon });
-  }
-
-  /** For the wheel's top sector, beside the picked thing's tools: where it is in the Items list (as the right-click menu has it). */
-  private wheelExtras(): ToolItem[] {
-    const ids = this.pickedIds();
-    return ids.length ? [{ id: "reveal", label: "Reveal in Items", icon: "body", run: () => this.app.revealInItems(ids) }] : [];
+    this.pick(p, count);
   }
 
   /** What's picked, as rows of the Items list: bodies, planes, axes, images, sketches. */
@@ -312,12 +276,6 @@ export class SelectTool implements Tool {
       this.app.setSelection([]);
       return true;
     }
-    // The tool wheel is on: a shape tapped twice opens its sketch (there the
-    // first tap doesn't start Extrude, which takes the second one otherwise).
-    if (this.app.wheel.on && s.kind === "profile" && count >= 2 && !this.pending) {
-      this.openSketch(s.sketch, "select");
-      return true;
-    }
     // Double tap selects the whole body (what its first tap picked there gives way to it).
     const whole = count >= 2 && (s.kind === "face" || s.kind === "edge" || s.kind === "vertex");
     if (whole) s = { kind: "body", body: (s as { body: string }).body };
@@ -361,10 +319,8 @@ export class SelectTool implements Tool {
     }
     // A shape's region tapped (not added with Shift/Ctrl): its extrude arrow is
     // ready - at 0, so nothing is made until the arrow is dragged (or a value typed).
-    // (With the tool wheel on, the shape stays picked instead, its arrow ready
-    // all the same: the wheel comes up with everything the shape offers.)
     const now = this.app.selection;
-    if (!this.app.wheel.on && s.kind === "profile" && !p.add && count < 2 && now.length && now.every((x) => x.kind === "profile") && now.some((x) => sameSel(x, s!))) {
+    if (s.kind === "profile" && !p.add && count < 2 && now.length && now.every((x) => x.kind === "profile") && now.some((x) => sameSel(x, s!))) {
       const src = sourcesOf(this.app, now)[0];
       if (src) this.app.setTool(new ExtrudeOp(this.app, src, undefined, "auto", { distance: 0 }).markTapped());
     }
@@ -484,19 +440,6 @@ export class SelectTool implements Tool {
       this.app.setSelection([]);
       return;
     }
-    // The tool wheel is on, and a finger or pen was held still (they have no
-    // right button): the wheel comes up under it. What's there is picked first,
-    // unless it is part of the pick already (or nothing is there: then the
-    // wheel is for what's picked). A mouse's right-click is the menu, as ever.
-    if (this.app.wheel.on && p.type !== "mouse") {
-      const s = hitToSel(this.pickAt(p));
-      const sel = this.app.selection;
-      const picked = !!s && sel.some((x) => sameSel(x, s) || (x.kind === "body" && "body" in s && s.body === x.body));
-      if (s && !picked && s.kind !== "curve" && s.kind !== "point") this.app.setSelection([s]);
-      this.lastTap = p;
-      // (It can slide to a tool and lift there.)
-      return this.openWheel(p, true, true);
-    }
     const rows: (MenuRow | "-")[] = [];
     if (this.app.selection.length) {
       for (const it of this.actions()) {
@@ -520,13 +463,6 @@ export class SelectTool implements Tool {
   key(e: KeyboardEvent): boolean {
     if (this.boxing && this.dragKey(e)) return true;
     const k = e.key.toLowerCase();
-    // The tool wheel at the pointer (or away again), for what's picked now. (Kept somewhere: folded, or unfolded.)
-    if (k === "q" && this.app.wheel.on && !e.ctrlKey && !e.metaKey && !e.altKey) {
-      const r = this.app.view.canvas.getBoundingClientRect();
-      const at = this.lastHover ?? { x: this.app.view.width / 2, y: this.app.view.height / 2 };
-      this.app.wheel.toggle(r.left + at.x, r.top + at.y, { type: "mouse", summon: true });
-      return true;
-    }
     if (k === "escape" && (this.app.selection.length || this.pending)) {
       this.pending = null;
       this.app.setSelection([]);
@@ -579,8 +515,6 @@ export class SelectTool implements Tool {
     this.app.view.clearHelpers([]);
     const sel = this.app.selection;
     const items = sel.length ? this.actions() : this.app.mainTools();
-    // Nothing picked, nothing waiting: the guide points at the wheel - folded, its button pulses.
-    this.app.wheel.beckon(!sel.length && !this.pending);
     this.app.ui.setTools(items);
     this.app.ui.setBottom(this.app.bottomTools());
     // (First the quick buttons: the guide says when there are some.)
@@ -589,32 +523,12 @@ export class SelectTool implements Tool {
       this.pending
         ? `${this.pending.label}: tap ${this.pending.accepts.map((k) => withArticle(label({ kind: k } as Sel, 1))).join(" or ")}`
         : sel.length === 0
-          ? this.app.wheel.on
-            ? this.app.wheel.kept
-              ? this.app.firstShape()
-                ? `Your shape is ready: tap it and drag its arrow up - or tap Extrude (pulsing, in Create)${this.app.wheel.tucked ? " on the tools button's wheel" : ""}, then the shape.`
-                : this.app.store.features.length
-                  ? this.app.wheel.tucked
-                    ? "Pick a tool on the wheel (the pulsing tools button), or tap the model: the wheel shows what the pick offers."
-                    : "Pick a tool on the wheel, or tap the model: the wheel shows what the pick offers."
-                  : this.app.wheel.tucked
-                    ? "Tap the pulsing tools button, then Sketch: draw a shape, then pull it into 3D."
-                    : "Sketch (pulsing, on the wheel) is where to start: draw a shape, then pull it into 3D."
-              : this.app.store.features.length
-                ? "Tap the model to pick part of it, or an empty spot for the tool wheel."
-                : "Tap an empty spot for the tool wheel, then Sketch: draw a shape and pull it into 3D."
-            : document.body.classList.contains("sentence-ui")
-              ? // (The sentence bar: the pick comes first, the line then says what it offers.)
-                this.app.firstShape()
-                ? "Your shape is ready: tap it, then drag its arrow up."
-                : this.app.store.features.length
-                  ? "Tap part of the model: the line at the bottom shows what you can do with it. Or pick a tool there first."
-                  : "Tap Sketch to start: draw a shape, then pull it into 3D."
-              : this.app.store.features.length
-                ? "Pick a tool, or tap the model to select part of it."
-                : "Tap Sketch to start: draw a shape, then pull it into 3D."
-          : // (The tool wheel on, up at the pointer and closed: no column to turn to - how to bring it up for what's picked.)
-            this.armedHint() + (this.app.wheel.on && !this.app.wheel.kept ? (isTouchDevice ? " Press and hold for the tool wheel." : " Press Q for the tool wheel.") : ""),
+          ? this.app.firstShape()
+            ? "Your shape is ready: tap it, then drag its arrow up."
+            : this.app.store.features.length
+              ? "Tap part of the model: the line at the bottom shows what you can do with it. Or pick a tool there first."
+              : "Tap Sketch to start: draw a shape, then pull it into 3D."
+          : this.armedHint(),
     );
     const first = sel[0];
     // (Picks of different kinds: no one handle is for all of them.)

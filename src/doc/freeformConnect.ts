@@ -41,12 +41,6 @@ function cageEdgesAt(cage: Cage, picks: Vec3[]): Set<string> | null {
 
 export type ConnectResult = { doc: ProjectDoc; body: string } | { error: string };
 
-/** Can these picked edges be connected (for showing the button)? */
-export function canConnect(doc: ProjectDoc, picks: PickedEdge[]): boolean {
-  const bodies = [...new Set(picks.map((p) => p.body))];
-  return picks.length >= 2 && bodies.length <= 2 && bodies.every((b) => !!worldCage(doc, b));
-}
-
 /**
  * Connect the picked border edges. They must make two runs with the same
  * number of edges (two edges, two rows, or two hole rims), on one freeform or

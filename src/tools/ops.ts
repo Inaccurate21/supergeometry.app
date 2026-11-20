@@ -42,15 +42,13 @@ const anyBody = (app: AppContext, self?: string) => app.view.bodyList.some((b) =
 /**
  * The result choice, "Operation"; `plain`: without Intersect (a tool that only
  * adds, cuts or stands alone). `auto`: what Auto does here now ("Cut", "Add",
- * "New body") - said on its option, and the wheel names the choice by what it
- * does (it was named "Auto", which said nothing).
+ * "New body") - said on its option.
  */
 function modeChoice<M extends Mode>(get: () => M, set: (m: M) => void, rerender: () => void, plain = false, auto?: () => string): PanelItem {
   const effect = auto?.();
   const options = (plain ? MODES.filter((m) => m.id !== "intersect") : MODES).map((m) => (m.id === "auto" && effect ? { id: m.id, label: `Auto: ${effect}` } : m));
   const now = get();
-  const wheelName = now === "auto" ? effect : MODES.find((m) => m.id === now)?.label;
-  return { type: "choice", label: "Operation", options, value: now, onChange: (m) => (set(m as M), rerender()), ...(wheelName ? { wheelName } : {}) };
+  return { type: "choice", label: "Operation", options, value: now, onChange: (m) => (set(m as M), rerender()) };
 }
 
 /** What Auto does for a revolve, sweep or loft: adds to the body it is drawn on, else a body of its own. */
@@ -3553,4 +3551,3 @@ export class AxisOp extends FeatureOp<AxisFeature> {
 
 }
 
-export const planeFromNormal = (origin: Vec3, normal: Vec3): PlaneDef => ({ origin, normal: norm(normal), xDir: xDirFor(norm(normal)) });

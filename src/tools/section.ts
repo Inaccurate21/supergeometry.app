@@ -35,26 +35,17 @@ export class SectionTool implements Tool {
   private handle: Handle | null = null;
   private dragging: { from: ToolPointer; o0: number } | null = null;
 
-  /** show: opened by a tap on the cut itself - its options come up unfolded, at hand. */
-  constructor(
-    private app: SectionHost,
-    private show = false,
-  ) {}
+  constructor(private app: SectionHost) {}
 
   enter(): void {
-    this.live = true;
     this.app.ui.setTools([{ id: "exit", label: "Exit Section", icon: "exit", shortcut: "Esc", run: () => this.app.setTool(null) }]);
     // The view tools stay, this one lit and pulsing (tap it again to close it).
     this.app.ui.setBottom(this.app.bottomTools());
     if (this.app.section) this.showControls();
     else this.askForPlane();
-    if (this.show && this.app.section) setTimeout(() => this.live && this.app.wheel.unfold());
   }
 
-  private live = false;
-
   exit(): void {
-    this.live = false;
     this.handle?.dispose();
     this.handle = null;
     this.app.view.setOriginPlanesVisible(false);

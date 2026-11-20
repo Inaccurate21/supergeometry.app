@@ -35,8 +35,6 @@ export type SketchEntity = EntityBase &
     | { kind: "polyline"; points: Vec2[]; closed: boolean }
   );
 
-export type EntityKind = SketchEntity["kind"];
-
 /** A sketch region, referenced by where it is rather than an index (see regions.ts). */
 export interface RegionRef {
   c: Vec2;

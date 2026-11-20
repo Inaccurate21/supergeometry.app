@@ -110,8 +110,6 @@ export class QuickActions {
     if (!s || !shown) return;
     const hw = this.box.offsetWidth / 2;
     const hh = this.box.offsetHeight / 2;
-    // Below it; where a wheel is in the way, above it, or to a side (they'd be hidden under the wheel).
-    const wheels = wheelsOnScreen();
     // (A face's arrow points out along its normal: they go the other way on the screen, not under it.)
     const first: [number, number][] = [];
     if (this.facing) {
@@ -135,7 +133,7 @@ export class QuickActions {
     ].map((p) => clampToFree(p as [number, number], hw, hh));
     // (Nor under a value box on the model - an extrude's distance, beside its arrow.)
     const boxes = [...document.querySelectorAll<HTMLElement>(".dim-widget")].map((b) => b.getBoundingClientRect()).filter((r) => r.width > 0);
-    const clear = ([x, y]: [number, number]) => !wheels.some((w) => hits(w, x, y, hw + 4, hh + 4)) && !boxes.some((r) => x + hw + 6 > r.left && x - hw - 6 < r.right && y + hh + 6 > r.top && y - hh - 6 < r.bottom);
+    const clear = ([x, y]: [number, number]) => !boxes.some((r) => x + hw + 6 > r.left && x - hw - 6 < r.right && y + hh + 6 > r.top && y - hh - 6 < r.bottom);
     const [x, y] = spots.find(clear) ?? spots[0];
     this.box.style.transform = `translate(${Math.round(x - hw)}px, ${Math.round(y - hh)}px)`;
   }
@@ -150,21 +148,4 @@ export class QuickActions {
 function shortName(label: string): string {
   const s = label.replace(/…$/, "").split(/[/ –]/)[0];
   return s.length > 12 ? s.slice(0, 11) + "…" : s;
-}
-
-/** The wheels up on the screen, as circles (their middle, and how far they reach: folded, just the middle). */
-function wheelsOnScreen(): { x: number; y: number; r: number }[] {
-  const out: { x: number; y: number; r: number }[] = [];
-  for (const w of document.querySelectorAll<HTMLElement>(".wheel-root:not([hidden])")) {
-    const m = /translate\((-?[\d.]+)px, (-?[\d.]+)px\)/.exec(w.style.transform);
-    if (m) out.push({ x: Number(m[1]), y: Number(m[2]), r: w.classList.contains("folded") ? 34 : 116 });
-  }
-  return out;
-}
-
-/** Does a box (its middle, half its size) overlap a circle? */
-function hits(c: { x: number; y: number; r: number }, x: number, y: number, hw: number, hh: number): boolean {
-  const dx = Math.max(Math.abs(c.x - x) - hw, 0);
-  const dy = Math.max(Math.abs(c.y - y) - hh, 0);
-  return dx * dx + dy * dy < c.r * c.r;
 }

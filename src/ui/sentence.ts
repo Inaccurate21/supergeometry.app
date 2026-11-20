@@ -30,7 +30,7 @@ import { iconNameFor, icons, type IconName } from "./icons";
 import { numpadInput, openNumpad } from "./numpad";
 import { selectAll } from "./textField";
 import { el, usable, type ToolItem, type UI } from "./ui";
-import { ALIAS, GROUP_OF, RANK } from "./wheel";
+import { ALIAS, GROUP_OF, RANK } from "./toolGroups";
 
 export interface SentenceHost {
   readonly ui: UI;
@@ -661,8 +661,8 @@ export class Sentence {
     if (fresh) this.row.scrollLeft = 0;
     // The end of the line: everything for this pick, the eraser, the tick.
     this.end.replaceChildren();
-    if (b.groups.length) {
-      const all = this.endButton("grid", "More: everything for this", () => this.toggle({ kind: "all" }));
+    if (this.beyond(b).length) {
+      const all = this.endButton("grid", "More", () => this.toggle({ kind: "all" }));
       all.classList.add("sn-all");
       all.append(el("span", "sn-end-name", "More"));
       all.classList.toggle("on", this.open?.kind === "all");
@@ -964,6 +964,16 @@ export class Sentence {
     return seek(this.built?.words ?? []) ?? [];
   }
 
+  /**
+   * What More holds: only what is not on the line already (asked for: "in More there should only be tools that are
+   * not already in the bar"). A group that is a word on the line is opened there - More repeated every one of them
+   * under the few things that were its own.
+   */
+  private beyond(b: Built): Built["groups"] {
+    const there = new Set(b.words.map((w) => w.cap ?? w.label));
+    return b.groups.filter((g) => !there.has(g.cap));
+  }
+
   /** The thread from the pick to its name is drawn (off: see `drawThread`). */
   private threads = false;
 
@@ -1010,7 +1020,7 @@ export class Sentence {
       return this.type(w);
     }
     const blocks: { cap: string; words: Word[] }[] = [];
-    if (o.kind === "all") blocks.push(...b.groups);
+    if (o.kind === "all") blocks.push(...this.beyond(b));
     else {
       const w = this.find(o.key);
       if (!w?.kids?.length) return void this.close();
@@ -1035,12 +1045,6 @@ export class Sentence {
       this.fill(box.lastElementChild as HTMLElement, g.words, !same);
     });
     this.sheet.querySelector(".sn-others")?.remove();
-    if (o.kind === "all" && b.others?.length) {
-      const note = el("div", "sn-others");
-      note.append(el("div", "sn-group-cap", "Needs another pick"));
-      for (const t of b.others.slice(0, 8)) note.append(el("div", "sn-other", t));
-      this.sheet.append(note);
-    }
     // A phone held upright (the list is as wide as the screen): no taller than leaves the buttons at the right edge
     // clear above it - it scrolls instead.
     this.sheet.style.maxHeight = "";

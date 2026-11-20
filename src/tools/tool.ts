@@ -5,7 +5,6 @@ import type { RegenResult } from "../kernel/protocol";
 import { arrangement, materialRegions, pointInRegion, regionRef, type Region } from "../sketch/regions";
 import { pointInPoly } from "../sketch/curves";
 import type { MenuRow, ToolItem, UI } from "../ui/ui";
-import type { WheelHandle } from "../ui/wheel";
 import { settings } from "../settings";
 import type { PointerHandler } from "../view/input";
 import type { Highlight, PickHit, Viewport } from "../view/viewport";
@@ -45,8 +44,6 @@ export interface AppContext {
   readonly kernel: KernelClient;
   readonly view: Viewport;
   readonly ui: UI;
-  /** The tool wheel (an experiment beside the column): on or off, and bringing it up at a point. */
-  readonly wheel: WheelHandle;
   readonly result: RegenResult | null;
   readonly selection: Sel[];
   /** Thread the selected round face. */
