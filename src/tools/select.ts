@@ -1336,9 +1336,10 @@ export class SelectTool implements Tool {
       if (!g) return [];
       const ps: Vec3[] = [];
       for (let k = g.start; k < g.start + g.count; k++) if ((k - g.start) % 2 === 0 || k === g.start + g.count - 1) ps.push([b!.edgePositions[k * 3], b!.edgePositions[k * 3 + 1], b!.edgePositions[k * 3 + 2]]);
-      const ent = projectPolyline(ps, plane!, e!.type);
-      if (!ent) return [];
       const ref = edgeRefOf(app, s);
+      // (A free copy - no steps to follow: with as few points as hold it.)
+      const ent = projectPolyline(ps, plane!, e!.type, !ref?.steps?.length);
+      if (!ent) return [];
       if (!ref?.steps?.length) return [ent];
       const id = `ref-${uid()}`;
       links.push({ id, edge: ref });
@@ -1364,10 +1365,10 @@ export class SelectTool implements Tool {
       const g = b.edgeGroups.find((x) => x.edge === i)!;
       const pts: Vec3[] = [];
       for (let k = g.start; k < g.start + g.count; k++) if ((k - g.start) % 2 === 0 || k === g.start + g.count - 1) pts.push([b.edgePositions[k * 3], b.edgePositions[k * 3 + 1], b.edgePositions[k * 3 + 2]]);
-      const ent = projectPolyline(pts, plane, e.type);
-      if (!ent) return [];
       // Linked: it follows the face's edge when the body changes.
       const ref = edgeRefOf(this.app, { body: s.body, edge: i });
+      const ent = projectPolyline(pts, plane, e.type, !ref?.steps?.length);
+      if (!ent) return [];
       if (!ref?.steps?.length) return [ent];
       const id = `ref-${uid()}`;
       links.push({ id, edge: ref });

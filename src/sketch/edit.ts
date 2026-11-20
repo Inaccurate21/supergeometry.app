@@ -5,6 +5,7 @@ import type { OutlineOffset, PlaneDef, SketchConstraint, SketchEntity, Vec2, Vec
 import { roundSig, toPlane, toWorld } from "../geom";
 import type { Arrangement, Region } from "./regions";
 import { constraintError, pointOf, pointsOf, refsOf, solve } from "./constraints";
+import { fitSpline } from "./freehand";
 import { arcFrom3, closestOnPrim, entityCorners, entityPrims, evalPrim, isClosedPrim, primSegments, samplePrim, type Prim } from "./curves";
 
 export function uid(): string {
@@ -1228,7 +1229,15 @@ const unit = (a: Vec2): Vec2 => {
  * A 3D polyline (e.g. a body edge) flattened onto the sketch plane, as the
  * simplest matching entity: line, circle, arc or spline.
  */
-export function projectPolyline(pts3: Vec3[], plane: PlaneDef, type: string): SketchEntity | null {
+/**
+ * (A curved edge that is no circle is a spline through 24 of its points: as
+ * close to the edge as that gets. A curve that follows its edge keeps that -
+ * only its two ends show (`pointsOf`). `lean`: a free copy, which is the
+ * user's to shape - a whole ellipse as an ellipse, anything else with as few
+ * points as hold it within a two-thousandth of its size, not a row of 24 dots
+ * to drag one by one.)
+ */
+export function projectPolyline(pts3: Vec3[], plane: PlaneDef, type: string, lean = false): SketchEntity | null {
   const pts = dedupe(pts3.map((p) => toPlane(plane, p)));
   if (pts.length < 2) return null;
   const a = pts[0];
@@ -1245,8 +1254,186 @@ export function projectPolyline(pts3: Vec3[], plane: PlaneDef, type: string): Sk
       if (ok) return closed ? { id: uid(), kind: "circle", center: c.c, radius: c.r } : { id: uid(), kind: "arc", a, m, b };
     }
   }
-  const fit = thin(closed ? pts.slice(0, -1) : pts, 24);
-  return { id: uid(), kind: "spline", points: fit, closed, mode: "fit" };
+  const run = closed ? pts.slice(0, -1) : pts;
+  if (lean) {
+    const xs = pts.map((p) => p[0]);
+    const ys = pts.map((p) => p[1]);
+    const size = Math.hypot(Math.max(...xs) - Math.min(...xs), Math.max(...ys) - Math.min(...ys));
+    // A circle seen at a slant, an ellipse: the ellipse itself.
+    if (closed && run.length >= 6) {
+      const el = fitEllipse(run);
+      if (el && run.every((p) => offEllipse(p, el) < size * 1e-5)) return { id: uid(), kind: "ellipse", center: el.c, rx: el.rx, ry: el.ry, rotation: el.rot };
+    }
+    // Within a two-thousandth of its size of the edge (0.025 on a curve 50 long).
+    const tol = Math.max(size * 5e-4, 1e-9);
+    const ctrl = closed ? null : fitControl(run, tol);
+    if (ctrl) return { id: uid(), kind: "spline", points: ctrl, closed: false, mode: "control" };
+    return { id: uid(), kind: "spline", points: fitSpline(run, closed, tol), closed, mode: "fit" };
+  }
+  return { id: uid(), kind: "spline", points: thin(run, 24), closed, mode: "fit" };
+}
+
+/** A spline with only the points it needs (one that followed an edge and was unlinked: its 24 become the user's to shape). */
+export function leanSpline<E extends SketchEntity>(e: E): E {
+  if (e.kind !== "spline" || e.mode !== "fit" || e.points.length < 7) return e;
+  const xs = e.points.map((p) => p[0]);
+  const ys = e.points.map((p) => p[1]);
+  const size = Math.hypot(Math.max(...xs) - Math.min(...xs), Math.max(...ys) - Math.min(...ys));
+  return { ...e, points: fitSpline(e.points, e.closed, Math.max(size * 5e-4, 1e-9)) };
+}
+
+/** Solve m (n rows of n + 1: the last column the right side) in place; null when it has no one answer. */
+function solveRows(m: number[][]): number[] | null {
+  const n = m.length;
+  for (let i = 0; i < n; i++) {
+    let best = i;
+    for (let r = i + 1; r < n; r++) if (Math.abs(m[r][i]) > Math.abs(m[best][i])) best = r;
+    if (Math.abs(m[best][i]) < 1e-12) return null;
+    [m[i], m[best]] = [m[best], m[i]];
+    for (let r = 0; r < n; r++) {
+      if (r === i) continue;
+      const f = m[r][i] / m[i][i];
+      for (let j = i; j <= n; j++) m[r][j] -= f * m[i][j];
+    }
+  }
+  return m.map((row, i) => row[n] / row[i]);
+}
+
+/**
+ * The fewest control points of an open spline (the sketch's own kind: a
+ * uniform cubic B-spline that starts and ends on its first and last point)
+ * that keep it within `tol` of the points: its two ends where the curve's
+ * are, the handles between fitted (least squares, each point's place along
+ * the curve put right and fitted again). Null when even twelve don't hold it.
+ */
+function fitControl(run: Vec2[], tol: number): Vec2[] | null {
+  const n = run.length;
+  if (n < 4) return null;
+  const A = run[0];
+  const Z = run[n - 1];
+  // Where each point is along the curve, 0 to 1, by the way gone.
+  const way = [0];
+  for (let i = 1; i < n; i++) way.push(way[i - 1] + Math.hypot(run[i][0] - run[i - 1][0], run[i][1] - run[i - 1][1]));
+  if (!(way[n - 1] > 0)) return null;
+  const start = way.map((w) => w / way[n - 1]);
+  /** How much of each control point a place along the curve is made of (the mirrored ones past the ends folded in). */
+  const weights = (m: number, at: number): number[] => {
+    const spans = m - 1;
+    const s = Math.min(spans - 1e-12, Math.max(0, at * spans));
+    const k = Math.min(spans - 1, Math.floor(s));
+    const u = s - k;
+    const u2 = u * u;
+    const u3 = u2 * u;
+    const b = [(1 - 3 * u + 3 * u2 - u3) / 6, (4 - 6 * u2 + 3 * u3) / 6, (1 + 3 * u + 3 * u2 - 3 * u3) / 6, u3 / 6];
+    const w = new Array<number>(m).fill(0);
+    for (let j = 0; j < 4; j++) {
+      const i = k - 1 + j;
+      if (i < 0) (w[0] += 2 * b[j]), (w[1] -= b[j]);
+      else if (i > m - 1) (w[m - 1] += 2 * b[j]), (w[m - 2] -= b[j]);
+      else w[i] += b[j];
+    }
+    return w;
+  };
+  const at = (P: Vec2[], x: number): Vec2 => {
+    const w = weights(P.length, x);
+    return [w.reduce((s, c, i) => s + c * P[i][0], 0), w.reduce((s, c, i) => s + c * P[i][1], 0)];
+  };
+  for (let m = 3; m <= 12 && m < n; m++) {
+    let ts = start.slice();
+    let P: Vec2[] | null = null;
+    for (let round = 0; round < 4; round++) {
+      // The handles (all but the two ends), least squares.
+      const q = m - 2;
+      const mx = Array.from({ length: q }, () => new Array<number>(q + 1).fill(0));
+      const my = Array.from({ length: q }, () => new Array<number>(q + 1).fill(0));
+      for (let j = 0; j < n; j++) {
+        const w = weights(m, ts[j]);
+        const rx = run[j][0] - w[0] * A[0] - w[m - 1] * Z[0];
+        const ry = run[j][1] - w[0] * A[1] - w[m - 1] * Z[1];
+        for (let a = 0; a < q; a++) {
+          for (let b = 0; b < q; b++) {
+            mx[a][b] += w[a + 1] * w[b + 1];
+            my[a][b] += w[a + 1] * w[b + 1];
+          }
+          mx[a][q] += w[a + 1] * rx;
+          my[a][q] += w[a + 1] * ry;
+        }
+      }
+      const xs = solveRows(mx);
+      const ys = solveRows(my);
+      if (!xs || !ys) break;
+      P = [A, ...xs.map((x, i): Vec2 => [x, ys[i]]), Z];
+      // Each point's place along this curve, put right: the nearest of a fine walk along it, near where it was.
+      const fine = 24 * (m - 1);
+      const walk = Array.from({ length: fine + 1 }, (_, i) => at(P!, i / fine));
+      let worst = 0;
+      const next = ts.slice();
+      for (let j = 1; j < n - 1; j++) {
+        const mid = Math.round(ts[j] * fine);
+        let best = Infinity;
+        let where = ts[j];
+        for (let i = Math.max(1, mid - 24); i <= Math.min(fine, mid + 24); i++) {
+          // (To the piece of the walk, not just its corners.)
+          const a = walk[i - 1];
+          const b = walk[i];
+          const dx = b[0] - a[0];
+          const dy = b[1] - a[1];
+          const f = Math.max(0, Math.min(1, ((run[j][0] - a[0]) * dx + (run[j][1] - a[1]) * dy) / (dx * dx + dy * dy || 1)));
+          const d = Math.hypot(run[j][0] - a[0] - f * dx, run[j][1] - a[1] - f * dy);
+          if (d < best) (best = d), (where = (i - 1 + f) / fine);
+        }
+        next[j] = where;
+        worst = Math.max(worst, best);
+      }
+      if (worst <= tol) return P;
+      ts = next;
+    }
+  }
+  return null;
+}
+
+/** The ellipse through these points (a conic fitted to them, least squares), or null when they are not on one. */
+function fitEllipse(pts: Vec2[]): { c: Vec2; rx: number; ry: number; rot: number } | null {
+  const n = pts.length;
+  const mx = pts.reduce((s, p) => s + p[0], 0) / n;
+  const my = pts.reduce((s, p) => s + p[1], 0) / n;
+  const k = Math.max(...pts.map((p) => Math.hypot(p[0] - mx, p[1] - my))) || 1;
+  // A x² + B xy + C y² + D x + E y = 1, about their middle and at their own size (so the numbers stay tame).
+  const m = Array.from({ length: 5 }, () => new Array<number>(6).fill(0));
+  for (const p of pts) {
+    const x = (p[0] - mx) / k;
+    const y = (p[1] - my) / k;
+    const row = [x * x, x * y, y * y, x, y];
+    for (let i = 0; i < 5; i++) {
+      for (let j = 0; j < 5; j++) m[i][j] += row[i] * row[j];
+      m[i][5] += row[i];
+    }
+  }
+  const sol = solveRows(m);
+  if (!sol) return null;
+  const [A, B, C, D, E] = sol;
+  const det = 4 * A * C - B * B;
+  if (!(det > 1e-12)) return null;
+  const cx = (B * E - 2 * C * D) / det;
+  const cy = (B * D - 2 * A * E) / det;
+  const f = A * cx * cx + B * cx * cy + C * cy * cy + D * cx + E * cy - 1;
+  const rot = 0.5 * Math.atan2(B, A - C);
+  const cos = Math.cos(rot);
+  const sin = Math.sin(rot);
+  const along = A * cos * cos + B * cos * sin + C * sin * sin;
+  const across = A * sin * sin - B * cos * sin + C * cos * cos;
+  if (!(-f / along > 0) || !(-f / across > 0)) return null;
+  return { c: [mx + cx * k, my + cy * k], rx: Math.sqrt(-f / along) * k, ry: Math.sqrt(-f / across) * k, rot };
+}
+
+/** About how far a point is from an ellipse (exact on it, near enough close by). */
+function offEllipse(p: Vec2, el: { c: Vec2; rx: number; ry: number; rot: number }): number {
+  const dx = p[0] - el.c[0];
+  const dy = p[1] - el.c[1];
+  const x = dx * Math.cos(el.rot) + dy * Math.sin(el.rot);
+  const y = -dx * Math.sin(el.rot) + dy * Math.cos(el.rot);
+  const r = Math.hypot(x / el.rx, y / el.ry);
+  return Math.abs(r - 1) * Math.min(el.rx, el.ry);
 }
 
 function dedupe(pts: Vec2[]): Vec2[] {

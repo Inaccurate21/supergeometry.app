@@ -41,7 +41,7 @@ import {
   guidePoints,
   mirrorXf,
   offsetEntity,
-  projectPolyline,
+  leanSpline, projectPolyline,
   rotateXf,
   scaleXf,
   transformEntity,
@@ -4931,7 +4931,7 @@ export class SketchTool implements Tool {
     }
     return entities.flatMap((e) =>
       entityPolylines(e).flatMap((pl) => {
-        const out = projectPolyline(pl.map((uv) => sketchToWorld(from, uv).toArray() as Vec3), to, e.kind === "line" ? "LINE" : "");
+        const out = projectPolyline(pl.map((uv) => sketchToWorld(from, uv).toArray() as Vec3), to, e.kind === "line" ? "LINE" : "", true);
         return out ? [out] : [];
       }),
     );
@@ -5008,8 +5008,6 @@ export class SketchTool implements Tool {
       // Segment pairs: take the first point of each pair plus the very last point.
       if ((i - g.start) % 2 === 0 || i === g.start + g.count - 1) pts.push([b.edgePositions[i * 3], b.edgePositions[i * 3 + 1], b.edgePositions[i * 3 + 2]]);
     }
-    const e = projectPolyline(pts, this.plane!, b.edges[hit.edge].type);
-    if (!e) return;
     // It follows that edge from now on, if the edge is there when this sketch
     // is made (the steps that made it come before the sketch).
     const ref = edgeRefOf(this.app, hit);
@@ -5017,7 +5015,11 @@ export class SketchTool implements Tool {
     const at = this.sketchId ? order.indexOf(this.sketchId) : order.length;
     const before = (step: string) => order.indexOf(step) >= 0 && order.indexOf(step) < at;
     // (And the Move its body went through since, if any: the edge is only there, where it is, after that.)
-    if (!ref?.steps?.length || !ref.steps.every(before) || !(b.edges[hit.edge].was ?? []).every(before)) return this.commitAdd([e]);
+    const free = !ref?.steps?.length || !ref.steps.every(before) || !(b.edges[hit.edge].was ?? []).every(before);
+    // (A free copy: with as few points as hold it. One that follows the edge: the edge's own shape, its two ends showing.)
+    const e = projectPolyline(pts, this.plane!, b.edges[hit.edge].type, free);
+    if (!e) return;
+    if (free) return this.commitAdd([e]);
     const id = `${LINKED}${uid()}`;
     this.commit([...this.entities, { ...e, id, ...(this.construction ? { construction: true } : {}) }], this.constraints, [{ id, edge: ref }]);
     this.app.ui.toast("It follows that edge when the body changes");
@@ -5062,7 +5064,8 @@ export class SketchTool implements Tool {
   /** A curve that follows a body's edge: letting it go (it becomes a curve of the sketch), or deleting it. */
   private showFollowPanel(id: string): void {
     const gone = (keep: boolean) => {
-      this.commit(this.entities.flatMap((x) => (x.id !== id ? [x] : keep ? [{ ...x, id: uid() }] : [])));
+      // (Unlinked, it is the user's own curve: with only the points it needs, not the 24 the edge's shape was kept in.)
+      this.commit(this.entities.flatMap((x) => (x.id !== id ? [x] : keep ? [leanSpline({ ...x, id: uid() })] : [])));
       this.clearSelection();
     };
     this.app.ui.showPanel({

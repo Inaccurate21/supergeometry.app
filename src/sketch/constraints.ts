@@ -96,6 +96,10 @@ export function pointsOf(e: SketchEntity): { p: string; at: Vec2 }[] {
     case "polygon":
       return [{ p: "c", at: e.center }, ...entityCorners(e).map((at, i) => ({ p: `k${i}`, at }))];
     case "spline":
+      // A curve that follows a body's edge (Project): its two ends, as the edge has - the points between are the
+      // edge's shape, made again whenever the body changes, and not there to pick, snap to or drag.
+      if (e.id.startsWith(LINKED) && !e.closed && e.points.length > 2) return [{ p: "k0", at: e.points[0] }, { p: `k${e.points.length - 1}`, at: e.points[e.points.length - 1] }];
+      return e.points.map((at, i) => ({ p: `k${i}`, at }));
     case "polyline":
       return e.points.map((at, i) => ({ p: `k${i}`, at }));
   }
