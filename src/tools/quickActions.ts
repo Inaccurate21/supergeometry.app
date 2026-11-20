@@ -79,6 +79,11 @@ export class QuickActions {
       }
     };
     gather(items);
+    // (Just one more: it is a button of the row, before Delete - a More that opens a single button is a tap wasted.)
+    if (rest.length === 1) {
+      const one = rest.pop()!;
+      row.splice(del && row.includes(del) ? row.indexOf(del) : row.length, 0, one);
+    }
     return row.length || rest.length ? new QuickActions(view, row, at, place, rest) : null;
   }
 
