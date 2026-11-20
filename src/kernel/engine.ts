@@ -78,7 +78,7 @@ import { edgeOrigins, edgeSteps, faceAliases, faceOrigins, faceSteps, inheritTag
 import { closestOnEntity } from "../sketch/regions";
 
 import { cylinderOf, deleteFace,
- deleteFaces as deleteBodyFaces, editNotes, freeformFace, sameSizesAgain, sheetFace, sheetFaces, hasBlends, offsetFace, onFace as pointOnFace, planeOf, replaceFacePlane, SIDES_MEET, sizeOf, unify } from "./faceEdit";
+ deleteFaces as deleteBodyFaces, editNotes, freeformFace, sameSizesAgain, sheetFace, sheetFaces, hasBlends, inFlatFace, offsetFace, onFace as pointOnFace, planeOf, replaceFacePlane, SIDES_MEET, sizeOf, unify } from "./faceEdit";
 import { threadDepth } from "./threads";
 import { anchorOf, freeformFaces, meshViews, viewEdge } from "./viewLines";
 import { entitiesWire, pathOf, regionFaces, regionHoleWires, regionWire, withFittedSplines } from "./sketchGeom";
@@ -1952,18 +1952,32 @@ async function apply(f: Feature, ctx: Ctx): Promise<void> {
     }
 
     case "moveFace": {
-      const r = f.rotate && Math.abs(f.rotate.angle) > 1e-9 ? f.rotate : undefined;
-      const move = (p: Vec3) => add(r ? rotateAbout(p, r.origin, r.axis, r.angle) : p, f.translate);
+      let r = f.rotate && Math.abs(f.rotate.angle) > 1e-9 ? f.rotate : undefined;
+      let translate = f.translate;
+      const move = (p: Vec3) => add(r ? rotateAbout(p, r.origin, r.axis, r.angle) : p, translate);
       const turn = (n: Vec3) => (r ? norm(sub(rotateAbout(add(r.origin, n), r.origin, r.axis, r.angle), r.origin)) : n);
       if (f.face) {
         const body = need(bodies, f.face.body);
         const face = resolveFace(body, f.face);
         const { origin, normal } = planeOf(face);
+        const nn = norm(normal);
+        // Pushed straight out (or tilted about a line in it) when it was made:
+        // still that, square to the face as it is now - a step before it that
+        // turns the face a little more mustn't make the push a slide.
+        const was = f.face.normal && len(f.face.normal) > 1e-9 ? norm(f.face.normal) : undefined;
+        if (was) {
+          const way = dot(nn, was) < 0 ? -1 : 1;
+          const out = dot(translate, was);
+          if (len(sub(translate, scale(was, out))) <= 1e-6 * Math.max(1, Math.abs(out))) translate = scale(nn, out * way);
+          if (r && Math.abs(dot(norm(r.axis), was)) <= 1e-6) {
+            const inPlane = sub(r.axis, scale(nn, dot(r.axis, nn)));
+            if (len(inPlane) > 1e-9) r = { ...r, axis: norm(inPlane) };
+          }
+        }
         // Slid within its own plane, or turned about its normal: its corners
         // move and the faces round it follow (a plane alone can't show that -
         // the face stayed where it was).
-        const nn = norm(normal);
-        const slide = sub(f.translate, scale(nn, dot(f.translate, nn)));
+        const slide = sub(translate, scale(nn, dot(translate, nn)));
         const twist = !!r && Math.abs(dot(norm(r.axis), nn)) > 1e-6;
         if (len(slide) > 1e-9 || twist) {
           const size = Math.hypot(body.boundingBox.width, body.boundingBox.height, body.boundingBox.depth) || 1;
@@ -1971,6 +1985,19 @@ async function apply(f: Feature, ctx: Ctx): Promise<void> {
           const out = loop ? movePolyhedronPoints(body, loop.map((v) => [v, move(v)] as [Vec3, Vec3])) : null;
           if (!out) throw new Error("Sliding or turning a face within its plane works on bodies of flat, straight-edged faces - push or tilt it instead");
           bodies.set(f.face.body, staysClosed(body, out));
+          return;
+        }
+        // Drawn inside a bigger flat face (projected onto it): moving its plane
+        // moves nothing - raised, it's a prism joined on; sunk, one cut out.
+        if (inFlatFace(body, face)) {
+          if (r) throw new Error("This face lies in a bigger flat face: it can be pushed straight out or in, not tilted (Extrude it at an angle instead)");
+          const d = dot(translate, nn);
+          if (Math.abs(d) < 1e-12) return;
+          const prism = basicFaceExtrusion(face, new Vector(scale(nn, d))) as Shape3D;
+          const size = Math.hypot(body.boundingBox.width, body.boundingBox.height, body.boundingBox.depth) || 1;
+          const { p } = pointOnFace(body, face);
+          const [into] = insideOf(body, [add(p, scale(nn, Math.sign(d) * Math.min(Math.abs(d) / 2, size * 1e-3)))]);
+          bodies.set(f.face.body, staysClosed(body, checkedBoolean(into ? "cut" : "fuse", body, prism)));
           return;
         }
         const n = turn(normal);
@@ -4711,7 +4738,24 @@ function resolveFace(body: Shape3D, ref: FaceRef, only?: (f: Face) => boolean): 
   // (Saved when a face on another body's plane was put down to that body's step: found by that.)
   const old = steps && !steps.includes(ref.step!) ? faceAliases(body) : undefined;
   if (old) steps = steps!.map((s, i) => old[i] ?? s);
-  if (steps && !faces.some((_, i) => steps![i] === ref.step)) throw new Error(FACE_GONE);
+  if (steps && !faces.some((_, i) => steps![i] === ref.step)) {
+    // The step that made it makes no face here now (turned by 0, switched
+    // off): the face that is plainly the same one - facing the same way within
+    // a few degrees, its middle where it was, much the same size - else gone.
+    let near: { face: Face; score: number } | null = null;
+    for (const face of faces) {
+      if (only && !only(face)) continue;
+      const fi = faceInfo(face);
+      const align = dot(fi.normal, ref.normal);
+      const off = dist(fi.center, ref.center) / size;
+      const grew = Math.abs(Math.log((fi.area + 1e-9) / (ref.area + 1e-9)));
+      if (align < 0.99 || off > 0.25 || grew > 0.25) continue;
+      const score = off + (1 - align) * 4 + grew;
+      if (!near || score < near.score) near = { face, score };
+    }
+    if (near) return near.face;
+    throw new Error(FACE_GONE);
+  }
   // The one made from the same sketch curve, if that can be told: wherever it
   // is now. (Cut in two since: the nearer piece, below.)
   const origins = steps && ref.curve ? faceOrigins(body) : undefined;

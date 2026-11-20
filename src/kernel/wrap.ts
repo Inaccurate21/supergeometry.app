@@ -4,7 +4,7 @@
 
 import { cast, draw, getOC, makeCompound, makeLine, makeVertex, type Drawing, type Edge, type Face, type Shape3D } from "replicad";
 import type { Vec3 } from "../doc/types";
-import { cross, dist, dot, len, norm, scale, sub } from "../geom";
+import { add, cross, dist, dot, len, norm, scale, sub } from "../geom";
 import { cylinderOf } from "./faceEdit";
 import { measureVolume } from "./ocFree";
 
@@ -95,9 +95,23 @@ function seen(e: Edge, o: Vec3, n: Vec3, body: Shape3D, eps: number): boolean {
   const seg = makeLine(q, pp);
   const ds = new oc.BRepExtrema_DistShapeShape(seg.wrapped, body.wrapped);
   try {
-    return ds.IsDone() && ds.Value() > eps * 0.05;
+    if (!(ds.IsDone() && ds.Value() > eps * 0.05)) return false;
   } finally {
     ds.delete();
+  }
+  // Run all the way inside the body, it's hidden too: the distance measured is
+  // to the faces round it, not 0 (a circle drawn on a block's top went through
+  // onto its bottom). Its middle inside, then.
+  const mid = makeVertex(scale(add(q, pp), 0.5));
+  const at = new oc.BRepExtrema_DistShapeShape();
+  try {
+    at.LoadS1(body.wrapped);
+    at.LoadS2(mid.wrapped);
+    at.Perform();
+    return !(at.IsDone() && at.InnerSolution());
+  } finally {
+    at.delete();
+    mid.delete();
   }
 }
 

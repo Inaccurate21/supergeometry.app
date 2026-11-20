@@ -214,6 +214,22 @@ function tangentPlaneAlong(F: Face, g: Face): PlaneDef | null {
   }
 }
 
+/**
+ * A flat face drawn inside a bigger flat one (a shape projected onto it): every
+ * face round it lies in its plane, so moving its plane moves nothing.
+ */
+export function inFlatFace(body: Shape3D, F: Face): boolean {
+  if (F.geomType !== "PLANE") return false;
+  const p = planeOf(F);
+  const tol = sizeOf(body) * 1e-7;
+  const ns = neighbours(body, F);
+  return ns.length > 0 && ns.every((g) => {
+    if (g.geomType !== "PLANE") return false;
+    const q = planeOf(g);
+    return Math.abs(Math.abs(dot(q.normal, p.normal)) - 1) < 1e-9 && Math.abs(dot(sub(q.origin, p.origin), p.normal)) < tol;
+  });
+}
+
 /** Faces sharing an edge with F. */
 function neighbours(body: Shape3D, F: Face): Face[] {
   const edges = F.edges;
