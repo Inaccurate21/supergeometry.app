@@ -6973,3 +6973,174 @@ html[data-screen="phone"] .sn-sheet.sn-all {
 .sn-word.off:hover {
   background: rgba(255, 255, 255, 0.05);
 }
+
+/* What the sentence is about: a tag over the start of the line. */
+.sn-tag {
+  align-self: flex-start;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  max-width: 100%;
+  margin: 0 0 -2px 8px;
+  padding: 3px 4px;
+  background: rgba(30, 32, 37, 0.96);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 12px;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.35);
+  overflow: hidden;
+}
+.sn-tag[hidden] {
+  display: none;
+}
+.sn-tag .sn-word {
+  min-height: 30px;
+  padding-top: 2px;
+  padding-bottom: 2px;
+}
+.sn-tag .sn-word.sn-subject.quiet {
+  padding-left: 8px;
+  padding-right: 8px;
+}
+.sn-tag .sn-word + .sn-word.quiet::before {
+  content: "\203a";
+  position: absolute;
+  left: -3px;
+  color: var(--muted);
+  font-weight: 400;
+}
+/* Groups closed up to fit the line: a small picture over a small name each, sharing it evenly. */
+.sn-compact .sn-row {
+  gap: 0;
+  padding: 3px 3px;
+  overflow: hidden;
+  -webkit-mask-image: none;
+  mask-image: none;
+}
+.sn-compact .sn-row::after {
+  display: none;
+}
+.sn-compact .sn-row .sn-word {
+  flex: 1 1 0;
+  min-width: 0;
+  align-items: center;
+  padding: 4px 1px 3px;
+  min-height: 48px;
+  background: none;
+}
+.sn-compact .sn-row .sn-word:hover {
+  background: rgba(255, 255, 255, 0.08);
+}
+.sn-compact .sn-row .sn-body {
+  flex-direction: column;
+  gap: 2px;
+  max-width: 100%;
+}
+.sn-compact .sn-row .sn-icon,
+.sn-compact .sn-row .sn-icon svg {
+  width: 20px;
+  height: 20px;
+}
+.sn-compact .sn-row .sn-text {
+  font-size: 9.5px;
+  letter-spacing: -0.1px;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: clip;
+}
+.sn-compact .sn-row .sn-more,
+.sn-compact .sn-row .sn-kbd {
+  display: none;
+}
+.sn-compact .sn-end {
+  padding: 4px 4px 4px 0;
+}
+.sn-compact .sn-end-btn.sn-all,
+.sn-compact .sn-end-btn.sn-exit {
+  flex-direction: column;
+  gap: 2px;
+  height: 48px;
+  min-width: 44px;
+  padding: 3px 4px 2px;
+  background: none;
+}
+.sn-compact .sn-end-btn .sn-end-name {
+  font-size: 9.5px;
+}
+.sn-compact .sn-end-btn.sn-all.on {
+  background: var(--accent-soft);
+}
+/* A headset: bigger targets everywhere (aiming a controller is less exact than a finger). */
+body.headset .sn-word {
+  min-height: 52px;
+  font-size: 16px;
+  padding-left: 14px;
+  padding-right: 14px;
+}
+body.headset .sn-end-btn {
+  min-width: 54px;
+  height: 52px;
+}
+body.headset .sn-compact .sn-row .sn-word {
+  min-height: 60px;
+}
+body.headset .sn-compact .sn-row .sn-text,
+body.headset .sn-compact .sn-end-btn .sn-end-name {
+  font-size: 12px;
+}
+
+/* A phone held upright: the tag at the line's far end, on the row undo has (no row of its own). */
+@media (max-width: 720px) and (orientation: portrait) {
+  html[data-screen="phone"] .sn-tag {
+    align-self: flex-end;
+    margin: 0 8px -2px 0;
+    max-width: calc(100% - 122px);
+  }
+}
+
+/* Fingers: the words in a sheet a little taller. */
+@media (pointer: coarse) {
+  .sn-sheet .sn-word {
+    min-height: 42px;
+  }
+  .sn-group-words {
+    gap: 7px;
+  }
+}
+
+@media (pointer: coarse) {
+  .sn-tag .sn-word {
+    min-height: 36px;
+  }
+}
+html[data-screen="phone"] .sn-tag .sn-word {
+  min-height: 36px;
+}
+
+/* (Closed up because they did not fit: the line then takes all the room there is, so each is as wide as can be.) */
+#sentence:has(.sn-compact) {
+  width: auto;
+}
+
+.sn-compact.sn-roomy .sn-row .sn-text,
+.sn-compact.sn-roomy .sn-end-btn .sn-end-name {
+  font-size: 12px;
+  letter-spacing: 0;
+}
+.sn-compact.sn-roomy .sn-row .sn-icon,
+.sn-compact.sn-roomy .sn-row .sn-icon svg {
+  width: 22px;
+  height: 22px;
+}
+.sn-compact.sn-roomy .sn-row .sn-word {
+  min-height: 52px;
+}
+.sn-compact.sn-roomy .sn-end-btn.sn-all,
+.sn-compact.sn-roomy .sn-end-btn.sn-exit {
+  height: 52px;
+  min-width: 56px;
+}
+body.headset .sn-compact .sn-end-btn.sn-all,
+body.headset .sn-compact .sn-end-btn.sn-exit {
+  height: 60px;
+  min-width: 64px;
+}

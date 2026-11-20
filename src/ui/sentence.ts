@@ -87,6 +87,10 @@ interface Built {
   cancel?: { label: string; run: () => void };
   /** A sketch's way out (its own tick: the sentence there is the whole drawing). */
   exit?: { label: string; run: () => void; pulse?: boolean };
+  /** After the subject, in its tag: what of it is being worked on (a sketch's picked line, its drawing tool). */
+  title?: Word;
+  /** The line holds groups, each in its place (not a tool's options): when they do not all fit, they close up to fit - a row of small buttons, never slid. */
+  grouped?: boolean;
   /** Whose sentence it is: a new subject brings every word in afresh. */
   about: string;
   /** Tools this pick has no use for, each with what it needs instead (said under everything it does offer). */
@@ -141,6 +145,8 @@ const SK_GROUPS: { id: string; label: string; icon: IconName; tools: string[] }[
 export class Sentence {
   private readonly root = el("div", "");
   private readonly sheet = el("div", "sn-sheet");
+  /** What the sentence is about (the pick, the tool at work): a tag over the line's start, so the line itself keeps all its room for what is offered. */
+  private readonly tag = el("div", "sn-tag");
   private readonly line = el("div", "sn-line");
   private readonly row = el("div", "sn-row");
   private readonly end = el("div", "sn-end");
@@ -185,7 +191,7 @@ export class Sentence {
       },
       { passive: false },
     );
-    this.root.append(this.sheet, this.line);
+    this.root.append(this.sheet, this.tag, this.line);
     this.sheet.hidden = true;
     this.thread.id = "sentence-thread";
     this.thread.setAttribute("aria-hidden", "true");
@@ -224,7 +230,9 @@ export class Sentence {
     ui.onPanel = () => (panel?.(), this.changed());
     settings.onChange(() => this.sync());
     // (How tall the line is now - a tool's sentence can run to a second line: undo and the guide text on a phone sit just over it.)
-    new ResizeObserver(() => document.body.style.setProperty("--sn-line", `${Math.round(this.line.getBoundingClientRect().height)}px`)).observe(this.line);
+    const tall = new ResizeObserver(() => this.measure());
+    tall.observe(this.line);
+    tall.observe(this.tag);
     host.view.frameHooks.add(() => this.drawThread());
     // (The line slid along: the thread still starts at its subject, or at the line's near end once that is out of sight.)
     this.row.addEventListener("scroll", () => ((this.threadSig = ""), this.drawThread(), this.edges()), { passive: true });
@@ -234,6 +242,7 @@ export class Sentence {
     // (And the kind of screen: a phone's line is laid out by the stylesheet.)
     new MutationObserver(() => this.place()).observe(document.documentElement, { attributes: true, attributeFilter: ["data-screen"] });
     addEventListener("resize", () => {
+      this.changed();
       this.place();
       this.viewAt = null;
       if (this.on) ((this.threadSig = ""), this.drawThread());
@@ -269,14 +278,24 @@ export class Sentence {
    * over either. (A phone's line has the whole bottom edge: the stylesheet's.)
    */
   private placed = "";
+  /** How wide the line was with its groups at full size, when it last did not fit. */
+  private natural = 0;
   private place(): void {
     if (!this.on) return;
     let to = "";
-    if (document.documentElement.dataset.screen !== "phone") {
+    // (A phone held upright: the stylesheet's - the whole bottom edge.)
+    const upright = document.documentElement.dataset.screen === "phone" && matchMedia("(max-width: 720px) and (orientation: portrait)").matches;
+    if (!upright) {
       const dock = document.getElementById("undo-dock")?.getBoundingClientRect();
       const hist = document.body.classList.contains("history-open") ? document.getElementById("history")?.getBoundingClientRect() : undefined;
+      // (The right column, where it comes down as far as the line - a phone on its side.)
+      const col = document.getElementById("right-col")?.getBoundingClientRect();
+      const low = col && col.width && col.bottom > innerHeight - (this.line.offsetHeight + (this.tag.hidden ? 0 : this.tag.offsetHeight) + 18) ? innerWidth - col.left + 8 : 0;
       const left = Math.round((dock && dock.width ? dock.right : 0) + 10);
-      const right = Math.round(hist && hist.width && hist.left > innerWidth / 2 ? innerWidth - hist.left + 10 : left > 140 ? 12 : left);
+      let right = Math.round(Math.max(low, hist && hist.width && hist.left > innerWidth / 2 ? innerWidth - hist.left + 10 : left > 140 || low ? 12 : left));
+      // (Items and History both open on a small screen leave no room to speak of: the line then runs over History's last
+      // rows rather than shrink to buttons too small for a finger.)
+      if (innerWidth - left - right < 400) right = Math.max(low, 12);
       to = `${left}|${right}|${innerWidth}`;
     }
     if (to === this.placed) return;
@@ -403,7 +422,7 @@ export class Sentence {
     // (On the line from More to Create - the wheel's order the other way round, as asked for.)
     words.reverse();
     groups.reverse();
-    return { subject, words, groups, others, about: sel.length ? `pick:${sel.map((x) => JSON.stringify(x)).join()}` : "make" };
+    return { subject, words, groups, others, grouped: true, about: sel.length ? `pick:${sel.map((x) => JSON.stringify(x)).join()}` : "make" };
   }
 
   /** A sketch: what draws something new - and, with curves picked, what can be done with them. */
@@ -414,6 +433,7 @@ export class Sentence {
     const select = items.find((it) => it.id === "select");
     const tools = items.filter((it) => it !== exit && it !== select);
     const drawing = tools.some((it) => it.active);
+    const at = tools.find((it) => it.active);
     const forPick = tools.filter((it) => SK_PICKED.has(it.id));
     const retapped = (it: ToolItem): Word => {
       const w = this.verb(it);
@@ -434,7 +454,7 @@ export class Sentence {
     // A tool is on: Select puts it down (the way back to picking).
     if (drawing && select && !select.active) words.push({ ...this.verb(select), label: "Stop" });
     const mine = panel ? this.said(panel) : [];
-    if (panel && mine.length) words.push({ key: "t-title", kind: "subject", label: panel.title, quiet: true }, ...mine);
+    words.push(...mine);
     // (Said once: the window's own Delete, not the column's too.)
     const said = new Set(mine.map((w) => w.label));
     const busy = forPick.find((it) => it.active);
@@ -458,10 +478,8 @@ export class Sentence {
       if (del && offered(del)) words.push(this.verb(del));
       if (del) placed.add(del);
       const rest = [...tools.filter((it) => !placed.has(it) && offered(it)), ...usable(bar).filter(notSep)].map((it) => this.verb(it));
-      if (rest.length) {
-        words.push(this.group("more", "More", "more", rest, ""));
-        groups.push({ cap: "More", words: rest });
-      }
+      // (Not a word on the line: the button at its end is where More is.)
+      if (rest.length) groups.push({ cap: "More", words: rest });
     }
     return {
       subject: { key: "s-sketch", kind: "subject", label: "Sketch", icon: "sketch", quiet: true },
@@ -470,6 +488,9 @@ export class Sentence {
       done: panel?.done ? { label: "Done", run: panel.done } : undefined,
       cancel: panel?.cancel ? { label: "Cancel", run: panel.cancel } : undefined,
       exit: exit?.run ? { label: "Exit Sketch", run: () => exit.run!(), pulse: exit.pulse } : undefined,
+      // (What of the sketch is being worked on: the curves picked, else the tool that is on - "Sketch > Line".)
+      title: panel && mine.length ? { key: "t-title", kind: "subject", label: panel.title, quiet: true, on: true } : at ? { key: "t-title", kind: "subject", label: at.label, quiet: true, on: true } : undefined,
+      grouped: !busy && !mine.length,
       about: `sketch:${picked > 0 ? "picked" : drawing ? "draw" : "idle"}`,
     };
   }
@@ -558,16 +579,21 @@ export class Sentence {
       this.open = null;
     }
     // (Nothing picked: no subject - the groups say it all.)
-    this.fill(this.row, [...lead, ...(b.subject.key === "s-make" ? [] : [b.subject]), ...b.words], fresh);
-    this.row.classList.toggle("sn-make", b.subject.key === "s-make");
+    const about = [...lead, ...(b.subject.key === "s-make" ? [] : [b.subject]), ...(b.title ? [b.title] : [])];
+    this.fill(this.tag, about, fresh);
+    this.tag.hidden = !about.length;
+    this.fill(this.row, b.words, fresh);
+    this.row.classList.toggle("sn-groups", !!b.grouped);
     // (A tool's sentence is read whole: it runs on to the next line, as writing does. What a pick offers is one line to slide along.)
-    this.row.classList.toggle("sn-wrap", b.about.startsWith("tool:"));
+    // (Not on a screen too low for it - a phone on its side: there it is one line to slide along too.)
+    this.row.classList.toggle("sn-wrap", b.about.startsWith("tool:") && innerHeight > 480);
     if (fresh) this.row.scrollLeft = 0;
     // The end of the line: everything for this pick, the eraser, the tick.
     this.end.replaceChildren();
     if (b.groups.length) {
       const all = this.endButton("grid", "More: everything for this", () => this.toggle({ kind: "all" }));
       all.classList.add("sn-all");
+      all.append(el("span", "sn-end-name", "More"));
       all.classList.toggle("on", this.open?.kind === "all");
       this.end.append(all);
     }
@@ -593,12 +619,42 @@ export class Sentence {
     this.drawThread(fresh);
     // (A blank to fill: it is brought into sight.)
     const blank = this.row.querySelector<HTMLElement>(".sn-word.blank");
+    if (fresh) this.line.classList.remove("sn-compact");
+    this.edges();
+    this.measure();
     if (blank) this.reveal(blank);
+  }
+
+  /** How tall the line and its tag are now, for what sits over them on a phone (set only when it changed). */
+  private tall = "";
+  private measure(): void {
+    // (A phone held upright has the tag at the line's far end, beside undo: only the line's own height counts there.)
+    const beside = document.documentElement.dataset.screen === "phone" && matchMedia("(max-width: 720px) and (orientation: portrait)").matches;
+    const tag = this.tag.hidden || beside ? 0 : this.tag.offsetHeight;
+    const h = `${this.line.offsetHeight + (tag ? tag + 6 : 0)}px`;
+    if (h === this.tall) return;
+    this.tall = h;
+    document.body.style.setProperty("--sn-line", h);
   }
 
   /** Is there more of the line out of sight, either way? Its end buttons show only then. */
   private edges(): void {
     const r = this.row;
+    // Groups that do not all fit close up (a small picture over a small name each, sharing the line evenly) - and open
+    // out again once there is room for them as they were.
+    if (!r.classList.contains("sn-groups")) this.line.classList.remove("sn-compact");
+    else if (!this.line.classList.contains("sn-compact")) {
+      if (r.scrollWidth > r.clientWidth + 1) {
+        this.natural = r.scrollWidth + this.end.offsetWidth + 24;
+        this.line.classList.add("sn-compact");
+      }
+    } else {
+      const room = document.documentElement.dataset.screen === "phone" ? this.root.clientWidth : parseFloat(this.root.style.maxWidth) || this.root.clientWidth;
+      if (room >= this.natural + 8) this.line.classList.remove("sn-compact");
+    }
+    // (Closed up with room to spare for each - a tablet, a phone on its side: bigger names than on a phone held upright.)
+    const n = r.childElementCount;
+    this.line.classList.toggle("sn-roomy", this.line.classList.contains("sn-compact") && n > 0 && r.clientWidth / n >= 66);
     const more = !r.classList.contains("sn-wrap") && r.scrollWidth > r.clientWidth + 1;
     // (Both keep their room while there is more either way: one coming or going must not change how much fits.)
     this.line.classList.toggle("sn-more", more);
@@ -932,7 +988,7 @@ export class Sentence {
   private drawThread(fresh = false): void {
     if (!this.on) return;
     const a = this.anchor;
-    const subject = a && this.row.firstElementChild;
+    const subject = a && this.tag.querySelector('[data-key="s-pick"]');
     const s = a && this.host.view.toScreen(a);
     if (!a || !subject || !s) {
       if (this.threadSig !== "off") {
@@ -981,7 +1037,9 @@ export class Sentence {
     return {
       on: this.on,
       about: b?.about,
+      tag: words(this.tag),
       line: words(this.row),
+      compact: this.line.classList.contains("sn-compact"),
       end: Array.from(this.end.children).map((d) => ({ label: (d as HTMLElement).title, ...at(d) })),
       open: this.open?.kind ?? null,
       sheet: this.sheet.hidden ? [] : Array.from(this.sheet.querySelectorAll<HTMLElement>(".sn-group")).map((g) => ({ cap: g.dataset.cap, words: words(g) })),

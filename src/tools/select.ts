@@ -560,9 +560,16 @@ export class SelectTool implements Tool {
               : this.app.store.features.length
                 ? "Tap the model to pick part of it, or an empty spot for the tool wheel."
                 : "Tap an empty spot for the tool wheel, then Sketch: draw a shape and pull it into 3D."
-            : this.app.store.features.length
-              ? "Pick a tool, or tap the model to select part of it."
-              : "Tap Sketch to start: draw a shape, then pull it into 3D."
+            : document.body.classList.contains("sentence-ui")
+              ? // (The sentence bar: the pick comes first, the line then says what it offers.)
+                this.app.firstShape()
+                ? "Your shape is ready: tap it, then drag its arrow up."
+                : this.app.store.features.length
+                  ? "Tap part of the model. The line at the bottom then shows what you can do with it."
+                  : "Tap Sketch to start: draw a shape, then pull it into 3D."
+              : this.app.store.features.length
+                ? "Pick a tool, or tap the model to select part of it."
+                : "Tap Sketch to start: draw a shape, then pull it into 3D."
           : // (The tool wheel on, up at the pointer and closed: no column to turn to - how to bring it up for what's picked.)
             this.armedHint() + (this.app.wheel.on && !this.app.wheel.kept ? (isTouchDevice ? " Press and hold for the tool wheel." : " Press Q for the tool wheel.") : ""),
     );
