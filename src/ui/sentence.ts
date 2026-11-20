@@ -968,6 +968,7 @@ export class Sentence {
       if (!w?.value) return void this.close();
       this.sheet.hidden = false;
       this.sheet.className = "sn-sheet sn-typing";
+      this.sheet.style.marginLeft = "";
       return this.type(w);
     }
     const blocks: { cap: string; words: Word[] }[] = [];
@@ -1020,8 +1021,12 @@ export class Sentence {
       if (d) {
         const r = d.getBoundingClientRect();
         this.sheet.style.setProperty("--sn-at", `${Math.round(Math.min(lr.width - 20, Math.max(20, r.left + r.width / 2 - lr.left)))}px`);
+        // Right over its word: its middle on the word's middle, as far as the line's ends allow. (By its own width as
+        // drawn - the stylesheet's guess at it left a wide list off to one side. A phone held upright: the stylesheet's.)
+        const w = this.sheet.offsetWidth;
+        this.sheet.style.marginLeft = getComputedStyle(this.sheet).alignSelf === "stretch" ? "" : `${Math.round(Math.max(0, Math.min(lr.width - w, r.left + r.width / 2 - lr.left - w / 2)))}px`;
       }
-    }
+    } else this.sheet.style.marginLeft = "";
     this.lift();
   }
 

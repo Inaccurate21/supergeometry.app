@@ -7292,14 +7292,8 @@ body.headset .sn-compact .sn-end-btn.sn-exit {
   }
   html[data-screen="phone"] .sn-sheet:not(.sn-typing) .sn-group-words {
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
-    gap: 6px;
-  }
-  html[data-screen="phone"] .sn-sheet:not(.sn-typing) .sn-group-words .sn-word {
-    min-height: 46px;
-    justify-content: flex-start;
-    background: rgba(255, 255, 255, 0.05);
-    border-radius: 10px;
+    grid-template-columns: repeat(auto-fill, minmax(100px, 1fr));
+    gap: 7px;
   }
   html[data-screen="phone"] .sn-sheet .sn-group-cap {
     margin-bottom: 8px;
@@ -7312,4 +7306,63 @@ html[data-screen="phone"] body.sn-open #hint {
 }
 body.sn-crowd #right-col {
   visibility: hidden;
+}
+
+/* A phone: a list's tools are buttons a finger finds - a big picture over its name, both in the middle of the cell
+   (they were a small picture and small text at the cell's left edge). A long name runs to a second line. */
+html[data-screen="phone"] .sn-sheet:not(.sn-typing) .sn-group-words .sn-word {
+  align-items: center;
+  justify-content: center;
+  min-height: 74px;
+  padding: 9px 6px 8px;
+  font-size: 14.5px;
+  line-height: 1.2;
+  white-space: normal;
+  text-align: center;
+  background: rgba(255, 255, 255, 0.06);
+  border-radius: 12px;
+}
+html[data-screen="phone"] .sn-sheet:not(.sn-typing) .sn-group-words .sn-word .sn-body {
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  width: 100%;
+}
+html[data-screen="phone"] .sn-sheet:not(.sn-typing) .sn-group-words .sn-word .sn-icon,
+html[data-screen="phone"] .sn-sheet:not(.sn-typing) .sn-group-words .sn-word .sn-icon svg {
+  width: 28px;
+  height: 28px;
+}
+html[data-screen="phone"] .sn-sheet:not(.sn-typing) .sn-group-words .sn-word .sn-icon {
+  opacity: 1;
+}
+html[data-screen="phone"] .sn-sheet:not(.sn-typing) .sn-group-words .sn-word .sn-text {
+  max-width: 100%;
+  overflow-wrap: anywhere;
+}
+/* (Its "there is more under this" mark: in the cell's corner, out of the name's way.) */
+html[data-screen="phone"] .sn-sheet:not(.sn-typing) .sn-group-words .sn-word .sn-more {
+  position: absolute;
+  top: 6px;
+  right: 8px;
+  font-size: 12px;
+}
+/* (A choice with no picture - Center, 2 Points: just its name, a little lower.) */
+html[data-screen="phone"] .sn-sheet:not(.sn-typing) .sn-group-words .sn-word:not(:has(.sn-icon)):not(:has(.sn-swatch)) {
+  min-height: 54px;
+  font-size: 15px;
+}
+html[data-screen="phone"] .sn-sheet .sn-group-cap {
+  font-size: 11.5px;
+}
+/* (A phone on its side: the list is a card over its word - its cells as wide as a finger.) */
+@media (orientation: landscape) {
+  html[data-screen="phone"] .sn-sheet:not(.sn-typing) .sn-group-words .sn-word {
+    min-width: 88px;
+    min-height: 66px;
+  }
+  html[data-screen="phone"] .sn-sheet.sn-kids {
+    max-width: min(100%, 520px);
+  }
 }
