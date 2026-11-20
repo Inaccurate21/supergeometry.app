@@ -7227,3 +7227,25 @@ body.headset .sn-compact .sn-end-btn.sn-exit {
   color: var(--muted);
   font-size: 12.5px;
 }
+
+/* Settings (the right column's gear): a row for each thing, saying how it is set now. */
+.pop-row.pop-nav {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  text-align: left;
+}
+.pop-row.pop-nav .pop-value {
+  margin-left: auto;
+  color: var(--muted);
+  font-size: 12.5px;
+  white-space: nowrap;
+}
+.pop-row.pop-nav .pop-chev {
+  color: var(--muted);
+}
+.pop-row.pop-back {
+  color: var(--muted);
+  font-weight: 600;
+  text-align: left;
+}

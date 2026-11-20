@@ -413,6 +413,7 @@ export class App implements AppContext {
     file("3MF", "For 3D printing (keeps sizes and colours)", () => void this.export3mf());
     file("STL", "For 3D printing (every slicer opens it)", () => void this.export("stl"));
     file("STEP", "For other CAD programs", () => void this.export("step"));
+    file("Picture", "A PNG of the view as it is now", () => this.ui.runRight("shot"));
     box.append(head, check, row);
     back.append(box);
     back.addEventListener("pointerdown", (e) => e.target === back && close());
@@ -1424,7 +1425,7 @@ export class App implements AppContext {
             run: () => this.isolate(bodiesOf(this.selection)),
           },
       // The way out with what was made: is it fit to print, and the files to take it away as.
-      { id: "printShare", label: "Print / Share", icon: "share", disabled: !this.view.bodyList.length, why: "Nothing solid to print yet", run: () => void this.printShare() },
+      { id: "printShare", label: "Print / Share", icon: "share", run: () => void this.printShare() },
     ];
   }
 

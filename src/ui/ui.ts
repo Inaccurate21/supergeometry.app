@@ -502,6 +502,11 @@ export class UI {
   private rightEntries = new Map<string, { open: (host: HTMLElement) => void; label?: () => string }>();
   private popAway: (() => void) | null = null;
 
+  /** One of the right column's actions run by id (Screenshot, from Print / Share). */
+  runRight(id: string): void {
+    this.rightEntries.get(id)?.open(el("div", ""));
+  }
+
   /** What a right-column button says under its icon now (the unit, the shader). */
   rightLabel(id: string): string | undefined {
     return this.rightEntries.get(id)?.label?.();

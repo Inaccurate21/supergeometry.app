@@ -1,4 +1,9 @@
-// Right column popovers: snapping, units & grid, views, display modes, screenshot, history.
+// The right column: what is used while modelling - Fit, Display - and one
+// Settings button for what is set now and then (units & grid, snapping, the
+// number pad, appearance), each row there showing how it is set now. Views
+// are on the view cube; Screenshot is in Print / Share; History has its own
+// button at the top. (Their lists are still kept by id: other parts of the
+// app open them.)
 
 import type { SavedView, Units, Vec3 } from "../doc/types";
 import type { DocStore } from "../doc/store";
@@ -11,7 +16,11 @@ import { textField } from "./textField";
 
 export function setupRightColumn(ui: UI, view: Viewport, store: DocStore, onUnits: (u: Units) => void, isolatedNames: () => string[] = () => []): void {
   ui.addRight("fit", "fit", "Zoom to fit (F)", () => view.fitAll(), () => "Fit");
-  ui.addRight("snap", "magnet", "Snapping", (host) => {
+  // (Kept by id, with no button in the column: opened from Settings.)
+  const stash = { host: el("div", ""), className: "right-btn" };
+  const lists: Record<string, (host: HTMLElement) => void> = {};
+  const kept = (id: string, open: (host: HTMLElement) => void) => (lists[id] = open);
+  ui.addRight("snap", "magnet", "Snapping", kept("snap", (host) => {
     const s = settings.value;
     host.append(heading("Snap to"));
     const snapRow = (key: keyof Settings["snap"], label: string) =>
@@ -20,13 +29,13 @@ export function setupRightColumn(ui: UI, view: Viewport, store: DocStore, onUnit
     host.append(heading("Show"));
     host.append(toggleRow("Guide points", s.showGuidePoints, (v) => settings.set("showGuidePoints", v)), toggleRow("Snapping hints", s.showSnapHints, (v) => settings.set("showSnapHints", v)));
     host.append(el("div", "pop-note", "Hold Shift while drawing to place a point without snapping."));
-  });
+  }), undefined, stash);
 
   ui.addRight(
     "units",
     "ruler",
     "Units & grid",
-    (host) => {
+    kept("units", (host) => {
       host.append(heading("Units"));
       const list: [Units, string][] = [
         ["mm", "Millimeter"],
@@ -52,13 +61,14 @@ export function setupRightColumn(ui: UI, view: Viewport, store: DocStore, onUnit
       host.append(stepRow);
       host.append(el("div", "pop-note", `Tip: the grid adapts to zoom (now ${fmtStep(view.grid.step)} per square).`));
       host.append(heading("Degree format"));
-      host.append(choiceRow("Decimal (27.15°)", s.degrees === "decimal", () => settings.set("degrees", "decimal")), choiceRow("Fractional (27° 15′)", s.degrees === "fractional", () => settings.set("degrees", "fractional")));
-    },
+      host.append(choiceRow("Decimal (27.15°)", s.degrees === "decimal", () => (settings.set("degrees", "decimal"), ui.refreshPopover())), choiceRow("Fractional (27° 15′)", s.degrees === "fractional", () => (settings.set("degrees", "fractional"), ui.refreshPopover())));
+    }),
     () => UNIT_LABEL[units()],
+    stash,
   );
 
   // Appearance (camera, projection, grid, axes): back in the right-hand column.
-  ui.addRight("appearance", "eye", "Appearance", (host) => {
+  ui.addRight("appearance", "eye", "Appearance", kept("appearance", (host) => {
     const s = settings.value;
     host.append(
       heading("Appearance"),
@@ -67,7 +77,7 @@ export function setupRightColumn(ui: UI, view: Viewport, store: DocStore, onUnit
       toggleRow("Show grid", s.showGrid, (v) => settings.set("showGrid", v)),
       toggleRow("Show world axes", s.showAxes, (v) => settings.set("showAxes", v)),
     );
-  });
+  }), undefined, stash);
 
   // Views (standard and saved): the button at the view cube's bottom right.
   const cube = document.getElementById("viewcube")!;
@@ -143,17 +153,52 @@ export function setupRightColumn(ui: UI, view: Viewport, store: DocStore, onUnit
       setTimeout(() => URL.revokeObjectURL(a.href), 5000);
       ui.toast("Screenshot saved");
     });
-  });
+  }, undefined, stash);
 
   // On-screen numpad: one tap on, one tap off (lit while on).
   const pad = ui.addRight("numpad", "numpad", "On-screen numpad for typing values (tap to switch on / off)", () => {
     settings.set("numpad", !settings.value.numpad);
     ui.toast(settings.value.numpad ? "On-screen numpad on" : "On-screen numpad off");
-  }, () => "NumPad");
+  }, () => "NumPad", stash);
   const markPad = () => pad.classList.toggle("on", settings.value.numpad);
   settings.onChange(() => (markPad(), ui.refreshRight()));
   markPad();
-  ui.addRight("history", "history", "History", () => ui.toggleHistory());
+  ui.addRight("history", "history", "History", () => ui.toggleHistory(), undefined, stash);
+
+  // Settings: one row for each thing set now and then, saying how it is set; a tap opens its list (and back).
+  let page: "units" | "snap" | "appearance" | null = null;
+  const gear = ui.addRight(
+    "settings",
+    "settings",
+    "Settings",
+    (host) => {
+      const s = settings.value;
+      if (page) {
+        const back = el("button", "pop-row pop-back", "‹  Settings");
+        back.addEventListener("click", () => ((page = null), ui.refreshPopover()));
+        host.append(back);
+        lists[page](host);
+        return;
+      }
+      const nav = (label: string, now: string, to: NonNullable<typeof page>) => {
+        const row = el("button", "pop-row pop-nav");
+        row.append(el("span", "", label), el("span", "pop-value", now), el("span", "pop-chev", "›"));
+        row.addEventListener("click", () => ((page = to), ui.refreshPopover()));
+        return row;
+      };
+      const snaps = Object.values(s.snap).filter(Boolean).length;
+      host.append(
+        heading("Settings"),
+        nav("Units & grid", `${UNIT_LABEL[units()]}${s.gridLocked ? ` · grid ${s.gridStep} mm` : ""}`, "units"),
+        nav("Snapping", snaps ? `${snaps} of ${Object.keys(s.snap).length} on` : "Off", "snap"),
+        toggleRow("Number pad on screen", s.numpad, (v) => settings.set("numpad", v)),
+        nav("Appearance", `${s.ortho ? "Orthographic" : "Perspective"}${s.showGrid ? "" : " · no grid"}`, "appearance"),
+      );
+    },
+    () => UNIT_LABEL[units()],
+  );
+  // (Opened afresh: its first page.)
+  gear.addEventListener("pointerdown", () => (page = null));
   // Sketch mode only (CSS shows it under body.sketching): show/hide the constraint column.
   const cons = ui.addRight("constraints", "constraints", "Constraints (sketch)", () => settings.set("showConstraints", !settings.value.showConstraints));
   cons.classList.add("sketch-only");
