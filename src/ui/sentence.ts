@@ -42,6 +42,12 @@ export interface SentenceHost {
   mode(): "model" | "sketch" | "freeform" | "tool";
   /** In a sketch: how many curves and points are picked. */
   sketchPicked(): number;
+  /** What is likely next for the step just made (nothing picked): a few things to tap, and letting them go. */
+  next(): ToolItem[];
+  dropNext(): void;
+  /** Each tap adds to the pick (else a tap picks that thing alone), and switching that. */
+  adding(): boolean;
+  setAdding(on: boolean): void;
   /** A tool started with nothing picked that is waiting for its pick (its name), and letting it go. */
   waiting(): string | null;
   stopWaiting(): void;
@@ -94,6 +100,10 @@ interface Built {
   exit?: { label: string; run: () => void; pulse?: boolean };
   /** After the subject, in its tag: what of it is being worked on (a sketch's picked line, its drawing tool). */
   title?: Word;
+  /** After the subject, in its tag: the + that makes each tap add to the pick. */
+  more?: Word;
+  /** Nothing picked, a step just made: "Next" and what is likely next for it, in the tag. */
+  next?: Word[];
   /** The line holds groups, each in its place (not a tool's options): when they do not all fit, they close up to fit - a row of small buttons, never slid. */
   grouped?: boolean;
   /** Whose sentence it is: a new subject brings every word in afresh. */
@@ -409,7 +419,11 @@ export class Sentence {
     // (On the line from More to Create - the wheel's order the other way round, as asked for.)
     words.reverse();
     groups.reverse();
-    return { subject, words, groups, others, grouped: true, about: sel.length ? `pick:${sel.map((x) => JSON.stringify(x)).join()}` : subject.key === "s-wait" ? `wait:${subject.label}` : "make" };
+    // A step just made, nothing picked: what is likely next for it, over the line.
+    const likely = sel.length || subject.key === "s-wait" ? [] : this.host.next();
+    const next: Word[] | undefined = likely.length ? [{ key: "s-next", kind: "subject", label: "Next", lets: true, run: () => this.host.dropNext() }, ...likely.map((it) => this.verb(it, "n"))] : undefined;
+    const plus: Word | undefined = sel.length ? { key: "s-add", kind: "button", label: "+", on: this.host.adding(), run: () => this.host.setAdding(!this.host.adding()) } : undefined;
+    return { subject, words, groups, others, more: plus, next, grouped: true, about: sel.length ? `pick:${sel.map((x) => JSON.stringify(x)).join()}` : subject.key === "s-wait" ? `wait:${subject.label}` : "make" };
   }
 
   /** A sketch: what draws something new - and, with curves picked, what can be done with them. */
@@ -563,7 +577,7 @@ export class Sentence {
       this.open = null;
     }
     // (Nothing picked: no subject - the groups say it all.)
-    const about = [...lead, ...(b.subject.key === "s-make" ? [] : [b.subject]), ...(b.title ? [b.title] : [])];
+    const about = [...lead, ...(b.subject.key === "s-make" ? [] : [b.subject]), ...(b.more ? [b.more] : []), ...(b.title ? [b.title] : []), ...(b.next ?? [])];
     this.fill(this.tag, about, fresh);
     this.tag.hidden = !about.length;
     this.fill(this.row, b.words, fresh);
@@ -765,7 +779,7 @@ export class Sentence {
     if (w.lets) body.append(el("span", "sn-x", "×"));
     if (w.kbd && matchMedia("(hover: hover) and (pointer: fine)").matches) body.append(el("kbd", "sn-kbd", w.kbd));
     d.append(body);
-    d.title = w.lets ? "Let go of it" : w.value ? `${w.cap ?? w.label}: tap to type, drag sideways to change` : (w.cap ?? "");
+    d.title = w.key === "s-add" ? "Pick more: each tap adds to the pick" : w.lets ? "Let go of it" : w.value ? `${w.cap ?? w.label}: tap to type, drag sideways to change` : (w.cap ?? "");
   }
 
   /** A word tapped: it opens what it holds, takes a number, or does what it says. */

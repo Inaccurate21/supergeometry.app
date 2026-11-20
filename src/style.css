@@ -7144,3 +7144,86 @@ body.headset .sn-compact .sn-end-btn.sn-exit {
   height: 60px;
   min-width: 64px;
 }
+
+/* The + beside the pick's name: on, each tap adds to the pick. */
+.sn-tag .sn-word[data-key="s-add"] {
+  min-width: 34px;
+  align-items: center;
+  font-size: 17px;
+  font-weight: 600;
+  padding-left: 9px;
+  padding-right: 9px;
+}
+.sn-tag .sn-word[data-key="s-add"]::before {
+  display: none;
+}
+
+/* "Next": what is likely next for the step just made, in the tag over the line. */
+.sn-tag {
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+.sn-tag::-webkit-scrollbar {
+  display: none;
+}
+.sn-tag .sn-word[data-key="s-next"] {
+  background: none;
+  color: var(--muted);
+  font-weight: 600;
+  font-size: 12.5px;
+  padding-left: 8px;
+  padding-right: 4px;
+}
+.sn-tag .sn-word[data-key^="n-next-"] {
+  background: var(--accent-soft);
+  color: #cfe2ff;
+}
+.sn-tag .sn-word[data-key^="n-next-"]::before {
+  display: none;
+}
+/* Print / Share. */
+.dialog.print-share {
+  width: min(420px, calc(100vw - 24px));
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.print-check {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 13.5px;
+  line-height: 1.4;
+}
+.print-ok::before {
+  content: "\2713  ";
+  color: var(--ok);
+}
+.print-warn {
+  color: #ffd08a;
+}
+.print-warn::before {
+  content: "!  ";
+  font-weight: 700;
+}
+.print-files {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.print-file {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  justify-content: flex-start;
+  min-height: 44px;
+  padding: 8px 12px;
+  text-align: left;
+}
+.print-file b {
+  min-width: 46px;
+}
+.print-file span {
+  color: var(--muted);
+  font-size: 12.5px;
+}

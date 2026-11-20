@@ -292,10 +292,13 @@ export class SelectTool implements Tool {
       const b = (s as { body: string }).body;
       this.app.setSelection([...sel.filter((x) => !("body" in x && x.body === b)), s]);
     } else {
-      // Each tap adds to what's picked, whatever it is (a face, then an edge,
-      // then a plane); tapping a picked one again lets it go.
+      // A tap picks that thing and lets the last pick go (a second tap on it lets it go too). To pick several:
+      // Shift or Ctrl held, or the + beside the pick's name - then each tap adds, whatever it is (a face, then an
+      // edge, then a plane), and a tap on a picked one lets that one go.
+      // (Every tap added before: a face, then an edge tapped to pick it instead, made "2 items" with fewer tools.)
       const i = sel.findIndex((x) => sameSel(x, s!));
-      this.app.setSelection(i >= 0 ? sel.filter((_, j) => j !== i) : [...sel, s]);
+      if (p.add || this.adding) this.app.setSelection(i >= 0 ? sel.filter((_, j) => j !== i) : [...sel, s]);
+      else this.app.setSelection(i >= 0 && sel.length === 1 ? [] : [s]);
     }
     // Waiting for a body, and a corner of one was tapped (an STL's faces meet
     // in corners everywhere): that body is the pick.
@@ -531,6 +534,7 @@ export class SelectTool implements Tool {
 
   /** Re-derive tools and handle from the current selection. */
   refresh(): void {
+    if (!this.app.selection.length) this.adding = false;
     this.clearHandle();
     // Whatever an earlier tool left on screen goes too (no ghost arrows or dots).
     this.app.view.clearHelpers([]);
@@ -644,7 +648,7 @@ export class SelectTool implements Tool {
     if (first.kind === "face" && n === 2 && sel[1].kind === "face") return "The distance between the faces is shown. Pick a tool for them.";
     if (first.kind === "edge" && !this.freeformOf(first.body)) return `Drag the dot to round ${n > 1 ? "the edges" : "the edge"}, ${or}.`;
     if (first.kind === "body") return `Drag the arrows or arcs to move it, ${or}.`;
-    return this.quick ? `${cap(tap)} a button beside it, or pick a tool on the line at the bottom.` : `Pick a tool for ${n > 1 ? "them" : "it"}, or ${tap} more to add.`;
+    return this.quick ? `${cap(tap)} a button beside it, or pick a tool on the line at the bottom.` : `Pick a tool for ${n > 1 ? "them" : "it"}, or ${tap} + to pick more.`;
   }
 
   /** Called by the app when a top-level tool needs a selection first. */
@@ -661,6 +665,9 @@ export class SelectTool implements Tool {
     run();
     return true;
   }
+
+  /** Each tap adds to the pick (the + beside its name is on): off again once nothing is picked. */
+  adding = false;
 
   /** The tool started with nothing picked that is waiting for its pick now (the sentence bar says so over the line), and letting it go. */
   get waiting(): string | null {

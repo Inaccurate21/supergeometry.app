@@ -47,7 +47,8 @@ import type { ToolItem } from "./ui/ui";
 import { UI } from "./ui/ui";
 import { Wheel } from "./ui/wheel";
 import { Sentence } from "./ui/sentence";
-import { evaluate, setUnits, setVariables } from "./units";
+import { arrangement, materialRegions } from "./sketch/regions";
+import { evaluate, setUnits, setVariables, fmtLen } from "./units";
 import { InputRouter } from "./view/input";
 import { pickTolerance } from "./device";
 import { ViewCube } from "./view/viewcube";
@@ -80,6 +81,9 @@ export class App implements AppContext {
   readonly settingsWheel = new Wheel({ ui: this.ui, mainTools: () => [] }, "settings");
   /** The sentence bar: the pick, then what it offers, on one line - the way to the tools. */
   sentence!: Sentence;
+  /** The step a tool just added (nothing picked or started since): the sentence bar offers what is likely next for it. */
+  private justMade: string | null = null;
+  private stepsSeen = 0;
   /** Where the view was last tapped (the sentence bar starts a sketch tool that acts where it is tapped right there). */
   private lastTapAt: { x: number; y: number; type: "mouse" | "pen" | "touch" } | null = null;
   /** Pictures to look at while modelling, each in a window over the model (under the buttons). */
@@ -116,6 +120,10 @@ export class App implements AppContext {
       mode: () => (this.tool === this.selectTool ? "model" : this.tool instanceof SketchTool ? "sketch" : this.tool instanceof FreeformTool ? "freeform" : "tool"),
       sketchPicked: () => (this.tool instanceof SketchTool ? this.tool.pickedCount : 0),
       waiting: () => (this.tool === this.selectTool ? this.selectTool.waiting : null),
+      next: () => this.nextSteps(),
+      dropNext: () => ((this.justMade = null), this.sentence.changed()),
+      adding: () => this.selectTool.adding,
+      setAdding: (on) => ((this.selectTool.adding = on), this.sentence.changed()),
       stopWaiting: () => this.selectTool.stopWaiting(),
       anchor: () => this.pickAnchor(),
       retap: () => {
@@ -324,6 +332,122 @@ export class App implements AppContext {
     this.refreshHighlights();
   }
 
+  /**
+   * What is likely next for the step just made, as a few things to tap: its
+   * body's edges rounded, the body hollowed, the model printed or shared.
+   * (None once something is picked or another tool is started.)
+   */
+  private nextSteps(): ToolItem[] {
+    const f = this.justMade ? this.store.features.find((x) => x.id === this.justMade) : undefined;
+    if (!f || this.tool !== this.selectTool || this.selection.length) return [];
+    // (Its body: the one it made, or the one it worked on - named outright, or through the edges and faces it took.)
+    const of = f as unknown as { target?: string; body?: string; bodies?: string[]; edges?: { body?: string }[]; faces?: { body?: string }[]; face?: { body?: string } };
+    const body = [f.id, of.target, of.body, ...(of.bodies ?? []), of.edges?.[0]?.body, of.faces?.[0]?.body, of.face?.body].find((id) => !!id && this.view.bodyList.some((b) => b.id === id));
+    const out: ToolItem[] = [];
+    // (The body picked, then its own tool of that name: what the line would offer for it.)
+    const forBody = (id: string, label: string, icon: ToolItem["icon"]) => {
+      if (!body) return;
+      out.push({
+        id: `next-${id}`,
+        label,
+        icon,
+        run: () => {
+          this.setSelection([{ kind: "body", body }]);
+          const walk = (items: ToolItem[]): ToolItem | undefined => {
+            for (const it of items) {
+              if (it.id === id && !it.disabled && it.run) return it;
+              const k = walk(it.children ?? []);
+              if (k) return k;
+            }
+            return undefined;
+          };
+          walk(this.ui.shown().column)?.run?.();
+        },
+      });
+    };
+    if (f.type !== "fillet" && f.type !== "sketch") forBody("fillet", "Round its edges", "fillet");
+    if (f.type !== "shell" && f.type !== "sketch") forBody("shell", "Hollow it", "shell");
+    if (this.view.bodyList.length) out.push({ id: "next-print", label: "Print / Share", icon: "share", run: () => void this.printShare() });
+    return out;
+  }
+
+  /**
+   * Print / Share: is the model fit to print (each body closed, no hair-thin
+   * faces, one piece), and the files to take it away as. (Export was only in
+   * File, under names a first-timer does not know.)
+   */
+  async printShare(): Promise<void> {
+    const back = document.createElement("div");
+    back.className = "dialog-back";
+    const box = document.createElement("div");
+    box.className = "dialog print-share";
+    const head = document.createElement("div");
+    head.className = "library-head";
+    const title = document.createElement("div");
+    title.className = "panel-title";
+    title.textContent = "Print / Share";
+    const x = document.createElement("button");
+    x.className = "icon-btn library-close";
+    x.title = "Close";
+    x.innerHTML = icons.close;
+    const close = () => back.remove();
+    x.addEventListener("click", close);
+    head.append(title, x);
+    const check = document.createElement("div");
+    check.className = "print-check";
+    check.textContent = "Checking the model…";
+    const row = document.createElement("div");
+    row.className = "print-files";
+    const file = (label: string, note: string, run: () => void) => {
+      const b = document.createElement("button");
+      b.className = "text-btn print-file";
+      b.type = "button";
+      const l = document.createElement("b");
+      l.textContent = label;
+      const n = document.createElement("span");
+      n.textContent = note;
+      b.append(l, n);
+      b.addEventListener("click", () => (close(), run()));
+      row.append(b);
+    };
+    file("3MF", "For 3D printing (keeps sizes and colours)", () => void this.export3mf());
+    file("STL", "For 3D printing (every slicer opens it)", () => void this.export("stl"));
+    file("STEP", "For other CAD programs", () => void this.export("step"));
+    box.append(head, check, row);
+    back.append(box);
+    back.addEventListener("pointerdown", (e) => e.target === back && close());
+    box.addEventListener("keydown", (e) => e.key === "Escape" && close());
+    document.body.append(back);
+    try {
+      const health = await this.kernel.health(this.store.doc.features);
+      if (!back.isConnected) return;
+      const hidden = new Set(this.store.doc.hidden ?? []);
+      const bodies = health.filter((h) => !hidden.has(h.id));
+      const bad = bodies.filter((h) => !h.healthy);
+      check.replaceChildren();
+      const line = (text: string, ok: boolean) => {
+        const d = document.createElement("div");
+        d.className = ok ? "print-ok" : "print-warn";
+        d.textContent = text;
+        check.append(d);
+      };
+      if (!bodies.length) line("Nothing to print yet: there is no solid body.", false);
+      else if (!bad.length) line(bodies.length === 1 ? "Ready to print: the body is closed and solid." : `Ready to print: all ${bodies.length} bodies are closed and solid.`, true);
+      for (const h of bad) {
+        const why = [h.openEdges ? "it is not closed (open edges)" : "", h.thin ? "it has hair-thin faces" : "", h.pinched ? "parts of it only touch along an edge" : "", h.solids > 1 ? `it is ${h.solids} separate pieces` : "", !h.valid ? "its shape has a fault" : ""].filter(Boolean);
+        line(`${h.name}: ${why.join(", ") || "it may not print as it is"}. Modify, Fix, Repair Body may mend it.`, false);
+      }
+      if (bodies.length) {
+        const lo = [Infinity, Infinity, Infinity];
+        const hi = [-Infinity, -Infinity, -Infinity];
+        for (const h of bodies) for (let k = 0; k < 3; k++) ((lo[k] = Math.min(lo[k], h.box[0][k])), (hi[k] = Math.max(hi[k], h.box[1][k])));
+        line(`Size: ${[0, 1, 2].map((k) => fmtLen(hi[k] - lo[k], 1)).join(" x ")}`, true);
+      }
+    } catch {
+      if (back.isConnected) check.textContent = "The model could not be checked. The files can still be saved.";
+    }
+  }
+
   /** Where the last thing picked is on the model (the sentence bar's thread runs to it). */
   private pickAnchor(): Vec3 | null {
     const sel = this.selection;
@@ -346,6 +470,12 @@ export class App implements AppContext {
   setTool(tool: Tool | null): void {
     const next = tool ?? this.selectTool;
     const leavingOp = this.tool !== this.selectTool;
+    // A tool that leaves a step behind: what is likely next for it is offered (until something is picked or started).
+    const made = next === this.selectTool && leavingOp && this.store.features.length > this.stepsSeen ? (this.store.features[this.store.features.length - 1]?.id ?? null) : null;
+    this.justMade = made;
+    this.stepsSeen = this.store.features.length;
+    // A sketch left right after a shape was closed in it: that shape is what comes next (see below).
+    const closed = next === this.selectTool && this.tool instanceof SketchTool ? this.tool.justClosed : null;
     this.tool.exit?.();
     this.tool = next;
     this.input.handler = next;
@@ -369,6 +499,14 @@ export class App implements AppContext {
     if (leavingOp && next === this.selectTool) void this.regenerate();
     else this.refreshSketches();
     this.renderHistory();
+    // Drawing goes straight on to 3D: the shape just closed is picked as the sketch is left, so its arrow is up
+    // already - drag it, no tap on the shape first. (The last shape made of the sketch's curves: the one just drawn.)
+    if (closed && this.tool === this.selectTool && !this.selection.length) {
+      const regions = arrangement(this.sketchCurves(closed)).regions;
+      const solid = materialRegions(arrangement(this.sketchCurves(closed)));
+      const region = regions.indexOf(solid[solid.length - 1]);
+      if (region >= 0) this.setSelection([{ kind: "profile", sketch: closed, region }]);
+    }
   }
 
   /** The last section used: Section View off and on again brings it back. */
@@ -1275,6 +1413,8 @@ export class App implements AppContext {
             why: "Select a body, face or edge to isolate",
             run: () => this.isolate(bodiesOf(this.selection)),
           },
+      // The way out with what was made: is it fit to print, and the files to take it away as.
+      { id: "printShare", label: "Print / Share", icon: "share", disabled: !this.view.bodyList.length, why: "Nothing solid to print yet", run: () => void this.printShare() },
     ];
   }
 

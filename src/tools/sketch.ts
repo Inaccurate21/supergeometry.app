@@ -1311,7 +1311,7 @@ export class SketchTool implements Tool {
     const wheel = document.body.classList.contains("wheel-ui");
     // (The sentence bar: Exit is at the end of the line, the drawing tools are under Draw.)
     if (document.body.classList.contains("sentence-ui")) {
-      if (this.exitPulse && this.kind === "select") return "Shape closed. Tap Exit (pulsing, at the end of the line) - then pull the shape into 3D.";
+      if (this.exitPulse && this.kind === "select") return "Shape closed. Tap Exit (pulsing, at the end of the line): its arrow is ready to pull it into 3D.";
       if (!this.entities.length && this.kind === "select") return "Tap Draw, then Line: tap points, and end on the first one to close the shape.";
     }
     if (this.exitPulse && this.kind === "select") return wheel ? "Shape closed. Tap Exit (pulsing on the wheel) to leave the sketch - then pull the shape into 3D." : "Shape closed. Tap Exit Sketch (pulsing) - then pull the shape into 3D.";
@@ -3370,6 +3370,11 @@ export class SketchTool implements Tool {
 
   /** Exit Sketch pulsing: a shape was just closed, nothing drawn since. */
   private exitPulse = false;
+
+  /** The sketch whose shape was just closed (nothing drawn since): left now, that shape is the one to pull into 3D. */
+  get justClosed(): string | null {
+    return this.exitPulse && this.sketchId ? this.sketchId : null;
+  }
 
   private stopExitPulse(): void {
     if (!this.exitPulse) return;
