@@ -1613,7 +1613,8 @@ export class Wheel implements WheelHandle {
       const rm = (m.r0 + m.r1) / 2 + 3;
       if (s.kinds) this.ringSvg.append(...tab(m.r1, mid, `${dim ? " dim" : ""}${s.on ? " on" : ""}`));
       // (No dot on what opens - a group, a kinds tool: only a single tool to tap, Exit Sketch with a closed shape, pulses.)
-      this.ringItems.append(this.item(s, inner && !s.item && s.cells.length && !s.kinds ? `${s.label} ›` : s.label, `sector${dim ? " dim" : ""}${s.mark && s.item ? " mark" : ""}${s.on ? " on" : ""}`, rm, mid, roomFor(rm, mid, step, m.r0, m.r1), true));
+      // (What opens more - a group, a tool's kinds, a choice, Settings' lists - has the arrow at the end of its name, on every ring.)
+      this.ringItems.append(this.item(s, !s.item && s.cells.length ? `${s.label} ›` : s.label, `sector${dim ? " dim" : ""}${s.mark && s.item ? " mark" : ""}${s.on ? " on" : ""}`, rm, mid, roomFor(rm, mid, step, m.r0, m.r1), true));
       return p;
     });
     // (What's on is drawn last: its outline whole, over its neighbours'.)
@@ -1640,7 +1641,7 @@ export class Wheel implements WheelHandle {
       const rm = (c.r0 + c.r1) / 2;
       const mid = (c.a0 + c.a1) / 2;
       if (kidsOf(it).length) this.fanSvg.append(...tab(c.r1, mid, it.active ? " on" : ""));
-      this.fanItems.append(this.item(it, it.short ?? it.label, `${it.active ? "on" : ""}${it.pulse ? " mark" : ""}`, rm, mid, roomFor(rm, mid, c.a1 - c.a0, c.r0, c.r1)));
+      this.fanItems.append(this.item(it, kidsOf(it).length ? `${it.short ?? it.label} ›` : (it.short ?? it.label), `${it.active ? "on" : ""}${it.pulse ? " mark" : ""}`, rm, mid, roomFor(rm, mid, c.a1 - c.a0, c.r0, c.r1)));
       return p;
     });
     for (const p of this.fanEls) if (p.classList.contains("on")) this.fanSvg.append(p);
