@@ -186,6 +186,16 @@ export class Viewport {
   private light = new DirectionalLight(0xffffff, 1.6);
   private lineMaterials: LineMaterial[] = [];
   private sketches: SketchView[] = [];
+  /** The sketch being edited and the sketches shown whole, as last given (to draw them again when a curve is picked). */
+  private activeSketch: string | undefined;
+  private freshSketches: ReadonlySet<string> = new Set();
+  /**
+   * The curves picked in the sketch being edited. A spline shows its two ends;
+   * the points between (the ones it is shaped by) come up once it is picked -
+   * a curve projected from an edge, offset, or a text's outline was a row of
+   * dots otherwise.
+   */
+  private openCurves = new Set<string>();
   /** The construction planes and axes shown (read: listed by name where a tap would pick one). */
   construction: { planes: ConstructionInfo[]; axes: ConstructionInfo[] } = { planes: [], axes: [] };
   private showOriginPlanes = false;
@@ -763,6 +773,8 @@ export class Viewport {
 
   setSketches(sketches: SketchView[], activeId?: string, fresh: ReadonlySet<string> = new Set()): void {
     this.sketches = sketches;
+    this.activeSketch = activeId;
+    this.freshSketches = fresh;
     this.sketchGroup.traverse((o) => {
       if (o instanceof Mesh || o instanceof Line || o instanceof LineSegments2 || o instanceof Points) o.geometry.dispose();
     });
@@ -795,7 +807,12 @@ export class Viewport {
           for (let i = 0; i < pts.length - 1; i++) into.push(...pts[i].toArray(), ...pts[i + 1].toArray());
           this.curveLines.push({ sketch: s.id, entity: e.id, pts });
         }
-        if (active) for (const q of pointsOf(e)) this.sketchPoints.push({ sketch: s.id, entity: e.id, p: q.p, pos: new Vector3(q.at[0], q.at[1], 0).applyMatrix4(m) });
+        if (active) {
+          const all = pointsOf(e);
+          // (A spline not picked: its two ends - none for a closed one. Picked: every point it is shaped by.)
+          const shown = e.kind === "spline" && all.length > 2 && !this.openCurves.has(e.id) ? (e.closed ? [] : [all[0], all[all.length - 1]]) : all;
+          for (const q of shown) this.sketchPoints.push({ sketch: s.id, entity: e.id, p: q.p, pos: new Vector3(q.at[0], q.at[1], 0).applyMatrix4(m) });
+        }
       }
       if (solid.length) {
         const mat = this.lineMaterial(active ? 0xffffff : COLORS.sketch, active ? 2.2 : 1.6, !onTop);
@@ -1085,6 +1102,15 @@ export class Viewport {
   private pulse: { t0: number; mats: { m: MeshBasicMaterial | LineMaterial | PointsMaterial; base: number }[] } | null = null;
 
   setHighlights(selected: Highlight[], hover: Highlight | null): void {
+    // The curves picked changed: a spline among them shows its points, one let go only its ends (the sketch is drawn again).
+    const open = new Set(selected.flatMap((h) => (h.kind === "curve" || h.kind === "point" ? [h.entity] : [])));
+    if (open.size !== this.openCurves.size || [...open].some((id) => !this.openCurves.has(id))) {
+      const was = this.openCurves;
+      this.openCurves = open;
+      const changed = (id: string) => was.has(id) !== open.has(id);
+      const sk = this.activeSketch ? this.sketches.find((s) => s.id === this.activeSketch) : undefined;
+      if (sk?.entities.some((e) => e.kind === "spline" && e.points.length > 2 && changed(e.id))) this.setSketches(this.sketches, this.activeSketch, this.freshSketches);
+    }
     this.highlightGroup.traverse((o) => {
       if (o instanceof Mesh || o instanceof LineSegments2) o.geometry.dispose();
     });

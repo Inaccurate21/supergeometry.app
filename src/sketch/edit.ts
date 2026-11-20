@@ -1074,9 +1074,13 @@ export function offsetEntity(e: SketchEntity, d: number): SketchEntity | null {
         // Outward for CCW closed curves = to the right of travel.
         return [p[0] + (ty / L) * d * sign * (closed ? 1 : -1), p[1] - (tx / L) * d * sign * (closed ? 1 : -1)] as Vec2;
       });
-      // Enough fit points to follow the curve closely (four per original span).
-      const n = Math.max(24, (e.kind === "spline" ? e.points.length : 6) * 4 + 1);
-      return e.kind === "spline" ? { ...base, kind: "spline", points: thin(closed ? out.slice(0, -1) : out, n), closed, mode: "fit" } : { ...base, kind: "polyline", points: out, closed };
+      if (e.kind !== "spline") return { ...base, kind: "polyline", points: out, closed };
+      // As few fit points as follow the curve closely (within a five-thousandth of its size): it was four per span of
+      // the original, so the offset of a curve projected from an edge - 24 points, out of sight - came out a row of 97 dots.
+      const xs = out.map((q) => q[0]);
+      const ys = out.map((q) => q[1]);
+      const size = Math.hypot(Math.max(...xs) - Math.min(...xs), Math.max(...ys) - Math.min(...ys));
+      return { ...base, kind: "spline", points: fitSpline(closed ? out.slice(0, -1) : out, closed, Math.max(size * 2e-4, 1e-9)), closed, mode: "fit" };
     }
   }
 }

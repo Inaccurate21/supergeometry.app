@@ -5,7 +5,7 @@
 // shape: a circle seen at a slant (or an ellipse) an ellipse, anything else a
 // spline with as few points as hold it; unlinked, a follower becomes that.
 import { check, done, near } from "./kit";
-import { leanSpline, projectPolyline } from "../src/sketch/edit";
+import { leanSpline, offsetEntity, projectPolyline } from "../src/sketch/edit";
 import { pointsOf } from "../src/sketch/constraints";
 import { splinePoints } from "../src/sketch/curves";
 import type { PlaneDef, SketchEntity, Vec2, Vec3 } from "../src/doc/types";
@@ -99,5 +99,18 @@ if (follow?.kind === "spline") {
   const freed = leanSpline({ ...follow, id: "abc" } as SketchEntity);
   check("unlinked: fewer points, the same ends", freed.kind === "spline" && freed.points.length < 24 && near(freed.points[0][0], 20, 1e-9) && near(freed.points[freed.points.length - 1][0], -20, 1e-9), freed.kind === "spline" ? freed.points.length : freed);
   check("... still on the edge", strays(freed, long) < 40 * 5e-4 * 3, strays(freed, long));
+}
+
+// The offset of a curve that follows an edge (24 points, out of sight): its own curve, few points - it was 97.
+if (follow?.kind === "spline") {
+  const off = offsetEntity({ ...follow, id: "ref-abc" } as SketchEntity, 2);
+  check("the offset of a projected curve: a spline of a third of the points it had (97), at most", off?.kind === "spline" && off.points.length <= 32, off?.kind === "spline" ? off.points.length : off);
+  if (off?.kind === "spline") {
+    // Half an ellipse 20 by 10 moved 2 sideways: every point of it 2 from the curve it came from.
+    const src = splinePoints((follow as { points: Vec2[] }).points, false, "fit", 48);
+    const far = (p: Vec2) => Math.min(...src.map((q) => Math.hypot(p[0] - q[0], p[1] - q[1])));
+    const worst = Math.max(...splinePoints(off.points, false, "fit", 24).map((p) => Math.abs(far(p) - 2)));
+    check("... 2 from the curve all along", worst < 0.03, worst);
+  }
 }
 done();
