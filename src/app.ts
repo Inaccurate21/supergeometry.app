@@ -505,7 +505,17 @@ export class App implements AppContext {
       const regions = arrangement(this.sketchCurves(closed)).regions;
       const solid = materialRegions(arrangement(this.sketchCurves(closed)));
       const region = regions.indexOf(solid[solid.length - 1]);
-      if (region >= 0) this.setSelection([{ kind: "profile", sketch: closed, region }]);
+      if (region >= 0) {
+        this.setSelection([{ kind: "profile", sketch: closed, region }]);
+        // Seen straight on (as it was drawn), a pull has nowhere to show: the view swings round to see it rise.
+        const pl = this.sketchPlane(closed);
+        const dir = this.view.cam.viewDir();
+        if (pl && Math.abs(dir.x * pl.normal[0] + dir.y * pl.normal[1] + dir.z * pl.normal[2]) > 0.95) {
+          // (A floor sketch: the usual three-quarter view. Any other: from a little to its side and above.)
+          if (Math.abs(pl.normal[2]) > 0.9) this.view.cam.iso();
+          else this.view.cam.lookAlong([pl.normal[0] * 0.7 + pl.xDir[0] * 0.45, pl.normal[1] * 0.7 + pl.xDir[1] * 0.45, pl.normal[2] * 0.7 + pl.xDir[2] * 0.45 + 0.5]);
+        }
+      }
     }
   }
 
@@ -1866,6 +1876,9 @@ export class App implements AppContext {
     const was = this.store.features.length ? this.store.doc.name : null;
     await this.switchProject(emptyDoc(), newProjectId());
     if (was) this.ui.toast(`“${was}” is kept in File → Open`);
+    // The first minute makes something: a new project opens in a sketch on the floor with Rectangle on - two taps
+    // are a shape, Exit pulses, the shape is pulled up. (Other plane, and Exit, are at hand for anything else.)
+    if (!this.store.features.length && this.tool === this.selectTool) this.setTool(new SketchTool(this, { plane: { origin: [0, 0, 0], xDir: [1, 0, 0], normal: [0, 0, 1] }, kind: "rect" }));
     if (await this.updates.check()) await this.updates.reset();
   }
 
