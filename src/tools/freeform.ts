@@ -506,7 +506,13 @@ export class FreeformTool implements Tool {
     if (!isClosed(this.cage)) {
       items.push(
         { type: "number", label: "Thickness", value: this.thickness, kind: "length", min: 0, onInput: (v) => ((this.thickness = Math.max(0, v)), this.panelHint()) },
-        { type: "choice", options: [{ id: "up", label: "Up" }, { id: "down", label: "Down" }, { id: "both", label: "Symmetric" }], value: this.thickSide, onChange: (v) => ((this.thickSide = v as typeof this.thickSide), this.panel()) },
+        { type: "choice", options: [{ id: "up", label: "Up" }, { id: "down", label: "Down" }, { id: "both", label: "Symmetric" }], value: this.thickSide, onChange: (v) => {
+            this.thickSide = v as typeof this.thickSide;
+            // A side picked with no thickness yet makes it solid (2 thick), not nothing.
+            if (!(this.thickness > 0)) this.thickness = 2;
+            this.panel();
+          },
+        },
         // Or solid down to a plane (no thickness): finish the surface, then pick the plane.
         {
           type: "button",

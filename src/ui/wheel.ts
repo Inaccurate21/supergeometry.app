@@ -430,7 +430,8 @@ function fitSize(label: string, width: number, px: number, weight: number): { si
   };
   // One line first, a little smaller if need be (two lines pushed the icon up
   // and made it look smaller than its neighbours'); two only for a long name.
-  const got = fit(1, Math.max(8.5, px - 1.5)) ?? fit(2, 8.5) ?? fit(2, 7.5) ?? { size: 7.5, lines: 2 };
+  // (Three words that won't go in two lines even at the least size - "Plane – Through Edge ›" in a narrow piece - take three, never cut off.)
+  const got = fit(1, Math.max(8.5, px - 1.5)) ?? fit(2, 8.5) ?? fit(2, 7.5) ?? fit(3, 7.5) ?? { size: 7.5, lines: 3 };
   sizes.set(key, got);
   return got;
 }
@@ -854,7 +855,12 @@ export class Wheel implements WheelHandle {
     const more: Cell[] = p.actions.filter((a) => !a.disabled).map((item) => ({ item }));
     const valueCells = this.valueCells(p.items);
     for (const it of p.items) {
-      if (it.type === "choice") {
+      if (it.type === "choice" && it.options.length === 1 && !it.label) {
+        // (One thing to do and no name - a slot's Clear: a tap, not a ring of one.)
+        const o = it.options[0];
+        const item = opt(o.label, () => it.onChange(o.id), false, undefined, iconNameFor(o.label) ?? "close");
+        sectors.push({ id: item.id, label: o.label, icon: item.icon, cells: [], item, mark: false });
+      } else if (it.type === "choice") {
         const now = it.options.find((o) => o.id === it.value);
         const cells = it.options.map((o): Cell => ({ item: opt(o.label, () => it.onChange(o.id), o.id === it.value) }));
         // (A slot's quick picks - XY, XZ, YZ for a plane's From - have no name
@@ -922,7 +928,8 @@ export class Wheel implements WheelHandle {
     const o = this.optionsContent().sectors;
     this.leave = null;
     const cells = o.map((s): Cell => ({ item: s.item ?? { id: s.id, label: s.label, icon: s.icon, children: s.cells.map((x) => x.item) } }));
-    const title = this.host.ui.panelContent()?.title ?? "";
+    // (Named by the tool, not its kind: "Pattern - Linear" is Pattern.)
+    const title = (this.host.ui.panelContent()?.title ?? "").split(" – ")[0];
     const label = title && title.length <= 14 ? title[0].toUpperCase() + title.slice(1) : "Options";
     return { ...c, sectors: [...c.sectors, { id: "options", label, icon: "options", cells, on: true, mark: false }] };
   }
@@ -1135,6 +1142,12 @@ export class Wheel implements WheelHandle {
         return { item: it };
       }
       const base = known.get(id);
+      // (Not there, but one of its kinds is - an edge's "Plane – Through Edge" for Plane: that one takes the place, not a greyed Plane beside it.)
+      const kind = base?.label ? items.find((x) => !used.has(x) && x.label.startsWith(`${base.label} – `)) : undefined;
+      if (kind) {
+        used.add(kind);
+        return { item: kind };
+      }
       return { item: { id, label: base?.label ?? "", icon: base?.icon ?? "more" }, off: why(id) };
     });
     const extras = items
@@ -1568,6 +1581,11 @@ export class Wheel implements WheelHandle {
     name.style.width = `${w}px`;
     const base = big ? 10.5 : 9.5;
     const { size, lines } = fitSize(label, w, base, big ? 600 : 400);
+    // A word still too wide at the least size ("Transform ›" in a narrow piece:
+    // the arrow is held to its word) - its box widens evenly both ways, into the
+    // piece's margin, rather than cut the arrow off.
+    const widest = Math.max(...label.split(" ").map((word) => textWidth(word, size, big ? 600 : 400)));
+    if (widest > w) name.style.width = `${Math.ceil(widest) + 1}px`;
     if (size < base || lines > 2) {
       name.style.fontSize = `${size}px`;
       name.style.lineHeight = `${size + 1.5}px`;
