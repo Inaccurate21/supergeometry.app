@@ -311,6 +311,8 @@ export class Sentence {
   private placed = "";
   /** How wide the line was with its groups at full size, when it last did not fit. */
   private natural = 0;
+  /** The room and the words it was closed up for (see `edges`). */
+  private closedAt = "";
   private place(): void {
     if (!this.on) return;
     let to = "";
@@ -321,7 +323,7 @@ export class Sentence {
       const hist = document.body.classList.contains("history-open") ? document.getElementById("history")?.getBoundingClientRect() : undefined;
       // (The right column, where it comes down as far as the line - a phone on its side.)
       const col = document.getElementById("right-col")?.getBoundingClientRect();
-      const low = col && col.width && col.bottom > innerHeight - (this.line.offsetHeight + (this.tag.hidden ? 0 : this.tag.offsetHeight) + 18) ? innerWidth - col.left + 8 : 0;
+      const low = col && col.width && col.bottom > innerHeight - (62 + (this.tag.hidden ? 0 : 44) + 18) ? innerWidth - col.left + 8 : 0;
       const left = Math.round((dock && dock.width ? dock.right : 0) + 10);
       let right = Math.round(Math.max(low, hist && hist.width && hist.left > innerWidth / 2 ? innerWidth - hist.left + 10 : left > 140 || low ? 12 : left));
       // (Items and History both open on a small screen leave no room to speak of: the line then runs over History's last
@@ -694,22 +696,26 @@ export class Sentence {
     const r = this.row;
     // Groups that do not all fit close up (a small picture over a small name each, sharing the line evenly) - and open
     // out again once there is room for them as they were.
-    if (!r.classList.contains("sn-groups")) this.line.classList.remove("sn-compact");
+    // (All of it is decided from the room the line is given - the screen less what is beside it - and what it says,
+    // never from how it is drawn now: closing up changes the line's own size, and a choice made from that size can
+    // undo itself on the next layout, over and over - on a tablet the line then jumps between the two.)
+    const avail = Math.round(document.documentElement.dataset.screen === "phone" ? this.root.clientWidth : parseFloat(this.root.style.maxWidth) || this.root.clientWidth);
+    const says = Array.from(r.children, (c) => (c as HTMLElement).dataset.key).join(" ");
+    if (!r.classList.contains("sn-groups")) (this.line.classList.remove("sn-compact"), (this.closedAt = ""));
     else if (!this.line.classList.contains("sn-compact")) {
       if (r.scrollWidth > r.clientWidth + 1) {
         this.natural = r.scrollWidth + this.end.offsetWidth + 24;
+        this.closedAt = `${avail}|${says}`;
         this.line.classList.add("sn-compact");
       }
-    } else {
-      const room = document.documentElement.dataset.screen === "phone" ? this.root.clientWidth : parseFloat(this.root.style.maxWidth) || this.root.clientWidth;
-      if (room >= this.natural + 8) this.line.classList.remove("sn-compact");
-    }
+    } else if (avail >= this.natural + 8 && this.closedAt !== `${avail}|${says}`) this.line.classList.remove("sn-compact");
+    // (Closed up for this room and these words: it stays closed up until one of them changes.)
     // (Closed up with room to spare for each - a tablet, a phone on its side: bigger names than on a phone held upright.)
     // (Reckoned from the line's own width and the end buttons at their bigger size, never from the row as it is now:
     // bigger names widen the end buttons, which narrowed the row, which made the names small again - on a phone
     // 390 wide, in a sketch with a tool on, it flipped on every layout and the line shook.)
     const n = r.childElementCount;
-    const room = this.line.clientWidth - this.end.childElementCount * 62 - 12;
+    const room = avail - this.end.childElementCount * 62 - 12;
     this.line.classList.toggle("sn-roomy", this.line.classList.contains("sn-compact") && n > 0 && room / n >= 66);
     const more = !r.classList.contains("sn-wrap") && r.scrollWidth > r.clientWidth + 1;
     // (Both keep their room while there is more either way: one coming or going must not change how much fits.)
