@@ -1481,16 +1481,63 @@ export class ShellOp extends FeatureOp<ShellFeature> {
 
 
   protected hint(): string {
-    return "Tap the faces to leave open, and set how thick the walls are.";
+    return this.feature.faces.length ? "Drag the arrow into the body, or type, to set how thick the walls are. Tap more faces to open them too." : "Tap the faces to leave open: an arrow comes up to set how thick the walls are.";
   }
 
   protected items(): PanelItem[] {
     return [this.num("Thickness", "thickness", "length", { min: 0.0001, onInput: (v) => this.setThickness(v), inBox: true })];
   }
 
-  /** The wall thickness, typed on the open face tapped last. */
+  /** The wall thickness, typed on the open face tapped last - and dragged, by the arrow that points into the body there. */
   private dim: DimWidget | null = null;
   private dimFace = "";
+  private handle: Handle | null = null;
+  private dragging: { from: ToolPointer; t0: number; at: Vec3; into: Vec3 } | null = null;
+  private typing = new DragTyping(this.app);
+
+  hover(p: ToolPointer | null): void {
+    const on = !!p && !!this.handle && (!!this.dragging || this.handle.hit(p));
+    this.handle?.setHot(on);
+    if (!on) super.hover(p);
+  }
+
+  down(p: ToolPointer): boolean {
+    const f = this.feature.faces[this.feature.faces.length - 1];
+    if (!f || !this.handle?.hit(p)) return false;
+    this.dragging = { from: p, t0: this.feature.thickness, at: f.center, into: scale(f.normal, -1) };
+    return true;
+  }
+
+  drag(p: ToolPointer): void {
+    const dr = this.dragging;
+    if (!dr) return;
+    this.typing.track(p);
+    if (this.typing.active) return;
+    const raw = dr.t0 + axisDrag(this.app.view, add(dr.at, scale(dr.into, dr.t0)), dr.into, dr.from, p);
+    const step = niceStep(this.app.view.cam.worldPerPixel(this.app.view.height) * 4);
+    this.typedInto("thickness", "");
+    // (A wall has some thickness: never less than a step.)
+    this.setThickness(Math.max(step, Math.round(raw / step) * step));
+    this.app.ui.setLabel(p.x, p.y, `Wall ${fmtLen(this.feature.thickness)}  · type a value`);
+  }
+
+  up(): void {
+    this.dragging = null;
+    this.typing.reset();
+    this.app.ui.setLabel(0, 0, null);
+    this.handle?.setHot(false);
+  }
+
+  dragKey(e: KeyboardEvent): boolean {
+    const dr = this.dragging;
+    if (!dr) return false;
+    return this.typing.key(e, {
+      kind: "length",
+      apply: (v) => this.setThickness(v),
+      commit: () => ((this.dragging = null), this.done()),
+      cancel: () => this.setThickness(dr.t0),
+    });
+  }
 
   private setThickness(v: number): void {
     if (!(v > 0)) return;
@@ -1508,6 +1555,8 @@ export class ShellOp extends FeatureOp<ShellFeature> {
     if (!f) {
       this.dim?.dispose();
       this.dim = null;
+      this.handle?.dispose();
+      this.handle = null;
       return;
     }
     // (Another face: the box goes with it, and turns away with it.)
@@ -1532,11 +1581,16 @@ export class ShellOp extends FeatureOp<ShellFeature> {
     const a = add(f.center, scale(f.normal, -this.feature.thickness));
     this.dim.set(a, f.center);
     this.dim.setValue(this.feature.thickness);
+    // The arrow: at the wall's inner side, pointing further in (dragged in, the wall gets thicker).
+    this.handle ??= new Handle(this.app.view, "arrow");
+    this.handle.set(a, scale(f.normal, -1));
   }
 
   exit(): void {
     this.dim?.dispose();
     this.dim = null;
+    this.handle?.dispose();
+    this.handle = null;
     super.exit();
   }
 }
