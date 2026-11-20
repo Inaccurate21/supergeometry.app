@@ -267,6 +267,14 @@ const onlyExit = (items: ToolItem[]) => items.length > 0 && items.every((t) => t
 const kidsOf = (it: ToolItem) => usable(it.children ?? []).filter(notSep);
 /** A tap on a tool with kinds (Rectangle: Center, Diagonal, 3 Points) opens them straight away, the one used last lit. */
 const opens = (it: ToolItem) => kidsOf(it).length > 0;
+/**
+ * A model tool that has no options ring to open: its own window (BIM's sheets,
+ * Create Drawing, Insert's files), done at once (Delete, Isolate, Union of the
+ * picked bodies, Repair), or worked on the model with nothing to choose
+ * (Measure, Section View). Every other tool opens its options as the next
+ * ring, so its name ends with the arrow.
+ */
+const NO_RING = new Set(["deselect", "delete", "deleteBody", "isolate", "wholePattern", "measure", "section", "bimSheet", "bimDrawings", "bimAssemblies", "drawing", "image", "file", "project", "refImage", "browser", "union", "repair"]);
 const marked = (cells: Cell[]) => cells.some((c) => !!c.item.active || !!c.item.pulse);
 /** The next step is in here: a tool of it (or a kind of one) pulses. */
 const pulsing = (items: ToolItem[]): boolean => items.some((it) => !!it.pulse || pulsing(kidsOf(it)));
@@ -1614,11 +1622,16 @@ export class Wheel implements WheelHandle {
       if (s.kinds) this.ringSvg.append(...tab(m.r1, mid, `${dim ? " dim" : ""}${s.on ? " on" : ""}`));
       // (No dot on what opens - a group, a kinds tool: only a single tool to tap, Exit Sketch with a closed shape, pulses.)
       // (What opens more - a group, a tool's kinds, a choice, Settings' lists - has the arrow at the end of its name, on every ring.)
-      this.ringItems.append(this.item(s, !s.item && s.cells.length ? `${s.label} ›` : s.label, `sector${dim ? " dim" : ""}${s.mark && s.item ? " mark" : ""}${s.on ? " on" : ""}`, rm, mid, roomFor(rm, mid, step, m.r0, m.r1), true));
+      this.ringItems.append(this.item(s, (!s.item && s.cells.length) || (s.item && this.ringNext(s.item)) ? `${s.label} ›` : s.label, `sector${dim ? " dim" : ""}${s.mark && s.item ? " mark" : ""}${s.on ? " on" : ""}`, rm, mid, roomFor(rm, mid, step, m.r0, m.r1), true));
       return p;
     });
     // (What's on is drawn last: its outline whole, over its neighbours'.)
     for (const p of this.ringEls) if (p.classList.contains("on")) this.ringSvg.append(p);
+  }
+
+  /** A model tool whose options come up as the next ring (its name gets the arrow; a sketch's or a freeform's tools show theirs as a window piece). */
+  private ringNext(it: ToolItem): boolean {
+    return this.layout === "model" && !!it.run && !it.swatch && !NO_RING.has(ALIAS[it.id] ?? it.id) && !/^(color|opacity)-/.test(it.id);
   }
 
   /** The band round the outside: a ring's tools past eight. */
@@ -1641,7 +1654,7 @@ export class Wheel implements WheelHandle {
       const rm = (c.r0 + c.r1) / 2;
       const mid = (c.a0 + c.a1) / 2;
       if (kidsOf(it).length) this.fanSvg.append(...tab(c.r1, mid, it.active ? " on" : ""));
-      this.fanItems.append(this.item(it, kidsOf(it).length ? `${it.short ?? it.label} ›` : (it.short ?? it.label), `${it.active ? "on" : ""}${it.pulse ? " mark" : ""}`, rm, mid, roomFor(rm, mid, c.a1 - c.a0, c.r0, c.r1)));
+      this.fanItems.append(this.item(it, kidsOf(it).length || this.ringNext(it) ? `${it.short ?? it.label} ›` : (it.short ?? it.label), `${it.active ? "on" : ""}${it.pulse ? " mark" : ""}`, rm, mid, roomFor(rm, mid, c.a1 - c.a0, c.r0, c.r1)));
       return p;
     });
     for (const p of this.fanEls) if (p.classList.contains("on")) this.fanSvg.append(p);
