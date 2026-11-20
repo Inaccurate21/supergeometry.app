@@ -66,7 +66,8 @@ export interface Settings {
   /**
    * Direct touch: what is picked is dragged by itself, not only by its arrow
    * or dot - a face pulled, a shape pulled up, an edge rounded - and a finger
-   * pressed and held on one picks it and pulls in the same touch.
+   * pressed and held on one picks it and pulls in the same touch. Always on
+   * (kept as a setting for the code that asks).
    */
   direct: boolean;
 }
@@ -134,6 +135,8 @@ class SettingsStore {
     this.value.wheel = true;
     // The sentence bar is the only way to the tools (its switch in More is gone): on for everyone.
     this.value.sentence = true;
+    // Direct touch is how the app is worked too (it had a switch in More for a while: one saved as off is on again).
+    this.value.direct = true;
   }
 
   set<K extends keyof Settings>(key: K, v: Settings[K]): void {
