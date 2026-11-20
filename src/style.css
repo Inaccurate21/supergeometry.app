@@ -6964,3 +6964,12 @@ html[data-screen="phone"] .sn-sheet.sn-all {
     visibility: visible;
   }
 }
+
+/* A group in its place with nothing for this pick: dimmed (a tap says why). */
+.sn-word.off {
+  opacity: 0.38;
+  background: none;
+}
+.sn-word.off:hover {
+  background: rgba(255, 255, 255, 0.05);
+}

@@ -21,7 +21,6 @@
 
 import { settings } from "../settings";
 import type { Vec3 } from "../doc/types";
-import { QUICK } from "../tools/quickActions";
 import type { Sel } from "../tools/tool";
 import { evaluate, toDisplay, UNIT_LABEL, units } from "../units";
 import type { Viewport } from "../view/viewport";
@@ -73,6 +72,8 @@ interface Word {
   value?: { now: number; text: string; kind: "length" | "angle" | "number" | "int"; put(v: number): void; min?: number; max?: number };
   /** Takes the subject away (the pick let go). */
   lets?: boolean;
+  /** In its place, with nothing for what is picked now: dimmed, and a tap says this. */
+  off?: string;
   /** A tool with kinds that starts as it was used last on a tap (a sketch's Rectangle); its kinds on a second tap or a held press. */
   first?: boolean;
 }
@@ -128,8 +129,14 @@ const SK_PICKED = new Set(["move", "rotate", "scale", "mirror", "pattern", "offs
 const SK_RETAP = new Set(["trim", "extend", "split", "offset", "fillet"]);
 /** And of those, the ones done at that tap (nothing more to set): picking is on again after it. */
 const SK_ONCE = new Set(["trim", "split"]);
-/** The model's groups, in the order they are said. */
-const GROUPS = ["create", "modify", "transform", "combine", "construct", "freeform", "sketch"];
+/** The model's groups, in the order they are on the line (the tool wheel's own, each always in its place). */
+const GROUPS = ["create", "combine", "modify", "construct", "transform", "freeform", "sketch"];
+/** A sketch's groups (as its wheel has them): what each holds, most used first; anything else is under More. */
+const SK_GROUPS: { id: string; label: string; icon: IconName; tools: string[] }[] = [
+  { id: "draw", label: "Draw", icon: "line", tools: ["line", "rect", "circle", "arc", "spline", "polygon", "ellipse", "text", "project"] },
+  { id: "modify", label: "Modify", icon: "trim", tools: ["trim", "fillet", "offset", "extend", "split", "align"] },
+  { id: "transform", label: "Transform", icon: "transform", tools: ["move", "mirror", "rotate", "pattern", "scale"] },
+];
 
 export class Sentence {
   private readonly root = el("div", "");
@@ -324,71 +331,76 @@ export class Sentence {
     };
   }
 
-  /** The model: what is picked, then what it offers - or, with nothing picked, what makes something new. */
+  /** A group on the line: its tools a tap away, or - with nothing in it for this pick - dimmed in its place, saying why. */
+  private group(id: string, label: string, icon: IconName, words: Word[], why: string): Word {
+    // (Sketch with nothing picked is the tool itself: a tap starts it.)
+    if (words.length === 1 && words[0].label === label && !words[0].kids) return { ...words[0], key: `g-${id}` };
+    return { key: `g-${id}`, kind: "verb", label, icon, kids: words.length ? words : undefined, pulse: words.some((w) => w.pulse), off: words.length ? undefined : why };
+  }
+
+  /**
+   * The model: what is picked, then the eight groups the tool wheel has, each
+   * in its place - Create, Combine, Modify, Construct, Transform, Freeform,
+   * Sketch, More - holding what the pick offers (with nothing picked: only
+   * what makes something new, and the view's tools under More).
+   */
   private model(column: ToolItem[], bar: ToolItem[]): Built {
     const sel = this.host.selection();
     const main = this.host.mainTools();
     let items = usable(column).filter(notSep);
     const view = usable(bar).filter(notSep);
-    if (!sel.length) {
-      items = makers(items);
-      const groups: Built["groups"] = [];
-      const first = items.filter((it) => !it.children?.length);
-      if (first.length) groups.push({ cap: "Start", words: first.map((it) => this.verb(it)) });
-      // (Shapes first, then what is brought in, then the helpers.)
-      const order = ["freeform", "more", "construct"];
-      const rankOf = (id: string) => (order.indexOf(id) + 1 || order.length + 1);
-      for (const g of [...items].sort((a, b) => rankOf(a.id) - rankOf(b.id))) if (g.children?.length) groups.push({ cap: g.label, words: g.children.filter(notSep).map((c) => this.verb(c)) });
-      if (view.length) groups.push({ cap: "View", words: view.map((it) => this.verb(it)) });
-      return { subject: { key: "s-make", kind: "subject", label: "Make", quiet: true }, words: groups.flatMap((g) => g.words), groups, about: "make" };
-    }
-    const des = items.find((it) => it.id === "deselect");
-    items = items.filter((it) => it !== des);
-    const name = des?.sub ?? `${sel.length} picked`;
-    // Each of its tools with the main tools of its kind (as the wheel has them); its own (Delete, Color) under its name.
-    const where = new Map<string, string>();
-    const walk = (its: ToolItem[], g: string) => {
-      for (const it of its) {
-        if (!where.has(it.id)) where.set(it.id, g);
-        walk(it.children ?? [], g);
-      }
-    };
-    for (const g of main) walk([g], g.id);
-    const groupOf = (id: string) => GROUP_OF[id] ?? where.get(ALIAS[id] ?? id) ?? "own";
     const by = new Map<string, ToolItem[]>();
-    for (const it of items) {
-      const g = groupOf(it.id);
-      by.set(g, [...(by.get(g) ?? []), it]);
-    }
+    const put = (g: string, it: ToolItem) => by.set(g, [...(by.get(g) ?? []), it]);
     const rank = (it: ToolItem) => {
       const k = RANK.indexOf(ALIAS[it.id] ?? it.id);
       return k < 0 ? RANK.length : k;
     };
-    const groups: Built["groups"] = [];
-    for (const g of GROUPS) {
-      const its = by.get(g);
-      if (its?.length) groups.push({ cap: main.find((m) => m.id === g)?.label ?? g, words: [...its].sort((a, b) => rank(a) - rank(b)).map((it) => this.verb(it)) });
+    let subject: Word;
+    let name = "";
+    let others: string[] | undefined;
+    if (!sel.length) {
+      // Nothing picked: each main group's makers (a group that is a tool itself - Sketch - is its own).
+      for (const g of makers(items)) for (const it of g.children?.length ? g.children.filter(notSep) : [g]) put(g.id, it);
+      subject = { key: "s-make", kind: "subject", label: "Make", quiet: true };
+    } else {
+      const des = items.find((it) => it.id === "deselect");
+      items = items.filter((it) => it !== des);
+      name = des?.sub ?? `${sel.length} picked`;
+      // Each of its tools with the main tools of its kind (as the wheel has them); its own (Delete, Color) under More.
+      const where = new Map<string, string>();
+      const walk = (its: ToolItem[], g: string) => {
+        for (const it of its) {
+          if (!where.has(it.id)) where.set(it.id, g);
+          walk(it.children ?? [], g);
+        }
+      };
+      for (const g of main) walk([g], g.id);
+      for (const it of items) put(GROUP_OF[it.id] ?? where.get(ALIAS[it.id] ?? it.id) ?? "own", it);
+      subject = { key: "s-pick", kind: "subject", label: name, lets: true, run: () => des?.run?.() };
+      // What it has no use for, and what those need instead: said, never offered.
+      others = [];
+      const whys = (its: ToolItem[]) => {
+        for (const it of its) {
+          if (it.disabled && it.why && it.label) others!.push(`${it.label}: ${it.why.charAt(0).toLowerCase()}${it.why.slice(1)}`);
+          else if (!it.disabled) whys(it.children ?? []);
+        }
+      };
+      whys(column);
     }
-    const own = [...(by.get("own") ?? []), ...(by.get("more") ?? [])];
-    if (own.length) groups.push({ cap: name, words: own.map((it) => this.verb(it)) });
-    if (view.length) groups.push({ cap: "View", words: view.map((it) => this.verb(it)) });
-    // On the line: the likeliest next for this kind of pick first, then the rest as grouped.
-    const kind = sel[sel.length - 1].kind as keyof typeof QUICK;
-    const quick: readonly string[] = sel.every((s) => s.kind === kind) ? (QUICK[kind] ?? []) : [];
-    const all = groups.flatMap((g) => g.words);
-    const front = quick.map((id) => all.find((w) => w.key === `v-${id}`)).filter((w): w is Word => !!w);
-    const words = [...front, ...all.filter((w) => !front.includes(w))];
-    const subject: Word = { key: "s-pick", kind: "subject", label: name, lets: true, run: () => des?.run?.() };
-    // What it has no use for, and what those need instead: said, never offered.
-    const others: string[] = [];
-    const whys = (its: ToolItem[]) => {
-      for (const it of its) {
-        if (it.disabled && it.why && it.label) others.push(`${it.label}: ${it.why.charAt(0).toLowerCase()}${it.why.slice(1)}`);
-        else if (!it.disabled) whys(it.children ?? []);
-      }
-    };
-    whys(column);
-    return { subject, words, groups, others, about: `pick:${sel.map((s) => JSON.stringify(s)).join()}` };
+    const why = sel.length ? `Nothing here for ${name}. Pick something else, or let go of it.` : "Pick something on the model first.";
+    const words: Word[] = [];
+    const groups: Built["groups"] = [];
+    for (const id of GROUPS) {
+      const g = main.find((m) => m.id === id);
+      const its = [...(by.get(id) ?? [])].sort((x, y) => rank(x) - rank(y)).map((it) => this.verb(it));
+      words.push(this.group(id, g?.label ?? id, g?.icon ?? "more", its, why));
+      if (its.length) groups.push({ cap: g?.label ?? id, words: its });
+    }
+    // More: the pick's own (Delete, Color), what is brought in, and the view's tools.
+    const more = [...(by.get("own") ?? []), ...(by.get("more") ?? []), ...view].map((it) => this.verb(it));
+    words.push(this.group("more", "More", "more", more, why));
+    if (more.length) groups.push({ cap: sel.length ? name : "More", words: more });
+    return { subject, words, groups, others, about: sel.length ? `pick:${sel.map((x) => JSON.stringify(x)).join()}` : "make" };
   }
 
   /** A sketch: what draws something new - and, with curves picked, what can be done with them. */
@@ -400,7 +412,6 @@ export class Sentence {
     const tools = items.filter((it) => it !== exit && it !== select);
     const drawing = tools.some((it) => it.active);
     const forPick = tools.filter((it) => SK_PICKED.has(it.id));
-    const draw = tools.filter((it) => !SK_PICKED.has(it.id));
     const retapped = (it: ToolItem): Word => {
       const w = this.verb(it);
       // (It acts where the view is tapped: on the piece picked, where it was picked. One done at that tap leaves picking on.)
@@ -427,21 +438,28 @@ export class Sentence {
     if (busy) {
       // A tool for the picked curves is at work (Extend waiting for the line to reach): it alone, lit, until it is put down.
       words.push(this.verb(busy));
-    } else if (picked > 0) {
-      // Curves picked: what can be done with them - nothing else.
-      const w = forPick.filter((it) => !said.has(it.label)).map(retapped);
-      words.push(...w);
-      if (w.length) groups.push({ cap: `${picked} picked`, words: w });
-    } else {
-      // Nothing picked: what draws something new.
-      const d = draw.map((it) => this.verb(it));
-      // (The tool in use first: it is what the sentence is about now.)
-      words.push(...d.filter((w) => w.on), ...d.filter((w) => !w.on));
-      if (d.length) groups.push({ cap: "Draw", words: d });
+    } else if (tools.length) {
+      // (None while its plane is still being chosen: there is nothing to draw on yet.)
+      // Its groups, each in its place: Draw (always: it starts something new), Modify and Transform (for curves that are picked), More.
+      const offered = (it: ToolItem) => !SK_PICKED.has(it.id) || (picked > 0 && !said.has(it.label));
+      const placed = new Set<ToolItem>();
+      for (const g of SK_GROUPS) {
+        const its = g.tools.map((id) => tools.find((it) => it.id === id)).filter((it): it is ToolItem => !!it && offered(it));
+        for (const it of its) placed.add(it);
+        const w = its.map(retapped);
+        words.push(this.group(g.id, g.label, g.icon, w, "Pick a line or a shape of the sketch first."));
+        if (w.length) groups.push({ cap: g.label, words: w });
+      }
+      // (Delete: a tap, once curves are picked - unless their window has it already.)
+      const del = tools.find((it) => it.id === "delete");
+      if (del && offered(del)) words.push(this.verb(del));
+      if (del) placed.add(del);
+      const rest = [...tools.filter((it) => !placed.has(it) && offered(it)), ...usable(bar).filter(notSep)].map((it) => this.verb(it));
+      if (rest.length) {
+        words.push(this.group("more", "More", "more", rest, ""));
+        groups.push({ cap: "More", words: rest });
+      }
     }
-    const view = usable(bar).filter(notSep).map((it) => this.verb(it));
-    words.push(...view);
-    if (view.length) groups.push({ cap: "View", words: view });
     return {
       subject: { key: "s-sketch", kind: "subject", label: "Sketch", icon: "sketch", quiet: true },
       words,
@@ -543,7 +561,7 @@ export class Sentence {
     if (fresh) this.row.scrollLeft = 0;
     // The end of the line: everything for this pick, the eraser, the tick.
     this.end.replaceChildren();
-    if (b.groups.length && b.words.length > 3) {
+    if (b.groups.length > 1) {
       const all = this.endButton("grid", "Everything for this", () => this.toggle({ kind: "all" }));
       all.classList.add("sn-all");
       all.classList.toggle("on", this.open?.kind === "all");
@@ -601,7 +619,7 @@ export class Sentence {
     let at: Element | null = box.firstElementChild;
     for (const w of words) {
       let d = fresh ? undefined : old.get(w.key);
-      const sig = `${w.kind}|${w.label}|${w.cap ?? ""}|${w.on ? 1 : 0}|${w.blank ? 1 : 0}|${w.pulse ? 1 : 0}|${w.kids?.length ?? 0}|${w.swatch ?? ""}`;
+      const sig = `${w.kind}|${w.label}|${w.cap ?? ""}|${w.on ? 1 : 0}|${w.blank ? 1 : 0}|${w.pulse ? 1 : 0}|${w.kids?.length ?? 0}|${w.swatch ?? ""}|${w.off ? 1 : 0}`;
       if (!d) {
         d = this.wordEl(w);
         if (!calm()) {
@@ -680,6 +698,7 @@ export class Sentence {
     d.classList.toggle("pulse", !!w.pulse);
     d.classList.toggle("quiet", !!w.quiet);
     d.classList.toggle("capped", !!w.cap);
+    d.classList.toggle("off", !!w.off);
     (d as HTMLButtonElement).disabled = !!w.quiet && !w.run && !w.kids;
     d.replaceChildren();
     if (w.cap) d.append(el("span", "sn-cap", w.cap));
@@ -703,6 +722,7 @@ export class Sentence {
 
   /** A word tapped: it opens what it holds, takes a number, or does what it says. */
   private tap(w: Word, d: HTMLElement): void {
+    if (w.off) return void (buzz(), this.host.ui.toast(w.off));
     if (w.value) return void this.toggle({ kind: "type", key: w.key });
     // A tool with kinds starts as it was used last; while it is the one in use, a tap shows its kinds.
     if (w.kids?.length && (!w.first || w.on)) return void this.toggle({ kind: "kids", key: w.key });
