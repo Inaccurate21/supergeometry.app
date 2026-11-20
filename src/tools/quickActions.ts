@@ -50,7 +50,7 @@ export class QuickActions {
   private readonly hook = () => this.layout();
 
   /** `items`: what the pick offers (the wheel's own list, its kinds' items too); `at`: the point it is shown beside. */
-  static show(view: Viewport, kind: QuickKind, items: ToolItem[], at: Vec3, place: QuickPlace = {}): QuickActions | null {
+  static show(view: Viewport, kind: QuickKind, items: ToolItem[], at: Vec3, place: QuickPlace = {}, all = false): QuickActions | null {
     const byId = new Map<string, ToolItem>();
     const walk = (its: ToolItem[]) => {
       for (const it of its) {
@@ -60,7 +60,26 @@ export class QuickActions {
     };
     walk(items);
     const picked = (QUICK[kind] as readonly string[]).map((id) => byId.get(id)).filter((it): it is ToolItem => !!it && !it.disabled && !!it.run && (!it.beta || it.id === "editFreeform")).slice(0, MOST_OF[kind] ?? MOST);
-    return picked.length ? new QuickActions(view, picked, at, place) : null;
+    if (!all) return picked.length ? new QuickActions(view, picked, at, place) : null;
+    // On the model: Delete beside them, and a last button that opens every other tool the pick has (asked for: "I
+    // also want to have other tools there that could be used on that element. And also delete"). The few most likely
+    // stay the row; the rest come up under it only when asked for, so nothing is crowded.
+    const usable = (it: ToolItem | undefined): it is ToolItem => !!it && !it.disabled && !!it.run;
+    const del = [byId.get("delete"), byId.get("deleteBody")].find(usable);
+    const row = del && !picked.includes(del) ? [...picked, del] : picked;
+    const rest: ToolItem[] = [];
+    const skip = new Set(["deselect", "reveal", "color", "opacity", "material", "wholePattern"]);
+    const gather = (its: ToolItem[]) => {
+      for (const it of its) {
+        if (!it.label || it.id.startsWith("---") || skip.has(it.id) || it.disabled) continue;
+        // (A tool that starts by itself is one button, its kinds a tap further inside it; a bare group is its tools.)
+        if (it.run) {
+          if (!row.includes(it) && !rest.some((r) => r.label === it.label) && !row.some((r) => r.label === it.label)) rest.push(it);
+        } else if (it.children?.length) gather(it.children);
+      }
+    };
+    gather(items);
+    return row.length || rest.length ? new QuickActions(view, row, at, place, rest) : null;
   }
 
   /** These very buttons (a tool's own choices, the one in use lit), beside `at`. */
@@ -75,12 +94,13 @@ export class QuickActions {
     items: ToolItem[],
     private readonly at: Vec3,
     private readonly place: QuickPlace,
+    rest: ToolItem[] = [],
   ) {
     this.facing = place.facing;
     this.box.className = "quick-actions";
-    for (const it of items) {
+    const button = (it: ToolItem) => {
       const b = document.createElement("button");
-      b.className = it.active ? "quick-action on" : "quick-action";
+      b.className = `quick-action${it.active ? " on" : ""}${it.id === "delete" || it.id === "deleteBody" ? " danger" : ""}`;
       b.title = it.shortcut ? `${it.label} (${it.shortcut})` : it.label;
       b.setAttribute("aria-label", it.label);
       const icon = icons[it.icon as keyof typeof icons];
@@ -89,7 +109,31 @@ export class QuickActions {
         e.stopPropagation();
         it.run?.();
       });
-      this.box.append(b);
+      return b;
+    };
+    const row = document.createElement("div");
+    row.className = "quick-row";
+    for (const it of items) row.append(button(it));
+    this.box.append(row);
+    if (rest.length) {
+      // The rest of what the pick offers: under the row, opened by its last button (and shut by it again).
+      const more = document.createElement("button");
+      more.className = "quick-action quick-more";
+      more.title = "Every other tool for this";
+      more.setAttribute("aria-label", "More tools for this");
+      more.innerHTML = `${icons.more ?? ""}<span>More</span>`;
+      const grid = document.createElement("div");
+      grid.className = "quick-rest";
+      grid.hidden = true;
+      for (const it of rest) grid.append(button(it));
+      more.addEventListener("click", (e) => {
+        e.stopPropagation();
+        grid.hidden = !grid.hidden;
+        more.classList.toggle("on", !grid.hidden);
+        this.layout();
+      });
+      row.append(more);
+      this.box.append(grid);
     }
     // A press on them is theirs: never a pick on the model behind, nor the view turning.
     this.box.addEventListener("pointerdown", (e) => e.stopPropagation());

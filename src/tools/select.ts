@@ -1132,7 +1132,7 @@ export class SelectTool implements Tool {
     const view = this.app.view;
     const s = sel[sel.length - 1];
     const show = (kind: QuickKind, at: Vec3 | undefined, place?: QuickPlace) => {
-      if (at) this.quick = QuickActions.show(view, kind, items, at, place);
+      if (at) this.quick = QuickActions.show(view, kind, items, at, place, true);
     };
     if (s.kind === "face") {
       const f = view.body(s.body)?.faces[s.face];
