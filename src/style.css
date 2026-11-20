@@ -6851,10 +6851,10 @@ html[data-screen="phone"] #sentence {
 /* (Upright: the line has the bottom edge, where the tool strip was; undo and the guide text stay over it, whatever tool is open.) */
 @media (max-width: 720px) and (orientation: portrait) {
   html[data-screen="phone"] body.sentence-ui #undo-dock {
-    bottom: calc(var(--sn-line, 48px) + 16px + var(--safe-b)) !important;
+    bottom: calc(var(--sn-line, 48px) + var(--sn-sheet, 0px) + 16px + var(--safe-b)) !important;
   }
   html[data-screen="phone"] body.sentence-ui #hint {
-    bottom: calc(var(--sn-line, 48px) + 70px + var(--safe-b)) !important;
+    bottom: calc(var(--sn-line, 48px) + var(--sn-sheet, 0px) + 70px + var(--safe-b)) !important;
   }
   html[data-screen="phone"] .sn-row.sn-wrap {
     max-height: 94px;
@@ -7258,4 +7258,58 @@ body.headset .sn-compact .sn-end-btn.sn-exit {
 }
 .sn-word.opened .sn-more {
   transform: rotate(180deg);
+}
+
+/* A phone held upright: an open list is a part of the line - as wide, right on it, its tools in even cells - and
+   nothing is under it: undo, the tag and the guide text move up over it (see --sn-sheet) and stay in reach. */
+@media (max-width: 720px) and (orientation: portrait) {
+  html[data-screen="phone"] .sn-tag {
+    order: -1;
+  }
+  /* (While a list is up it is what is being read: the tag and the guide text step aside - lifted, they would be on the
+     buttons at the right edge. Undo stays, over the list's near corner.) */
+  html[data-screen="phone"] body.sn-open .sn-tag {
+    display: none;
+  }
+  html[data-screen="phone"] body.sn-open #hint {
+    visibility: hidden;
+  }
+  html[data-screen="phone"] .sn-sheet,
+  html[data-screen="phone"] .sn-sheet.sn-kids,
+  html[data-screen="phone"] .sn-sheet.sn-typing {
+    align-self: stretch;
+    margin-left: 0;
+    max-width: none;
+    min-width: 0;
+    margin-bottom: 6px;
+    max-height: min(46vh, 380px);
+    padding: 10px 10px 10px;
+    background: linear-gradient(180deg, rgba(40, 43, 49, 0.98), rgba(26, 28, 32, 0.98));
+    box-shadow: 0 12px 34px rgba(0, 0, 0, 0.45), inset 0 1px 0 rgba(255, 255, 255, 0.06);
+  }
+  html[data-screen="phone"] .sn-sheet.sn-all {
+    columns: auto;
+  }
+  html[data-screen="phone"] .sn-sheet:not(.sn-typing) .sn-group-words {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+    gap: 6px;
+  }
+  html[data-screen="phone"] .sn-sheet:not(.sn-typing) .sn-group-words .sn-word {
+    min-height: 46px;
+    justify-content: flex-start;
+    background: rgba(255, 255, 255, 0.05);
+    border-radius: 10px;
+  }
+  html[data-screen="phone"] .sn-sheet .sn-group-cap {
+    margin-bottom: 8px;
+  }
+}
+/* (A phone either way up: the guide text is not under an open list; on a screen too short for the list and the buttons
+   at the right edge, those step aside while it is up.) */
+html[data-screen="phone"] body.sn-open #hint {
+  visibility: hidden;
+}
+body.sn-crowd #right-col {
+  visibility: hidden;
 }

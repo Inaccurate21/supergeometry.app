@@ -262,6 +262,8 @@ export class Sentence {
     const tall = new ResizeObserver(() => this.measure());
     tall.observe(this.line);
     tall.observe(this.tag);
+    // (How much of the screen an open list takes over the line: on a phone undo, the tag and the guide text move up over it.)
+    new ResizeObserver(() => this.lift()).observe(this.sheet);
     host.view.frameHooks.add(() => this.drawThread());
     // (The line slid along: the thread still starts at its subject, or at the line's near end once that is out of sight.)
     this.row.addEventListener("scroll", () => ((this.threadSig = ""), this.drawThread(), this.edges()), { passive: true });
@@ -668,6 +670,15 @@ export class Sentence {
 
   /** How tall the line and its tag are now, for what sits over them on a phone (set only when it changed). */
   private tall = "";
+  /** The room an open list takes over the line (none while it is shut): what sits over the line on a phone is lifted by it. */
+  private lifted = "";
+  private lift(): void {
+    const h = this.sheet.hidden ? "0px" : `${Math.max(0, this.line.offsetTop - this.sheet.offsetTop)}px`;
+    if (h === this.lifted) return;
+    this.lifted = h;
+    document.body.style.setProperty("--sn-sheet", h);
+  }
+
   private measure(): void {
     // (A phone held upright has the tag at the line's far end, beside undo: only the line's own height counts there.)
     const beside = document.documentElement.dataset.screen === "phone" && matchMedia("(max-width: 720px) and (orientation: portrait)").matches;
@@ -941,6 +952,8 @@ export class Sentence {
     if (!o || !b) {
       this.sheet.hidden = true;
       this.sheet.replaceChildren();
+      document.body.classList.remove("sn-crowd");
+      this.lift();
       return;
     }
     if (o.kind === "type") {
@@ -982,6 +995,16 @@ export class Sentence {
       for (const t of b.others.slice(0, 8)) note.append(el("div", "sn-other", t));
       this.sheet.append(note);
     }
+    // A phone held upright (the list is as wide as the screen): no taller than leaves the buttons at the right edge
+    // clear above it - it scrolls instead.
+    this.sheet.style.maxHeight = "";
+    const col = document.getElementById("right-col");
+    if (col && document.documentElement.dataset.screen === "phone" && matchMedia("(max-width: 720px) and (orientation: portrait)").matches) {
+      const room = this.line.getBoundingClientRect().top - col.getBoundingClientRect().bottom - 16;
+      if (col.offsetHeight && room < this.sheet.offsetHeight) this.sheet.style.maxHeight = `${Math.max(150, Math.round(room))}px`;
+      // (A screen too short for both - a small phone with a tool's two lines: those buttons step aside while the list is up.)
+      document.body.classList.toggle("sn-crowd", !!col.offsetHeight && room < Math.min(150, this.sheet.offsetHeight));
+    } else document.body.classList.remove("sn-crowd");
     if (rise && !calm()) this.sheet.animate([{ opacity: 0, transform: "translateY(10px)" }, { opacity: 1, transform: "none" }], { duration: 140, easing: "ease-out" });
     // (One word's kinds: over that word.)
     this.sheet.style.setProperty("--sn-at", "50%");
@@ -993,6 +1016,7 @@ export class Sentence {
         this.sheet.style.setProperty("--sn-at", `${Math.round(Math.min(lr.width - 20, Math.max(20, r.left + r.width / 2 - lr.left)))}px`);
       }
     }
+    this.lift();
   }
 
   /** A number typed right there: Enter (or a tap elsewhere) sets it, Esc leaves it as it was. */
