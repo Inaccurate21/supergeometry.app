@@ -2098,7 +2098,7 @@ export class SketchTool implements Tool {
     for (const id of curveIds) {
       const e = this.entities.find((x) => x.id === id);
       if (!e) continue;
-      const own = e.kind === "circle" || e.kind === "ellipse" || e.kind === "rect" || e.kind === "polygon" ? pointsOf(e).filter((q) => q.p === "c") : pointsOf(e).filter((q) => q.p !== "c");
+      const own = e.kind === "ellipse" && e.sweep !== undefined ? pointsOf(e) : e.kind === "circle" || e.kind === "ellipse" || e.kind === "rect" || e.kind === "polygon" ? pointsOf(e).filter((q) => q.p === "c") : pointsOf(e).filter((q) => q.p !== "c");
       for (const q of own) out.set(`${id}:${q.p}`, { ref: { e: id, p: q.p }, at: q.at });
     }
     for (const r of pts) {
@@ -4861,7 +4861,7 @@ export class SketchTool implements Tool {
   private inward(d: number): number {
     const e = this.outline.find((x) => x.id === this.edit.offsetOf);
     if (memory.offsetMode === "chain" || !e) return -d;
-    const ends = this.outline.flatMap((x) => (x.kind === "line" || x.kind === "arc" ? [x.a, x.b] : x.kind === "spline" ? [x.points[0], x.points[x.points.length - 1]] : x.kind === "circle" || x.kind === "ellipse" ? [x.center] : []));
+    const ends = this.outline.flatMap((x) => (x.kind === "line" || x.kind === "arc" ? [x.a, x.b] : x.kind === "spline" ? [x.points[0], x.points[x.points.length - 1]] : x.kind === "ellipse" && x.sweep !== undefined ? pointsOf(x).filter((q) => q.p !== "c").map((q) => q.at) : x.kind === "circle" || x.kind === "ellipse" ? [x.center] : []));
     if (!ends.length) return -d;
     const mid: Vec2 = [ends.reduce((s, p) => s + p[0], 0) / ends.length, ends.reduce((s, p) => s + p[1], 0) / ends.length];
     const far = (sign: number) => {
@@ -4907,7 +4907,7 @@ export class SketchTool implements Tool {
     const order = this.app.store.features.map((f) => f.id);
     const here = this.sketchId ? order.indexOf(this.sketchId) : order.length;
     const before = (step: string) => order.indexOf(step) >= 0 && order.indexOf(step) < here;
-    const ends = (e: SketchEntity): Vec2[] => (e.kind === "line" || e.kind === "arc" ? [e.a, e.b] : e.kind === "spline" ? [e.points[0], e.points[e.points.length - 1]] : e.kind === "circle" || e.kind === "ellipse" ? [e.center] : []);
+    const ends = (e: SketchEntity): Vec2[] => (e.kind === "line" || e.kind === "arc" ? [e.a, e.b] : e.kind === "spline" ? [e.points[0], e.points[e.points.length - 1]] : e.kind === "ellipse" && e.sweep !== undefined ? pointsOf(e).filter((q) => q.p !== "c").map((q) => q.at) : e.kind === "circle" || e.kind === "ellipse" ? [e.center] : []);
     const near = (p: Vec2, q: Vec2) => Math.hypot(p[0] - q[0], p[1] - q[1]) < 1e-6;
     const added: SketchEntity[] = [];
     const links: EdgeLink[] = [];

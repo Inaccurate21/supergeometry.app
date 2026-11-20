@@ -90,8 +90,17 @@ export function pointsOf(e: SketchEntity): { p: string; at: Vec2 }[] {
       return [{ p: "a", at: e.a }, { p: "b", at: e.b }, ...(c ? [{ p: "c", at: c.c }] : [])];
     }
     case "circle":
-    case "ellipse":
       return [{ p: "c", at: e.center }];
+    case "ellipse": {
+      if (e.sweep === undefined) return [{ p: "c", at: e.center }];
+      // Part of an ellipse: its two ends too.
+      const at = (t: number): Vec2 => {
+        const x = e.rx * Math.cos(t);
+        const y = e.ry * Math.sin(t);
+        return [e.center[0] + x * Math.cos(e.rotation) - y * Math.sin(e.rotation), e.center[1] + x * Math.sin(e.rotation) + y * Math.cos(e.rotation)];
+      };
+      return [{ p: "a", at: at(e.a0 ?? 0) }, { p: "b", at: at((e.a0 ?? 0) + e.sweep) }, { p: "c", at: e.center }];
+    }
     case "rect":
     case "polygon":
       return [{ p: "c", at: e.center }, ...entityCorners(e).map((at, i) => ({ p: `k${i}`, at }))];

@@ -58,8 +58,24 @@ if (el2?.kind === "ellipse") {
 
 // Part of an ellipse (a quarter of the slanted circle): a spline through a few points, on the edge.
 const quarter = ring.map(tilt).slice(0, N / 4 + 1);
-const q = projectPolyline(quarter, XY, "ELLIPSE", true);
-check("part of an ellipse: a spline", q?.kind === "spline", q);
+// Part of an ellipse (a quarter of the slanted circle): part of an ellipse, exactly - two ends, like the edge.
+const arc = projectPolyline(quarter, XY, "ELLIPSE");
+check("part of an ellipse: part of an ellipse", arc?.kind === "ellipse" && arc.sweep !== undefined, arc);
+if (arc?.kind === "ellipse") {
+  const ends = pointsOf(arc);
+  const [big, small] = [Math.max(arc.rx, arc.ry), Math.min(arc.rx, arc.ry)];
+  check("... 20 by 10, a quarter of it", near(big, 20, 1e-6) && near(small, 10, 1e-6) && near(Math.abs(arc.sweep!), Math.PI / 2, 1e-6), arc);
+  check("... its two ends the edge's ends, and its middle", ends.length === 3 && near(ends[0].at[0], 20, 1e-6) && near(ends[0].at[1], 0, 1e-6) && near(ends[1].at[0], 0, 1e-6) && near(ends[1].at[1], 10, 1e-6), ends);
+  // Run the other way (the edge's own direction), it is the same quarter from its other end.
+  const back = projectPolyline([...quarter].reverse(), XY, "CIRCLE");
+  check("... the edge run the other way: from its other end", back?.kind === "ellipse" && near(pointsOf(back)[0].at[1], 10, 1e-6) && near(pointsOf(back)[1].at[0], 20, 1e-6), back);
+  // More than half way round: still the way the edge goes.
+  const most = projectPolyline(ring.map(tilt).slice(0, (N * 3) / 4 + 1), XY, "CIRCLE");
+  check("... three quarters of it: three quarters", most?.kind === "ellipse" && near(Math.abs(most.sweep!), Math.PI * 1.5, 1e-6), most);
+}
+// (A curve of an older project, made as a spline, stays one.)
+const q = projectPolyline(quarter, XY, "ELLIPSE", true, false);
+check("part of an ellipse, kept a spline (an older curve)", q?.kind === "spline", q);
 if (q?.kind === "spline") {
   check("... through fewer than the 17 it was made from", q.points.length < 17, q.points.length);
   check("... its ends the edge's ends", near(q.points[0][0], 20, 1e-9) && near(q.points[q.points.length - 1][1], 10, 1e-9), [q.points[0], q.points[q.points.length - 1]]);
@@ -86,7 +102,7 @@ if (s?.kind === "spline") check("... through fewer points than it was made from"
 
 // One that follows its edge: the edge's own shape, 24 points - and two ends to pick.
 const long = ring.map(tilt).slice(0, N / 2 + 1);
-const follow = projectPolyline(long, XY, "ELLIPSE");
+const follow = projectPolyline(long, XY, "ELLIPSE", false, false);
 check("a curve that follows its edge: 24 points of it", follow?.kind === "spline" && follow.points.length === 24, follow?.kind === "spline" ? follow.points.length : follow);
 const oldRing = projectPolyline(ring.map(tilt), XY, "CIRCLE");
 check("... a slanted circle too: 24 points, closed", oldRing?.kind === "spline" && oldRing.closed && oldRing.points.length === 24, oldRing?.kind);

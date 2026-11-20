@@ -53,7 +53,8 @@ export function transformEntity(e: SketchEntity, xf: Xf, newId = false): SketchE
     case "circle":
       return { ...base, kind: "circle", center: xf(e.center), radius: e.radius * k };
     case "ellipse":
-      return { ...base, kind: "ellipse", center: xf(e.center), rx: e.rx * k, ry: e.ry * k, rotation: mirrored ? rot - e.rotation : e.rotation + rot };
+      // (Part of an ellipse, mirrored: it runs the other way round from the other side of its axis.)
+      return { ...base, kind: "ellipse", center: xf(e.center), rx: e.rx * k, ry: e.ry * k, rotation: mirrored ? rot - e.rotation : e.rotation + rot, ...(e.sweep === undefined ? {} : { a0: mirrored ? -(e.a0 ?? 0) : (e.a0 ?? 0), sweep: mirrored ? -e.sweep : e.sweep }) };
     case "spline":
       return { ...base, kind: "spline", points: e.points.map(xf), closed: e.closed, mode: e.mode };
     case "rect":
@@ -84,7 +85,8 @@ export function guidePoints(e: SketchEntity): { p: Vec2; kind: "end" | "mid" | "
     case "circle":
     case "ellipse":
       out.push({ p: e.center, kind: "center" });
-      for (const p of entityPrims(e)) for (const t of [0, 0.25, 0.5, 0.75]) out.push({ p: evalPrim(p, t), kind: "end" });
+      // (Part of an ellipse: its two ends and its middle.)
+      for (const p of entityPrims(e)) for (const t of e.kind === "ellipse" && e.sweep !== undefined ? [0, 0.5, 1] : [0, 0.25, 0.5, 0.75]) out.push({ p: evalPrim(p, t), kind: "end" });
       break;
     case "spline":
       e.points.forEach((p) => out.push({ p, kind: "end" }));
@@ -656,6 +658,10 @@ export function splitAny(entities: SketchEntity[], id: string, at: Vec2, step: n
       pts = e.points;
       closed = e.closed;
       mode = e.mode;
+    } else if (e.sweep !== undefined) {
+      // Part of an ellipse: an open spline through 13 of its points.
+      pts = Array.from({ length: 13 }, (_, i) => evalPrim(prim, i / 12));
+      closed = false;
     } else {
       pts = Array.from({ length: 12 }, (_, i) => evalPrim(prim, i / 12));
       closed = true;
@@ -1037,7 +1043,7 @@ export function offsetEntity(e: SketchEntity, d: number): SketchEntity | null {
     case "circle":
       return e.radius + d > 0 ? { ...base, kind: "circle", center: e.center, radius: e.radius + d } : null;
     case "ellipse":
-      return e.rx + d > 0 && e.ry + d > 0 ? { ...base, kind: "ellipse", center: e.center, rx: e.rx + d, ry: e.ry + d, rotation: e.rotation } : null;
+      return e.rx + d > 0 && e.ry + d > 0 ? { ...base, kind: "ellipse", center: e.center, rx: e.rx + d, ry: e.ry + d, rotation: e.rotation, ...(e.sweep === undefined ? {} : { a0: e.a0 ?? 0, sweep: e.sweep }) } : null;
     case "rect":
       return e.w + 2 * d > 0 && e.h + 2 * d > 0 ? { ...base, kind: "rect", center: e.center, w: e.w + 2 * d, h: e.h + 2 * d, rotation: e.rotation } : null;
     case "polygon": {
@@ -1239,9 +1245,12 @@ const unit = (a: Vec2): Vec2 => {
  * only its two ends show (`pointsOf`). `lean`: a free copy, which is the
  * user's to shape - a whole ellipse as an ellipse, anything else with as few
  * points as hold it within a two-thousandth of its size, not a row of 24 dots
- * to drag one by one.)
+ * to drag one by one. And a round edge seen at a slant - part of a circle or
+ * of an ellipse - is part of an ellipse, exactly, with its two ends: `conic`
+ * false keeps the spline, for a curve of an older project made as one, which
+ * may have sizes tied to its points.)
  */
-export function projectPolyline(pts3: Vec3[], plane: PlaneDef, type: string, lean = false): SketchEntity | null {
+export function projectPolyline(pts3: Vec3[], plane: PlaneDef, type: string, lean = false, conic = true): SketchEntity | null {
   const pts = dedupe(pts3.map((p) => toPlane(plane, p)));
   if (pts.length < 2) return null;
   const a = pts[0];
@@ -1259,6 +1268,27 @@ export function projectPolyline(pts3: Vec3[], plane: PlaneDef, type: string, lea
     }
   }
   const run = closed ? pts.slice(0, -1) : pts;
+  if (conic && !closed && (type === "CIRCLE" || type === "ELLIPSE") && run.length >= 7) {
+    const xs = pts.map((p) => p[0]);
+    const ys = pts.map((p) => p[1]);
+    const size = Math.hypot(Math.max(...xs) - Math.min(...xs), Math.max(...ys) - Math.min(...ys));
+    const el = fitEllipse(run);
+    // (Only when every point is on it: a short, nearly straight piece can be fitted by ellipses that are nothing like it.)
+    if (el && run.every((p) => offEllipse(p, el) < size * 1e-6) && Math.max(el.rx, el.ry) < size * 50) {
+      const at = (p: Vec2) => {
+        const dx = p[0] - el.c[0];
+        const dy = p[1] - el.c[1];
+        return Math.atan2((-dx * Math.sin(el.rot) + dy * Math.cos(el.rot)) / el.ry, (dx * Math.cos(el.rot) + dy * Math.sin(el.rot)) / el.rx);
+      };
+      // Which way round it goes: the way that passes its middle point.
+      const turn = (from: number, to: number) => ((((to - from) % (2 * Math.PI)) + 2 * Math.PI) % (2 * Math.PI));
+      const a0 = at(a);
+      const toMid = turn(a0, at(run[Math.floor(run.length / 2)]));
+      const toEnd = turn(a0, at(b));
+      const sweep = toMid <= toEnd ? toEnd : toEnd - 2 * Math.PI;
+      if (Math.abs(sweep) > 1e-6) return { id: uid(), kind: "ellipse", center: el.c, rx: el.rx, ry: el.ry, rotation: el.rot, a0, sweep };
+    }
+  }
   if (lean) {
     const xs = pts.map((p) => p[0]);
     const ys = pts.map((p) => p[1]);

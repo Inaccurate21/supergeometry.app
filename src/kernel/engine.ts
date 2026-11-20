@@ -4213,7 +4213,8 @@ function followEdges(f: SketchFeature, plane: PlaneDef, bodies: Bodies): SketchE
     let made: SketchEntity | null = null;
     try {
       const edge = resolveEdge(need(bodies, link.edge.body), link.edge);
-      made = projectPolyline(Array.from({ length: 25 }, (_, k) => edge.pointAt(k / 24).toTuple() as Vec3), plane, edge.geomType);
+      // (A curve made as a spline - an older project's - stays one: sizes may be tied to its points.)
+      made = projectPolyline(Array.from({ length: 25 }, (_, k) => edge.pointAt(k / 24).toTuple() as Vec3), plane, edge.geomType, false, e.kind !== "spline");
     } catch (err) {
       if (isFault(err)) throw err;
     }
@@ -4226,6 +4227,18 @@ function followEdges(f: SketchFeature, plane: PlaneDef, bodies: Bodies): SketchE
     if ((made.kind === "line" || made.kind === "arc") && e.kind === made.kind) {
       const far = (p: number[], q: number[]) => Math.hypot(p[0] - q[0], p[1] - q[1]);
       if (far(made.a, e.b) + far(made.b, e.a) < far(made.a, e.a) + far(made.b, e.b)) made = { ...made, a: made.b, b: made.a };
+    }
+    // (Part of an ellipse the same: run from the end it ran from before.)
+    if (made.kind === "ellipse" && made.sweep !== undefined && e.kind === "ellipse" && e.sweep !== undefined) {
+      const end = (x: Extract<SketchEntity, { kind: "ellipse" }>, t: number): [number, number] => {
+        const px = x.rx * Math.cos(t);
+        const py = x.ry * Math.sin(t);
+        return [x.center[0] + px * Math.cos(x.rotation) - py * Math.sin(x.rotation), x.center[1] + px * Math.sin(x.rotation) + py * Math.cos(x.rotation)];
+      };
+      const far = (p: number[], q: number[]) => Math.hypot(p[0] - q[0], p[1] - q[1]);
+      const [ma, mb] = [end(made, made.a0 ?? 0), end(made, (made.a0 ?? 0) + made.sweep)];
+      const [ea, eb] = [end(e, e.a0 ?? 0), end(e, (e.a0 ?? 0) + e.sweep)];
+      if (far(ma, eb) + far(mb, ea) < far(ma, ea) + far(mb, eb)) made = { ...made, a0: (made.a0 ?? 0) + made.sweep, sweep: -made.sweep };
     }
     const now = { ...made, id: e.id, ...(e.construction ? { construction: true } : {}) } as SketchEntity;
     if (sameNumbers(e, now, 1e-9)) return e;
@@ -4255,7 +4268,8 @@ function faceBoundary(ref: FaceRef, plane: PlaneDef, bodies: Bodies): SketchEnti
   if (face.geomType !== "PLANE") return [];
   return face.edges.flatMap((e, i) => {
     const pts = Array.from({ length: 25 }, (_, k) => e.pointAt(k / 24).toTuple() as Vec3);
-    const ent = projectPolyline(pts, plane, e.geomType);
+    // (A face's own outline: as it always was - shapes are made of it.)
+    const ent = projectPolyline(pts, plane, e.geomType, false, false);
     return ent ? [{ ...ent, id: `bnd-${i}` }] : [];
   });
 }

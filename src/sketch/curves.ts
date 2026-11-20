@@ -82,7 +82,7 @@ export function entityPrims(e: SketchEntity): Prim[] {
     case "circle":
       return [{ t: "circle", c: e.center, r: e.radius, a0: 0, sweep: TAU, src }];
     case "ellipse":
-      return [{ t: "ellipse", c: e.center, rx: e.rx, ry: e.ry, rot: e.rotation, a0: 0, sweep: TAU, src }];
+      return [{ t: "ellipse", c: e.center, rx: e.rx, ry: e.ry, rot: e.rotation, a0: e.sweep === undefined ? 0 : (e.a0 ?? 0), sweep: e.sweep ?? TAU, src }];
     case "spline":
       return [{ t: "spline", pts: splinePoints(e.points, e.closed, e.mode), closed: e.closed && e.points.length > 2, src, ...(e.points.length > 2 ? { ctrl: { points: e.points, closed: e.closed, mode: e.mode } } : {}) }];
     case "rect":

@@ -23,7 +23,12 @@ export type SketchEntity = EntityBase &
     /** Arc through a (start), m (any point on it) and b (end). */
     | { kind: "arc"; a: Vec2; m: Vec2; b: Vec2 }
     | { kind: "circle"; center: Vec2; radius: number }
-    | { kind: "ellipse"; center: Vec2; rx: number; ry: number; rotation: number }
+    /**
+     * `sweep` given: a part of the ellipse, from the angle `a0` on it (0 is the
+     * end of its rx axis) round by `sweep` (radians, + anticlockwise) - what a
+     * round edge seen at a slant is, with two ends like the edge. Neither: whole.
+     */
+    | { kind: "ellipse"; center: Vec2; rx: number; ry: number; rotation: number; a0?: number; sweep?: number }
     | { kind: "spline"; points: Vec2[]; closed: boolean; mode: "fit" | "control" }
     | { kind: "rect"; center: Vec2; w: number; h: number; rotation: number }
     | { kind: "polygon"; center: Vec2; radius: number; sides: number; angle: number }
