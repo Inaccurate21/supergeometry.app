@@ -136,6 +136,11 @@ export function installDebug(app: App): void {
 
     /** The tool wheel: where its groups and fanned-out tools are on the page, to point and tap at. */
     wheel: () => app.wheel.describe(),
+    /** The sentence bar: what it says now (its words, where each is), and its switch. */
+    sentence: (on?: boolean) => {
+      if (on !== undefined) app.setSentence(on);
+      return app.sentence.describe();
+    },
 
     /** Every tool the wheel offers now, by where it is ("Tools › Fillet"): the same as sg.actions(), arranged its way. */
     wheelTools: () => app.wheel.tools(),

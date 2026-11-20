@@ -56,6 +56,12 @@ export interface Settings {
    * the tools (kept as a setting for the code that asks).
    */
   wheel: boolean;
+  /**
+   * The sentence (More: Sentence bar): a line at the bottom that says what is
+   * picked and what can be done with it, in place of the tool wheel. Off
+   * unless switched on.
+   */
+  sentence: boolean;
 }
 
 const DEFAULTS: Settings = {
@@ -88,6 +94,7 @@ const DEFAULTS: Settings = {
   showHints: true,
   offline: false,
   wheel: true,
+  sentence: false,
   version: 5,
 };
 

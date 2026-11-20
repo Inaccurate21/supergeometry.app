@@ -31,7 +31,7 @@ import { openDrawing } from "./bim/drawing";
 import { ItemsPanel } from "./ui/items";
 import { OffsetEdgeOp } from "./tools/offsetEdge";
 import { faceFreeformTool } from "./tools/faceFreeform";
-import { AxisOp, ConnectOp, EdgeOp, ExtrudeOp, FillOp, FillToPlaneOp, ThreadOp, ImageOp, LoftOp, MidplaneOp, MoveFaceOp, PlaneOp, ReplaceFaceOp, ScaleFaceOp, ScaleOp, ScaleRefOp, RevolveOp, ShellOp, SplitOp, SweepOp, TransformOp } from "./tools/ops";
+import { bodyCenter, AxisOp, ConnectOp, EdgeOp, ExtrudeOp, FillOp, FillToPlaneOp, ThreadOp, ImageOp, LoftOp, MidplaneOp, MoveFaceOp, PlaneOp, ReplaceFaceOp, ScaleFaceOp, ScaleOp, ScaleRefOp, RevolveOp, ShellOp, SplitOp, SweepOp, TransformOp } from "./tools/ops";
 import { add, dist, scale, toWorld, xDirFor } from "./geom";
 import { entityPolylines } from "./sketch/curves";
 import { FreeformTool } from "./tools/freeform";
@@ -41,13 +41,15 @@ import { BooleanOp } from "./tools/booleanOp";
 import { FeatureOp, sketchesUsed } from "./tools/featureOp";
 import { SketchTool } from "./tools/sketch";
 import { definedCurves } from "./sketch/constraints";
-import { bodiesOf, edgeRefOf, edgesOfFace, faceRefOf, sameSel, sourcesOf, type AppContext, type Sel, type Tool } from "./tools/tool";
+import { bodiesOf, edgeRefOf, edgesOfFace, faceRefOf, sameSel, sourceFrame, sourcesOf, type AppContext, type Sel, type Tool } from "./tools/tool";
 import { setupRightColumn } from "./ui/panels";
 import type { ToolItem } from "./ui/ui";
 import { UI } from "./ui/ui";
 import { Wheel } from "./ui/wheel";
+import { Sentence } from "./ui/sentence";
 import { evaluate, setUnits, setVariables } from "./units";
 import { InputRouter } from "./view/input";
+import { pickTolerance } from "./device";
 import { ViewCube } from "./view/viewcube";
 import { PivotButton } from "./ui/pivot";
 import { HelpPanel } from "./ui/help";
@@ -76,6 +78,10 @@ export class App implements AppContext {
   readonly wheel = new Wheel({ ui: this.ui, mainTools: () => this.mainTools(), onFold: () => this.tool === this.selectTool && this.selectTool.refresh() });
   /** The Settings wheel: always on the screen while the wheel is on (folded to its cog unless opened). */
   readonly settingsWheel = new Wheel({ ui: this.ui, mainTools: () => [] }, "settings");
+  /** The sentence bar (More: Sentence bar): the pick, then what it offers, on one line - in place of the wheel while it is on. */
+  sentence!: Sentence;
+  /** Where the view was last tapped (the sentence bar starts a sketch tool that acts where it is tapped right there). */
+  private lastTapAt: { x: number; y: number; type: "mouse" | "pen" | "touch" } | null = null;
   /** Pictures to look at while modelling, each in a window over the model (under the buttons). */
   readonly refImages = new RefImages((text, kind) => this.ui.toast(text, kind));
   readonly web = new WebWindow();
@@ -102,6 +108,27 @@ export class App implements AppContext {
     this.selectTool = new SelectTool(this);
     this.tool = this.selectTool;
     this.input.handler = this.tool;
+    this.sentence = new Sentence({
+      ui: this.ui,
+      view: this.view,
+      mainTools: () => this.mainTools(),
+      selection: () => this.selection,
+      mode: () => (this.tool === this.selectTool ? "model" : this.tool instanceof SketchTool ? "sketch" : this.tool instanceof FreeformTool ? "freeform" : "tool"),
+      sketchPicked: () => (this.tool instanceof SketchTool ? this.tool.pickedCount : 0),
+      anchor: () => this.pickAnchor(),
+      retap: () => {
+        const p = this.lastTapAt;
+        if (p) this.tool.tap?.({ x: p.x, y: p.y, type: p.type, shift: false, tol: pickTolerance(p.type) }, 1);
+      },
+    });
+    canvas.addEventListener(
+      "pointerup",
+      (e) => {
+        const r = canvas.getBoundingClientRect();
+        this.lastTapAt = { x: e.clientX - r.left, y: e.clientY - r.top, type: (e.pointerType || "mouse") as "mouse" | "pen" | "touch" };
+      },
+      true,
+    );
     // Headsets: bigger targets everywhere (CSS) - aiming a controller is less precise than a mouse.
     if (isHeadset) document.body.classList.add("headset");
     // A spinner while the geometry engine works on something that takes a moment.
@@ -293,6 +320,33 @@ export class App implements AppContext {
     if (h === this.hover || (h && this.hover && sameSel(h, this.hover))) return;
     this.hover = h;
     this.refreshHighlights();
+  }
+
+  /** The sentence bar on or off (More: Sentence bar). Off, the tool wheel is back. */
+  setSentence(on: boolean): void {
+    if (on === settings.value.sentence) return;
+    settings.set("sentence", on);
+    // (The guide text and what the pick offers are said for the one that is on.)
+    if (this.tool === this.selectTool) this.selectTool.refresh();
+  }
+
+  /** Where the last thing picked is on the model (the sentence bar's thread runs to it). */
+  private pickAnchor(): Vec3 | null {
+    const sel = this.selection;
+    const s = sel[sel.length - 1];
+    if (!s) return null;
+    const view = this.view;
+    if (s.kind === "face") return view.body(s.body)?.faces[s.face]?.center ?? null;
+    if (s.kind === "edge") return view.body(s.body)?.edges[s.edge]?.mid ?? null;
+    if (s.kind === "vertex") return view.vertexOf(s.body, s.vertex) ?? null;
+    if (s.kind === "body") return bodyCenter(this, bodiesOf(sel));
+    if (s.kind === "profile") {
+      const src = sourcesOf(this, [s])[0];
+      return src ? sourceFrame(this, src).base : null;
+    }
+    if (s.kind === "plane") return view.planeShownAt(s.id) ?? view.planeOf(s.id)?.origin ?? null;
+    if (s.kind === "axis") return view.axisOf(s.id)?.plane.origin ?? null;
+    return null;
   }
 
   setTool(tool: Tool | null): void {
@@ -962,10 +1016,15 @@ export class App implements AppContext {
   }
 
   mainTools(): ToolItem[] {
-    const wait = (label: string, accepts: Sel["kind"][], run: () => void) => () => {
-      this.selectTool.waitFor(label, accepts, run);
-      this.selectTool.refresh();
-    };
+    // (Marked: it asks for a pick after it is tapped. The sentence bar leaves those out - there the pick comes first.)
+    const wait = (label: string, accepts: Sel["kind"][], run: () => void) =>
+      Object.assign(
+        () => {
+          this.selectTool.waitFor(label, accepts, run);
+          this.selectTool.refresh();
+        },
+        { needsPick: true },
+      );
     const bodies = () => bodiesOf(this.selection);
     const transform = (kind: ConstructorParameters<typeof TransformOp>[1], label: string) =>
       wait(label, ["body", "face", "edge"], () => this.setTool(new TransformOp(this, kind, bodies())));
@@ -1440,6 +1499,12 @@ export class App implements AppContext {
       paintHints();
       this.ui.refreshHint();
     });
+    // The sentence bar: what is picked and what can be done with it, on one line (in place of the tool wheel).
+    const sentenceState = document.getElementById("m-sentence-state")!;
+    const paintSentence = () => (sentenceState.textContent = settings.value.sentence ? "On" : "Off");
+    paintSentence();
+    settings.onChange(paintSentence);
+    moreItem("m-sentence", () => this.setSentence(!settings.value.sentence));
     // Offline mode: the app kept on this device, so it works with no connection.
     const offlineState = document.getElementById("m-offline-state")!;
     const offline = new Offline((t, k) => this.ui.toast(t, k), (state) => (offlineState.textContent = state));

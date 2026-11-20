@@ -125,7 +125,7 @@ const OWN = "own";
  * Where a picked thing's tool goes when it isn't named like one of the main
  * tools (those go where the main tool is). Anything not known: the top sector.
  */
-const GROUP_OF: Record<string, string> = {
+export const GROUP_OF: Record<string, string> = {
   text: "sketch", offset: "sketch", projs: "sketch",
   editFreeform: "freeform", fillHole: "freeform", thicken: "freeform",
   planePerp: "construct", planeEdge: "construct", proje: "construct",
@@ -141,7 +141,7 @@ const GROUP_OF: Record<string, string> = {
  * the most used is always the shortest move. (Tools not named here come after,
  * as they are listed.)
  */
-const RANK = [
+export const RANK = [
   "extrude", "revolve", "sweep", "loft",
   "fillet", "chamfer", "shell", "offsetFace", "fix", "offsetEdge", "thread", "wrap",
   "subtract", "union", "intersect", "split",
@@ -181,7 +181,7 @@ const SLOTS: Record<string, string[]> = {
 const OWN_PICKED = ["deselect", "delete", "measure", "section", "color", "opacity", "variables", "isolate"];
 const OWN_FREE = ["", "", "section", "insert", "measure", "bim", "variables", "isolate"];
 /** A picked thing's tool that is one of the places' under another name. */
-const ALIAS: Record<string, string> = { patl: "linear", patc: "circular", moveBody: "move", deleteBody: "delete", planePerp: "perp", planeEdge: "angle" };
+export const ALIAS: Record<string, string> = { patl: "linear", patc: "circular", moveBody: "move", deleteBody: "delete", planePerp: "perp", planeEdge: "angle" };
 /** The model's first ring, clockwise from the top: eight places, each always the same. */
 const MODEL_RING = ["create", "combine", "modify", "construct", "transform", "freeform", "sketch", OWN];
 
@@ -588,7 +588,8 @@ export class Wheel implements WheelHandle {
   }
 
   get on(): boolean {
-    return settings.value.wheel;
+    // (The sentence bar switched on takes its place.)
+    return settings.value.wheel && !settings.value.sentence;
   }
 
   get isOpen(): boolean {

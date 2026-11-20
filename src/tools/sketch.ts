@@ -1098,6 +1098,11 @@ export class SketchTool implements Tool {
     return box;
   }
 
+  /** How many curves and points are picked now (the sentence bar offers what can be done with them). */
+  get pickedCount(): number {
+    return this.selected.size + this.selPts.length;
+  }
+
   // ---------------------------------------------------------------- menu
 
   private updateMenu(): void {
