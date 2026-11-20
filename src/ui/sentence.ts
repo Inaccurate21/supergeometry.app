@@ -398,7 +398,7 @@ export class Sentence {
     }
     // More: the pick's own (Delete, Color), what is brought in, and the view's tools.
     const more = [...(by.get("own") ?? []), ...(by.get("more") ?? []), ...view].map((it) => this.verb(it));
-    words.push(this.group("more", "More", "more", more, why));
+    // (Not a word on the line: the button at its end, with everything at once, is where More is.)
     if (more.length) groups.push({ cap: sel.length ? name : "More", words: more });
     // (On the line from More to Create - the wheel's order the other way round, as asked for.)
     words.reverse();
@@ -565,8 +565,8 @@ export class Sentence {
     if (fresh) this.row.scrollLeft = 0;
     // The end of the line: everything for this pick, the eraser, the tick.
     this.end.replaceChildren();
-    if (b.groups.length > 1) {
-      const all = this.endButton("grid", "Everything for this", () => this.toggle({ kind: "all" }));
+    if (b.groups.length) {
+      const all = this.endButton("grid", "More: everything for this", () => this.toggle({ kind: "all" }));
       all.classList.add("sn-all");
       all.classList.toggle("on", this.open?.kind === "all");
       this.end.append(all);
