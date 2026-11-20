@@ -527,6 +527,22 @@ export class ExtrudeOp extends FeatureOp<ExtrudeFeature> {
     return this;
   }
 
+  /**
+   * The tool open, the shape or the face it pulls dragged by itself (not its arrow): that drag pulls it, as it does
+   * before the tool is open. (On a phone a tap on a shape opens Extrude at once: the next thing a hand does is drag
+   * the shape - which turned the view.)
+   */
+  dragStart(p: ToolPointer): boolean {
+    if (this.dragging || this.feature.extent === "to" || this.feature.extent === "through") return false;
+    const src = this.feature.source;
+    const hit = this.app.view.pick(p.x, p.y, { planes: false, axes: false, edgeTolPx: p.tol });
+    const mine = src.kind === "profile" ? hit?.kind === "profile" && hit.sketch === src.sketch : hit?.kind === "face" && hit.body === src.face.body && faceIndexOf(this.app, src.face) === hit.face;
+    if (!mine) return false;
+    this.dragging = { from: p, d0: this.feature.distance };
+    this.handle.setHot(true);
+    return true;
+  }
+
   /** Started by dragging the face or shape itself: the press that opened this drags it, wherever on it it is. */
   private grabbed = false;
   grabAnywhere(): this {

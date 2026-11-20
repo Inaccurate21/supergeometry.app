@@ -1581,7 +1581,19 @@ export class UI {
       const v = values[Number(input.dataset.index)];
       if (v !== undefined && !typingInto(input)) input.value = shown(v, input.dataset.kind as FieldKind);
     });
+    // The line at the bottom says the same numbers (it read them once, as the tool opened: dragged to -22, it still
+    // said -5). Told at most once a frame.
+    let changed = false;
+    (this.panelSpec?.items ?? []).filter((it): it is Extract<PanelItem, { type: "number" }> => it.type === "number").forEach((it, i) => {
+      if (values[i] !== undefined && it.value !== values[i]) ((it.value = values[i]), (changed = true));
+    });
+    if (changed && !this.valuesFrame)
+      this.valuesFrame = requestAnimationFrame(() => {
+        this.valuesFrame = 0;
+        this.onPanel?.();
+      });
   }
+  private valuesFrame = 0;
 
   focusPanel(): void {
     // Only focus with a keyboard; on touch it would pop the on-screen keyboard.

@@ -45,6 +45,8 @@ export interface SentenceHost {
   /** Each tap adds to the pick (else a tap picks that thing alone), and switching that. */
   adding(): boolean;
   setAdding(on: boolean): void;
+  /** Pick this instead of what is picked. */
+  pick(sel: Sel[]): void;
   /** A look ahead drawn on the model (dashed line segments), or none. */
   peek(segs: number[] | null): void;
   /** A tool started with nothing picked that is waiting for its pick (its name), and letting it go. */
@@ -117,6 +119,8 @@ interface Built {
   title?: Word;
   /** After the subject, in its tag: the + that makes each tap add to the pick. */
   more?: Word;
+  /** After those: other things to pick from here (a face or an edge picked: its whole body). */
+  also?: Word[];
   /** The line holds groups, each in its place (not a tool's options): when they do not all fit, they close up to fit - a row of small buttons, never slid. */
   grouped?: boolean;
   /** Whose sentence it is: a new subject brings every word in afresh. */
@@ -470,7 +474,11 @@ export class Sentence {
     words.reverse();
     groups.reverse();
     const plus: Word | undefined = sel.length ? { key: "s-add", kind: "button", label: "+", on: this.host.adding(), run: () => this.host.setAdding(!this.host.adding()) } : undefined;
-    return { subject, words, groups, others, more: plus, grouped: true, about: sel.length ? `pick:${sel.map((x) => JSON.stringify(x)).join()}` : subject.key === "s-wait" ? `wait:${subject.label}` : "make" };
+    // One face, edge or corner picked: its whole body is a tap away (a double tap on the model does it too - which
+    // nothing said).
+    const part = sel.length === 1 && sel[0].kind !== "body" && "body" in sel[0] ? sel[0].body : null;
+    const also: Word[] | undefined = part ? [{ key: "s-body", kind: "button", label: "Whole body", icon: "body" as IconName, run: () => this.host.pick([{ kind: "body", body: part }]) }] : undefined;
+    return { subject, words, groups, others, more: plus, also, grouped: true, about: sel.length ? `pick:${sel.map((x) => JSON.stringify(x)).join()}` : subject.key === "s-wait" ? `wait:${subject.label}` : "make" };
   }
 
   /** A sketch: what draws something new - and, with curves picked, what can be done with them. */
@@ -553,7 +561,18 @@ export class Sentence {
     const out = items.find((it) => it.id === "cancel") ?? items.find((it) => it.id === "exit");
     const rest = items.filter((it) => it !== out && it.id !== "deselect").map((it) => this.verb(it, "c"));
     // (Its window says it all; a tool with none - Measure, Section View - has its own buttons.)
-    const words = panel ? this.said(panel) : mode === "model" ? [] : rest;
+    let words = panel ? this.said(panel) : mode === "model" ? [] : rest;
+    // A phone held upright: a tool says its size (the number that is dragged) and what it still needs tapped; the
+    // rest - how it ends, which side, draft, what it does to the bodies it meets - is one word, Options, a tap away.
+    // (Extrude's first line was seven things; Fillet put three choices before its radius. They ran to two rows, and
+    // a first-timer read every one.) Anything in Options changed from here is still said on the model as before.
+    if (panel && document.documentElement.dataset.screen === "phone" && matchMedia("(max-width: 720px) and (orientation: portrait)").matches) {
+      let sizes = 0;
+      const main = (w: Word) => (w.kind === "value" && sizes++ < 2) || w.kind === "slot" || w.blank || (w.kind === "button" && /^(Apply|Add|Flip)/.test(w.label));
+      const keep = words.filter(main);
+      const fold = words.filter((w) => !keep.includes(w));
+      if (keep.length && fold.length > 1) words = [...keep, { key: "t-options", kind: "verb", label: "Options", icon: "settings", kids: fold }];
+    }
     const title = panel?.title ?? (out?.label.startsWith("Exit ") ? out.label.slice(5) : (items.find((it) => it.active)?.label ?? out?.label ?? "Tool"));
     const cancel = panel?.cancel ?? (out?.run ? () => out.run!() : undefined);
     const name = panel?.cancel ? "Cancel" : (out?.label ?? "Cancel");
@@ -631,7 +650,7 @@ export class Sentence {
       this.open = null;
     }
     // (Nothing picked: no subject - the groups say it all.)
-    const about = [...lead, ...(b.subject.key === "s-make" ? [] : [b.subject]), ...(b.more ? [b.more] : []), ...(b.title ? [b.title] : [])];
+    const about = [...lead, ...(b.subject.key === "s-make" ? [] : [b.subject]), ...(b.more ? [b.more] : []), ...(b.also ?? []), ...(b.title ? [b.title] : [])];
     this.fill(this.tag, about, fresh);
     this.tag.hidden = !about.length;
     this.fill(this.row, b.words, fresh);

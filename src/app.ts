@@ -48,7 +48,7 @@ import { UI } from "./ui/ui";
 import { Wheel } from "./ui/wheel";
 import { Sentence } from "./ui/sentence";
 import { Ghost } from "./tools/ghost";
-import { arrangement, materialRegions } from "./sketch/regions";
+import { arrangement, drawnRegions, materialRegions } from "./sketch/regions";
 import { evaluate, setUnits, setVariables, fmtLen } from "./units";
 import { InputRouter } from "./view/input";
 import { pickTolerance } from "./device";
@@ -124,6 +124,7 @@ export class App implements AppContext {
         this.peekGhost?.dispose();
         this.peekGhost = segs ? new Ghost(this.view, segs) : null;
       },
+      pick: (sel) => this.setSelection(sel),
       adding: () => this.selectTool.adding,
       setAdding: (on) => ((this.selectTool.adding = on), this.sentence.changed()),
       stopWaiting: () => this.selectTool.stopWaiting(),
@@ -462,9 +463,12 @@ export class App implements AppContext {
     // Drawing goes straight on to 3D: the shape just closed is picked as the sketch is left, so its arrow is up
     // already - drag it, no tap on the shape first. (The last shape made of the sketch's curves: the one just drawn.)
     if (closed && this.tool === this.selectTool && !this.selection.length) {
-      const regions = arrangement(this.sketchCurves(closed)).regions;
-      const solid = materialRegions(arrangement(this.sketchCurves(closed)));
-      const region = regions.indexOf(solid[solid.length - 1]);
+      // (What was drawn - on a face the sketch's curves hold the face's outline too, and the last shape of them all
+      // is the face less the shape: a circle drawn on a box's top had the top picked round it, not the circle.)
+      const all = arrangement(this.sketchCurves(closed));
+      const mine = drawnRegions(all, arrangement(this.store.find<SketchFeature>(closed)?.entities ?? []));
+      const solid = mine.length ? mine : materialRegions(all);
+      const region = all.regions.indexOf(solid[solid.length - 1]);
       if (region >= 0) {
         this.setSelection([{ kind: "profile", sketch: closed, region }]);
         // Seen straight on (as it was drawn), a pull has nowhere to show: the view swings round to see it rise.

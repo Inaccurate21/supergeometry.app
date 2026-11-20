@@ -7376,3 +7376,17 @@ html[data-screen="phone"] .sn-sheet .sn-group-cap {
   background: rgba(255, 255, 255, 0.03);
   color: #c3c7cf;
 }
+/* A phone: a passing note comes up under the top bar - along the bottom it lay on the guide text. */
+html[data-screen="phone"] body.sentence-ui #toast {
+  bottom: auto;
+  top: calc(58px + var(--safe-t));
+}
+/* "Whole body", beside a picked face or edge. */
+.sn-tag .sn-word[data-key="s-body"] {
+  background: rgba(255, 255, 255, 0.07);
+  color: var(--text);
+  font-size: 12.5px;
+}
+.sn-tag .sn-word[data-key="s-body"]::before {
+  display: none;
+}

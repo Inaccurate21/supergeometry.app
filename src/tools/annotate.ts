@@ -339,8 +339,8 @@ export class DimWidget {
 
 /** A screen point moved (if needed) so a box of these half sizes is on screen and off the open side panels. */
 /** The side panels' and the tool card's places, measured at most every 120 ms (not per box per frame). */
-let freeCache: { t: number; sides: DOMRect[]; panel: DOMRect | null } | null = null;
-function freeAreas(): { sides: DOMRect[]; panel: DOMRect | null } {
+let freeCache: { t: number; sides: DOMRect[]; panel: DOMRect | null; low: DOMRect[] } | null = null;
+function freeAreas(): { sides: DOMRect[]; panel: DOMRect | null; low: DOMRect[] } {
   const now = performance.now();
   if (freeCache && now - freeCache.t < 120) return freeCache;
   const sides: DOMRect[] = [];
@@ -350,7 +350,16 @@ function freeAreas(): { sides: DOMRect[]; panel: DOMRect | null } {
   }
   const p = document.getElementById("panel");
   const panel = document.documentElement.dataset.screen === "phone" && p && !p.hidden && p.offsetHeight ? p.getBoundingClientRect() : null;
-  freeCache = { t: now, sides, panel };
+  // What sits along the bottom - the line with its tools, and on a phone undo and the guide text over it: a value
+  // box stays above them (pulled down into a cut on a phone, the box sat on the guide text).
+  const low: DOMRect[] = [];
+  for (const id of ["sentence", "undo-dock", "hint"]) {
+    const e = document.getElementById(id);
+    const r = e && !e.hidden && e.offsetHeight && getComputedStyle(e).visibility !== "hidden" ? e.getBoundingClientRect() : null;
+    if (r && r.top > window.innerHeight * 0.5) low.push(r);
+  }
+  low.sort((a, b) => b.top - a.top);
+  freeCache = { t: now, sides, panel, low };
   return freeCache;
 }
 
@@ -371,6 +380,7 @@ export function clampToFree(s: [number, number], hw: number, hh: number): [numbe
     const r = free.panel;
     if (x + hw > r.left - 6 && x - hw < r.right + 6 && y + hh > r.top - 6) y = Math.max(52 + hh, r.top - 8 - hh);
   }
+  for (const r of free.low) if (x + hw > r.left - 6 && x - hw < r.right + 6 && y + hh > r.top - 6 && y - hh < r.bottom + 6) y = Math.max(52 + hh, r.top - 8 - hh);
   return [x, y];
 }
 
