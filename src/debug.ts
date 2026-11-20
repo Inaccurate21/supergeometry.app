@@ -14,6 +14,7 @@ import type { App } from "./app";
 import type { ToolItem, PanelItem } from "./ui/ui";
 import type { Feature } from "./doc/types";
 import type { Sel } from "./tools/tool";
+import type { SweepWord } from "./ui/sentence";
 import type { PickHit } from "./view/viewport";
 import type { ProjectDoc } from "./doc/types";
 import { parseProject } from "./doc/store";
@@ -138,6 +139,192 @@ export function installDebug(app: App): void {
     wheel: () => app.wheel.describe(),
     /** The sentence bar: what it says now (its words, where each is). */
     sentence: () => app.sentence.describe(),
+
+    /**
+     * Every tool, from every kind of pick there is in the model, started
+     * through the line at the bottom - and in each every option tried (each
+     * choice, switch, number, blank). Lists what did nothing, what threw, and
+     * for each tool whether it has a handle on the model, a value box, and
+     * lit picks while it is open (what a tool that takes a distance should
+     * have). Changes nothing for good: each tool is cancelled, each step
+     * undone. `only`: just the picks named ("face", "edge", "body"...).
+     * `options` false: the tools are only started and looked at (much quicker).
+     */
+    async sweep(only?: string[], options = true): Promise<{ started: number; nothing: string[]; errors: string[]; options: string[]; audit: { pick: string; tool: string; handle: boolean; box: boolean; lit: boolean; numbers: number }[] }> {
+      const wait = (ms: number) => new Promise((r) => setTimeout(r, ms));
+      const errors: string[] = [];
+      const onError = (e: ErrorEvent) => errors.push(`${e.message}`);
+      const onReject = (e: PromiseRejectionEvent) => errors.push(String((e.reason as Error)?.message ?? e.reason));
+      addEventListener("error", onError);
+      addEventListener("unhandledrejection", onReject);
+      const steps = app.store.doc.features.length;
+      const state = () => app.sentence.state;
+      const settle = async () => {
+        app.sentence.changed();
+        await wait(120);
+        await Promise.race([sg.idle(), wait(4000)]);
+      };
+      const reset = async () => {
+        for (const d of Array.from(document.querySelectorAll<HTMLElement>(".dialog-back .dialog, .bim-sheet")).reverse()) {
+          const b = Array.from(d.querySelectorAll("button")).find((x) => /^(Cancel|Close)/i.test(x.textContent?.trim() ?? "") || /close/i.test(x.className) || /close/i.test(x.title));
+          b?.click();
+          await wait(120);
+        }
+        for (let i = 0; i < 4 && inside.tool.id !== "select"; i++) {
+          document.body.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
+          await wait(150);
+        }
+        for (let i = 0; i < 3; i++) {
+          const s = state();
+          if (!s?.about.startsWith("tool:")) break;
+          (s.cancel ?? s.done)?.();
+          await wait(200);
+        }
+        if (inside.tool.id !== "select") app.setTool(null);
+        while (app.store.doc.features.length > steps) {
+          inside.undo();
+          await wait(120);
+        }
+        if (app.isolated) app.isolate(null);
+        await Promise.race([sg.idle(), wait(4000)]);
+      };
+      const snap = () => JSON.stringify([inside.tool.id, ui.panelSpec?.title ?? null, app.store.doc.features.length, app.selection, document.querySelectorAll(".dialog, .menu:not([hidden]), .ref-win, .bim-sheet").length, ui.recentToasts?.length ?? 0, !!app.isolated, !!app.section, app.varsOn, JSON.stringify(app.store.doc), ui.hintText]);
+      const leaves = () => {
+        const out: { path: string; key: string }[] = [];
+        const walk = (ws: SweepWord[], path: string[]) => {
+          for (const w of ws) {
+            if (w.kids?.length) walk(w.kids, [...path, w.label]);
+            else if (w.run || w.value) out.push({ path: [...path, w.label].join(" > "), key: w.key });
+          }
+        };
+        for (const g of state()?.groups ?? []) walk(g.words, [g.cap]);
+        return out;
+      };
+      const find = (key: string): SweepWord | null => {
+        let hit: SweepWord | null = null;
+        const walk = (ws: SweepWord[]) => {
+          for (const w of ws) {
+            if (w.key === key) hit = w;
+            if (w.kids) walk(w.kids);
+          }
+        };
+        for (const g of state()?.groups ?? []) walk(g.words);
+        return hit;
+      };
+      // The picks there are in this model.
+      const bodies = app.view.bodyList;
+      const picks: [string, Sel[]][] = [["nothing", []]];
+      const b0 = bodies[0];
+      if (b0) {
+        const flat = b0.faces.findIndex((f) => f.type === "PLANE");
+        const straight = b0.edges.findIndex((e) => e.type === "LINE");
+        if (flat >= 0) picks.push(["face", [{ kind: "face", body: b0.id, face: flat }]]);
+        if (straight >= 0) picks.push(["edge", [{ kind: "edge", body: b0.id, edge: straight }]]);
+        picks.push(["corner", [{ kind: "vertex", body: b0.id, vertex: 0 }]], ["body", [{ kind: "body", body: b0.id }]]);
+        if (bodies[1]) picks.push(["two bodies", [{ kind: "body", body: b0.id }, { kind: "body", body: bodies[1].id }]]);
+      }
+      for (const b of bodies) {
+        const round = b.faces.findIndex((f) => f.type !== "PLANE");
+        const rim = b.edges.findIndex((e) => e.type === "CIRCLE");
+        if (round >= 0 && !picks.some((p) => p[0] === "round face")) picks.push(["round face", [{ kind: "face", body: b.id, face: round }]]);
+        if (rim >= 0 && !picks.some((p) => p[0] === "round edge")) picks.push(["round edge", [{ kind: "edge", body: b.id, edge: rim }]]);
+      }
+      const loose = features().find((f) => f.type === "sketch" && !features().some((g) => JSON.stringify(g).includes(`"sketch":"${f.id}"`) && g.id !== f.id));
+      if (loose) picks.push(["sketch shape", [{ kind: "profile", sketch: loose.id, region: 0 }]]);
+      picks.push(["plane", [{ kind: "plane", id: "XY" }]]);
+      // (Things that open a chooser of the device's, which cannot be closed from here.)
+      const skip = /-image$|-file$|insert-project$|refImage$|browser$|custom/i;
+      const out = { started: 0, nothing: [] as string[], errors: [] as string[], options: [] as string[], audit: [] as { pick: string; tool: string; handle: boolean; box: boolean; lit: boolean; numbers: number }[] };
+      for (const [name, sel] of picks) {
+        if (only && !only.includes(name)) continue;
+        await reset();
+        app.setSelection(sel);
+        await settle();
+        for (const leaf of leaves()) {
+          if (skip.test(leaf.key)) continue;
+          await reset();
+          app.setSelection(sel);
+          await settle();
+          const w = find(leaf.key);
+          if (!w) {
+            out.nothing.push(`${name}: ${leaf.path} (not offered a second time)`);
+            continue;
+          }
+          const before = snap();
+          const e0 = errors.length;
+          try {
+            if (w.value) w.value.put(w.value.now + (w.value.max !== undefined && w.value.now >= w.value.max ? -1 : 1));
+            else w.run?.();
+          } catch (err) {
+            out.errors.push(`${name}: ${leaf.path}: ${(err as Error).message}`);
+            continue;
+          }
+          await settle();
+          if (errors.length > e0) out.errors.push(`${name}: ${leaf.path}: ${errors.slice(e0).join("; ")}`);
+          if (snap() === before) {
+            out.nothing.push(`${name}: ${leaf.path}`);
+            continue;
+          }
+          out.started++;
+          const s = state();
+          if (!s?.about.startsWith("tool:")) continue;
+          // What a tool that takes a size should have: a handle on the model, a box for the value, its picks lit.
+          const numbers = s.words.filter((x) => x.value && (x.value.kind === "length" || x.value.kind === "angle")).length;
+          out.audit.push({ pick: name, tool: leaf.path.split(" > ").pop()!, handle: Array.from(app.view.helpers).some((h) => /Handle|Gimbal/.test(h.constructor.name)), box: Array.from(document.querySelectorAll<HTMLElement>(".dim-widget")).some((d) => d.getBoundingClientRect().width > 0), lit: app.selection.length > 0 || ((app.view as unknown as { highlightGroup?: { children: unknown[] } }).highlightGroup?.children.length ?? 0) > 0, numbers });
+          if (!options) continue;
+          // Every option of it.
+          for (const key of s.words.map((x) => x.key)) {
+            const at = () => state()?.words.find((x) => x.key === key);
+            const it = at();
+            if (!it) continue;
+            const what = `${name}: ${leaf.path}: ${it.cap ?? it.label}`;
+            const e1 = errors.length;
+            try {
+              if (it.kind === "choice" && it.kids) {
+                const first = it.kids.find((k) => k.on)?.key;
+                for (const kid of it.kids.map((k) => k.key)) {
+                  const k = at()?.kids?.find((x) => x.key === kid);
+                  if (!k || k.on) continue;
+                  k.run?.();
+                  await settle();
+                  if (inside.tool.id === "select") break;
+                  const now = at()?.kids?.find((x) => x.key === kid);
+                  if (k.kind === "verb" && now && !now.on) out.options.push(`${what} > ${k.label}: not set`);
+                }
+                const back = at()?.kids?.find((x) => x.key === first);
+                if (back && !back.on) (back.run?.(), await settle());
+              } else if (it.kind === "toggle") {
+                const was = !!it.on;
+                it.run?.();
+                await settle();
+                const now = at();
+                if (now && !!now.on === was) out.options.push(`${what}: switch did not flip`);
+                now?.run?.();
+                await settle();
+              } else if (it.kind === "value" && it.value) {
+                const v = it.value;
+                v.put(v.kind === "int" ? v.now + 1 : v.kind === "angle" ? v.now + 5 : v.now === 0 ? 3 : v.now * 1.25);
+                await settle();
+                const now = at();
+                if (now?.value && now.value.now === v.now && (v.max === undefined || v.now < v.max)) out.options.push(`${what}: value did not change`);
+              } else if (it.kind === "slot") {
+                it.run?.();
+                await settle();
+              }
+            } catch (err) {
+              out.options.push(`${what}: ${(err as Error).message}`);
+            }
+            if (errors.length > e1) out.options.push(`${what}: ${errors.slice(e1).join("; ")}`);
+            if (inside.tool.id === "select") break;
+          }
+        }
+      }
+      await reset();
+      app.setSelection([]);
+      removeEventListener("error", onError);
+      removeEventListener("unhandledrejection", onReject);
+      return out;
+    },
 
     /** Every tool the wheel offers now, by where it is ("Tools › Fillet"): the same as sg.actions(), arranged its way. */
     wheelTools: () => app.wheel.tools(),

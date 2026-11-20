@@ -89,6 +89,18 @@ interface Word {
   first?: boolean;
 }
 
+/** A word as the sweep sees it. */
+export interface SweepWord {
+  key: string;
+  kind: string;
+  label: string;
+  cap?: string;
+  on?: boolean;
+  run?: () => void;
+  kids?: SweepWord[];
+  value?: { now: number; kind: string; put(v: number): void; min?: number; max?: number };
+}
+
 interface Built {
   subject: Word;
   words: Word[];
@@ -1023,6 +1035,13 @@ export class Sentence {
   }
 
   // ------------------------------------------------------------- for checks
+
+  /** What it holds now, as built - every word with what it runs and opens (for `sg.sweep()`, which tries them all). */
+  get state(): { about: string; words: SweepWord[]; groups: { cap: string; words: SweepWord[] }[]; done?: () => void; cancel?: () => void } | null {
+    this.built = this.build();
+    const b = this.built;
+    return { about: b.about, words: b.words, groups: b.groups, done: b.done?.run, cancel: b.cancel?.run };
+  }
 
   /** What it says now (for `sg.sentence()`): the line's words, the sheet's, the end buttons. */
   describe() {
