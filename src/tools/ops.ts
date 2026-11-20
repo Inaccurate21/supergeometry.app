@@ -1758,7 +1758,7 @@ export class TransformOp extends FeatureOp<TransformFeature> {
       case "translate":
         return "Tap a point on the body, then the point it should move to.";
       default:
-        return ({ rotate: "Set the angle to turn the body around the axis.", linear: "Set how many copies and how far apart, along the direction.", circular: "Set how many copies to place around the axis." } as Record<string, string>)[this.kind] ?? `${TITLES[this.kind]}: set the values, then tap empty space.`;
+        return ({ rotate: "Set the angle to turn the body around the axis.", linear: this.dir ? "Drag the arrow, or type, to set how far apart the copies are; Count is how many." : "Tap an edge, an axis or a face: the copies go along it.", circular: this.axis ? "Drag the dot round the axis, or type, to set the angle the copies are spread over; Count is how many." : "Tap an axis, or a round edge or face: the copies go round it." } as Record<string, string>)[this.kind] ?? `${TITLES[this.kind]}: set the values, then tap empty space.`;
     }
   }
 
@@ -1850,15 +1850,88 @@ export class TransformOp extends FeatureOp<TransformFeature> {
   exit(): void {
     this.gimbal?.dispose();
     this.copyToggle?.dispose();
+    this.dropPatternGrip();
     super.exit();
+  }
+
+  // A pattern's size is dragged where the copies are: an arrow on the first copy of a row (how far apart), a dot on
+  // the last copy of a ring (the angle they are spread over) - each with its value in a box beside it.
+  private patHandle: Handle | null = null;
+  private patDim: DimWidget | null = null;
+  private patDrag: { from: ToolPointer; v0: number } | null = null;
+
+  private dropPatternGrip(): void {
+    this.patHandle?.dispose();
+    this.patHandle = null;
+    this.patDim?.dispose();
+    this.patDim = null;
+  }
+
+  /** The ring's frame: the foot of the bodies' centre on the axis, out to the centre, and round. */
+  private ring(): { foot: Vec3; d: Vec3; u: Vec3; v: Vec3; r: number } | null {
+    if (!this.axis) return null;
+    const d = norm(this.axis.dir);
+    const foot = add(this.axis.origin, scale(d, dot(sub(this.center, this.axis.origin), d)));
+    const out = sub(this.center, foot);
+    const r = len(out);
+    if (r < 1e-6) return null;
+    const u = scale(out, 1 / r);
+    return { foot, d, u, v: cross(d, u), r };
+  }
+
+  private setSpacing(v: number): void {
+    const o = this.feature.op;
+    if (o.kind !== "linear" || !(Math.abs(v) > 1e-9)) return;
+    o.spacing = v;
+    this.app.ui.updatePanelValues([o.count, v]);
+    this.patDim?.setValue(v);
+    this.update();
+  }
+
+  private setSpread(v: number): void {
+    const o = this.feature.op;
+    if (o.kind !== "circular" || !(Math.abs(v) > 1e-9)) return;
+    o.angle = v;
+    this.app.ui.updatePanelValues([o.count, v]);
+    this.patDim?.setValue(v);
+    this.update();
   }
 
   protected onDraftChanged(): void {
     const o = this.feature.op;
     if (this.gimbal && o.kind === "move") this.gimbal.setCenter(add(this.center, o.translate));
+    if (o.kind === "linear" && this.dir) {
+      const d = this.dir;
+      if (!this.patHandle) {
+        this.patHandle = new Handle(this.app.view, "arrow");
+        this.patDim = new DimWidget(this.app.view, { boxAt: "beyond", boxGap: 96, dir: d, value: o.spacing, onInput: (v, text) => (this.typedInto("op.spacing", text), this.setSpacing(v)), onCommit: () => this.done() });
+      }
+      const first = add(this.center, scale(d, o.spacing));
+      this.patHandle.set(first, o.spacing < 0 ? scale(d, -1) : d);
+      this.patDim!.set(this.center, first);
+      this.patDim!.setValue(o.spacing);
+    } else if (o.kind === "circular" && this.ring()) {
+      const g = this.ring()!;
+      // (Where the last copy is: a full turn shares the ring out evenly, a part of one ends on its angle.)
+      const full = Math.abs(Math.abs(o.angle) - 360) < 1e-6;
+      const last = ((full ? (o.angle * (o.count - 1)) / o.count : o.angle) * Math.PI) / 180;
+      const at = add(g.foot, add(scale(g.u, g.r * Math.cos(last)), scale(g.v, g.r * Math.sin(last))));
+      if (!this.patHandle) {
+        this.patHandle = new Handle(this.app.view, "dot");
+        this.patDim = new DimWidget(this.app.view, { boxAt: "beyond", boxGap: 40, angle: true, noLine: true, value: o.angle, onInput: (v, text) => (this.typedInto("op.angle", text), this.setSpread(v)), onCommit: () => this.done() });
+      }
+      this.patHandle.set(at);
+      this.patDim!.set(g.foot, at);
+      this.patDim!.setValue(o.angle);
+    } else this.dropPatternGrip();
   }
 
   hover(p: ToolPointer | null): void {
+    if (this.patHandle) {
+      const on = !!p && (!!this.patDrag || this.patHandle.hit(p));
+      this.patHandle.setHot(on);
+      if (on) return;
+    }
     if (this.gimbal) this.gimbal.setHot(p && !this.dragging ? this.gimbal.hit(p) : this.dragging?.part ?? null);
     else super.hover(p);
   }
@@ -1872,6 +1945,11 @@ export class TransformOp extends FeatureOp<TransformFeature> {
 
   down(p: ToolPointer): boolean {
     const o = this.feature.op;
+    if (this.patHandle?.hit(p) && (o.kind === "linear" || o.kind === "circular")) {
+      this.patDrag = { from: p, v0: o.kind === "linear" ? o.spacing : o.angle };
+      this.patHandle.setHot(true);
+      return true;
+    }
     const flat = Math.abs(this.app.view.cam.viewDir().z) > 0.25;
     const part: GimbalPart | null | undefined = this.grabbed ? (flat ? { kind: "plane", i: 2 } : { kind: "center" }) : this.gimbal?.hit(p);
     this.grabbed = false;
@@ -1888,6 +1966,34 @@ export class TransformOp extends FeatureOp<TransformFeature> {
 
   drag(p: ToolPointer): void {
     const o = this.feature.op;
+    const pd = this.patDrag;
+    if (pd && o.kind === "linear" && this.dir) {
+      this.typing.track(p);
+      if (this.typing.active) return;
+      const raw = pd.v0 + axisDrag(this.app.view, add(this.center, scale(this.dir, pd.v0)), this.dir, pd.from, p);
+      const step = niceStep(this.app.view.cam.worldPerPixel(this.app.view.height) * 4);
+      this.typedInto("op.spacing", "");
+      this.setSpacing(Math.round(raw / step) * step || step);
+      this.app.ui.setLabel(p.x, p.y, `${fmtLen(o.spacing)} apart  · type a value`);
+      return;
+    }
+    if (pd && o.kind === "circular") {
+      this.typing.track(p);
+      if (this.typing.active) return;
+      const g = this.ring();
+      const at = g && this.app.view.rayToPlane(p.x, p.y, { origin: g.foot, normal: g.d, xDir: g.u });
+      if (!g || !at) return;
+      const w = sub(at, g.foot);
+      // Round the axis from where the bodies are, 0 to 360 (Shift: not snapped to 5 degrees); nearly all the way: a full turn.
+      let a = (Math.atan2(dot(w, g.v), dot(w, g.u)) * 180) / Math.PI;
+      if (a <= 0) a += 360;
+      if (!p.shift) a = Math.round(a / 5) * 5;
+      if (a > 357 || a < 1) a = 360;
+      this.typedInto("op.angle", "");
+      this.setSpread(a);
+      this.app.ui.setLabel(p.x, p.y, `${Math.round(a * 10) / 10}°${a === 360 ? " (all the way round)" : ""}  · type a value`);
+      return;
+    }
     const dr = this.dragging;
     if (!dr || o.kind !== "move") return;
     this.typing.track(p);
@@ -1929,6 +2035,13 @@ export class TransformOp extends FeatureOp<TransformFeature> {
   }
 
   up(): void {
+    if (this.patDrag) {
+      this.patDrag = null;
+      this.typing.reset();
+      this.app.ui.setLabel(0, 0, null);
+      this.patHandle?.setHot(false);
+      return;
+    }
     const dragged = !!this.dragging;
     this.dragging = null;
     this.typing.reset();
@@ -1975,6 +2088,12 @@ export class TransformOp extends FeatureOp<TransformFeature> {
   }
 
   dragKey(e: KeyboardEvent): boolean {
+    const pd = this.patDrag;
+    const o = this.feature.op;
+    if (pd && (o.kind === "linear" || o.kind === "circular")) {
+      const set = (v: number) => (o.kind === "linear" ? this.setSpacing(v) : this.setSpread(v));
+      return this.typing.key(e, { kind: o.kind === "linear" ? "length" : "angle", apply: set, commit: () => ((this.patDrag = null), this.done()), cancel: () => set(pd.v0) });
+    }
     const t = this.dragTarget();
     return !!t && this.typing.key(e, t);
   }
