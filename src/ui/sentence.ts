@@ -466,6 +466,13 @@ export class Sentence {
     const groups: Built["groups"] = [];
     // A tool is on: Select puts it down (the way back to picking).
     if (drawing && select && !select.active) words.push({ ...this.verb(select), label: "Stop" });
+    // The ways the tool that is on can be used (Circle: Center, 2 Points, 3 Points), right on the line: the one in
+    // use lit, another a tap away - not back through Draw > Circle. (More than three, or a line too narrow to give
+    // each a finger's width - a phone held upright: one word, named for the one in use, that opens them.)
+    const ways = (at?.children ?? []).filter(notSep).map((c) => this.verb(c, "k"));
+    const tight = (5 + ways.length) * 44 + 124 > window.innerWidth;
+    if (ways.length > 3 || (ways.length > 1 && tight)) words.push({ key: "k-ways", kind: "choice", cap: at!.label, label: ways.find((w) => w.on)?.label ?? ways[0].label, icon: at!.icon, on: true, kids: ways });
+    else if (ways.length > 1) words.push(...ways);
     const mine = panel ? this.said(panel) : [];
     words.push(...mine);
     // (Said once: the window's own Delete, not the column's too.)
