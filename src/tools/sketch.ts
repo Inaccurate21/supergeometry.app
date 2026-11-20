@@ -1478,7 +1478,7 @@ export class SketchTool implements Tool {
             onCancel: () => this.setKind("text"),
           });
           this.addTextInput();
-          this.setHint("Type the text in the card, then tap Done.");
+          this.setHint("Type the text on the line at the bottom, then tap Done.");
           return;
         }
         break;

@@ -42,8 +42,9 @@ Almost everything follows the same rhythm:
 2. **Turn it into a solid** - pull it up (*Extrude*), spin it around an axis
    (*Revolve*), or move it along a path (*Sweep*).
 3. **Select something and change it** - tap a face, an edge or a whole body:
-   its handle (an arrow, a dot) is ready to drag or type, the buttons beside
-   it hold the next likely tools, and the line at the bottom only what fits it.
+   it can be dragged by itself (or by its arrow or dot), or typed; the buttons
+   beside it hold the next likely tools, Delete and More, and the line at the
+   bottom has every tool by group.
 4. **Every step is remembered** in *History*, so you can go back and change a
    size later - everything after it updates.
 
@@ -53,23 +54,26 @@ There's no wrong order. Undo (bottom left) is always one tap away.
 
 ## Your first part: a box with a hole
 
-1. Tap **Sketch** on the line at the bottom, then tap the blue **XY** square near the
-   middle of the screen. The view turns to look straight down at that plane.
+1. A new project opens straight in a sketch on the floor, looking down at
+   it, with **Line** on. (Any other time: tap **Sketch** on the line at the
+   bottom, then a plane or a flat face.)
 2. Tap **Draw**, then **Rectangle**; tap one corner, tap the opposite corner. While you draw,
-   type a number for an exact size (e.g. `40`, Tab, `30`).
+   type a number for an exact size (e.g. `40`, Tab, `30`). The ways a tool can
+   be used (Rectangle: Center, Diagonal, 3 Points) are on the line while it is on.
 3. Tap **Draw**, then **Circle**; tap a centre inside the rectangle, tap again for the size
    (or type `8`).
-4. Closing the rectangle already ended the line; tap **Exit** at the end of the line -
-   or just tap an empty spot while looking at it from the side.
+4. Tap **Exit** at the end of the line. The view swings round to a
+   three-quarter view.
 5. Tap inside the rectangle (but outside the circle): that region turns blue
-   and an **arrow** appears. Drag the arrow up, or type `20`: drawn on a
-   plane, up makes a new body (down would cut). You now have a box with a
-   round hole.
-6. Tap the top face of the box. Drag its arrow to make it taller - the hole
-   follows. Tap an edge and drag the dot **outward** for a rounded edge
+   and an **arrow** appears. Drag the shape itself, or its arrow, up - or type
+   `20`: drawn on a plane, up makes a new body (down would cut). Tap the tick.
+   You now have a box with a round hole.
+6. Tap the top face of the box and drag it to make it taller - the hole
+   follows. Tap an edge and drag it **outward** for a rounded edge
    (*fillet*) or **inward** for a bevel (*chamfer*). Tap the hole's wall:
    **Thread** is on a button beside it.
-7. **File → Export STL** to 3D-print it.
+7. **More → Print / Share** says whether it is fit to print and saves it as
+   3MF, STL or STEP.
 
 ## Second part: a vase
 
@@ -99,15 +103,20 @@ There's no wrong order. Undo (bottom left) is always one tap away.
 - **Right-click steps back**: first what's half done or picked, then the
   drawing tool, then out of the sketch; in other tools it backs out. With
   something selected, right-click shows its tools by the pointer.
-- On touch screens **every tap adds to the selection**; tap again to drop it.
+- **A tap picks that thing** and lets the last pick go; tap it again to drop
+  it. Shift, Ctrl or the **+** beside the pick's name adds to the pick. With
+  a face or an edge picked, **Whole body** beside its name picks the body (a
+  double tap on the model does too).
+- **A list opened from the line stays up** while you turn, move or zoom the
+  view; it goes when you choose something in it or tap the model.
 
 - **Fit**: double-tap the view cube to get everything on screen.
 - **View cube** (top right): tap a face for a straight-on view (Top, Front…);
   ⟲ ⟳ at its top corners turn the view by 90°.
 - **Orbit centre** (the cube's bottom-left button): tap it, then tap a point -
   the view now turns around that point. Fit resets it.
-- **Views** (the cube's bottom-right button): standard and saved views, and
-  how the view looks; tap again to close.
+- **Views** (the cube's bottom-right button): standard and saved views; tap
+  again to close.
 
 ---
 
@@ -122,26 +131,38 @@ support).
 **The line at the bottom** is how every tool is reached. Tap part of the
 model: a tag over the line names what is picked, and the line shows the
 groups - Sketch, Freeform, Transform, Construct, Modify, Combine, Create -
-each holding only what can be done with that pick (a group with nothing for
-it is dimmed; tap it to see why). **More**, at the end of the line, shows
-everything at once, with Section View, Measure, Variables and Isolate. Tap a
+each a list: what can be done with that pick first, then the group's other
+tools in a quieter part (each asks for its own pick as it starts). The group
+whose list is open stays lit. **More**, at the end of the line, holds only
+what is not on the line already: Insert, BIM, Section View, Measure,
+Variables, Print / Share, and the pick's own (Delete, Colour, Isolate). Tap a
 tool and the line becomes its settings: tap a number to type it or drag it
 sideways, tap a word to change it, tap the model to fill a blank; the tick
-finishes, the cross takes it back. In a sketch the line holds Draw, Modify
-and Transform. **Settings** (snapping, units, look, screenshot, the numpad)
-are the buttons down the right edge.
+finishes, the cross takes it back. On a phone held upright a tool shows its
+size and what it still needs tapped, and the rest is one word, **Options**.
+In a sketch the line holds Draw, Modify and Transform.
+
+**Looks ahead** - with a mouse, the pointer over a tool draws what it would
+do in dashed yellow on the model before anything starts: a face's outline
+lifted (Extrude, Offset Face) or sunk (Shell), the lines a Fillet or Chamfer
+runs between, a row or a ring of copies for a pattern.
 
 **Quick buttons** - round buttons beside a pick with its next two likeliest
-tools: a flat face Sketch and Shell, a round face Thread, an edge Chamfer and
-Move, a body Shell and Fillet; in a sketch, Construction and Delete.
+tools (a flat face Sketch and Move, a round face Thread and Fillet, an edge
+Chamfer and Move, a body Fillet and Mirror), then **Delete**, then **More**,
+which opens every other tool that pick has. In a sketch: Construction and
+Delete.
+
+**Right edge** - **Fit**, **Display** (shaded, wireframe, X-ray) and
+**Settings**: one sheet with Units & grid, Snapping, the number pad and
+Appearance, each row saying how it is set now.
 
 **Bottom left** - Undo / Redo.
 
-**The tool card** - the values for whatever you're doing (sizes, counts,
-options), its own actions, and Cancel / Done, each apart with a dim line. It
-keeps clear of what you're drawing; drag it by its grip where you want it
-(remembered per screen type), double-tap the grip to fold it down to its
-name (and again to open it).
+**A tool's settings** - the values for whatever you're doing (sizes, counts,
+options) are the words on the line while the tool is open, with Cancel and
+Done at its end. The size that is dragged is also in a box on the model:
+tap it to type.
 
 ---
 
@@ -149,7 +170,7 @@ name (and again to open it).
 
 Tap **Sketch** and pick where to draw: an origin plane (tap it, or the
 **XY** floor / **XZ** front / **YZ** side buttons), a flat face of a part, or
-one of your construction planes (listed by name in the card). In a
+one of your construction planes (listed by name on the line). In a
 straight-on view (Front, Top…) Sketch goes on the face you're looking at.
 Sketches on a face measure X / Y from the model's origin.
 
@@ -164,7 +185,7 @@ a few lines, arcs and smooth curves, so extruded text has a face per side, not h
 (copies body edges or other sketches' curves here).
 
 **Exact points on touch screens:** right after the first tap of a line,
-rectangle, circle, polygon or ellipse the card has **X / Y** for that point
+rectangle, circle, polygon or ellipse the line has **X / Y** for that point
 (a fingertip can't hit a 1 mm grid). A line then takes **Length and Angle**,
 or **Across and Up** for a slope ("in 10, up 12"); an arc by centre takes the
 centre, Radius and the Start and End angles. Grid snapping follows the zoom
@@ -205,8 +226,8 @@ with the **Constraints** button at the right edge while sketching.
 
 Any closed shape becomes a **region** (blue when selected) you can extrude,
 revolve, sweep or loft. Overlapping shapes split into separate regions.
-Tapping a region shows Extrude's arrow - drag it, or type a height - with
-Sketch and Revolve on the buttons beside it. While the
+Tapping a region shows Extrude's arrow - drag it or the shape itself, or
+type a height - with Sketch and Revolve on the buttons beside it. While the
 arrow is still at 0, tapping more regions of the same sketch adds them;
 **All shapes** takes every shape at once. Double-tap a shape to open its
 sketch. A sketch stays in view until every region of it is used.
@@ -262,19 +283,19 @@ sketch. A sketch stays in view until every region of it is used.
 - **Split Body** - by a plane (yours, by name) or a face.
 - **Thread** - tap a round face or a hole's rim: a shank at the nominal size
   gets an outside thread, a hole at the tap-drill size an inside one. The
-  pitch starts at the ISO coarse pitch (the card says what it makes, e.g.
+  pitch starts at the ISO coarse pitch (the line says what it makes, e.g.
   M10 × 1.5); left-hand as an option; free ends get a 45° lead-in.
 - **Repair Body** - fixes an imported or broken body (gaps, bad faces,
   slivers, inside-out) without changing its shape or size.
 - **Fill to Plane** - an open freeform surface becomes a solid by filling
   the gap down (or up, or across) to a plane.
 - **Freeform** - organic shapes: start from a box, sphere, cylinder or plane
-  (its size and rows in the card) and pull its cage points, edges and faces.
+  (its size and rows on the line) and pull its cage points, edges and faces.
   Tap picks the closest point, edge or face (tap a face again for the one
   behind it); press on empty space and drag a box to pick the points inside
-  (on a touch screen: switch on **Pick in a box** in the card, and a finger
+  (on a touch screen: switch on **Pick in a box** on the line, and a finger
   draws the box - the points behind are picked too, a whole slice from a side view).
-  Move / Turn / Scale take exact X, Y, Z values in the card. Cage tools:
+  Move / Turn / Scale take exact X, Y, Z values on the line. Cage tools:
   **Extrude faces** (Length, Bend, Taper and Steps sliders - a spout in one
   go), **Bridge faces** (two faces become a tube; two looking the same way
   arch into a handle, with Arch and Segments), **Inset**, **Add edge loop**,
@@ -302,7 +323,7 @@ sketch. A sketch stays in view until every region of it is used.
 - **Colour** - ten soft colours or **Custom…** for any colour; and how
   see-through a body is.
 - **Section View** - cut the view (not the part) to look inside; the cut
-  shows as a solid face with a thick outline. **Place Plane** in its card
+  shows as a solid face with a thick outline. **Place Plane** on the line
   puts a construction plane where the cut is (to sketch on or split with).
 - **Measure** - distances and angles; pin a measurement to keep it.
 
@@ -320,11 +341,11 @@ sketch. A sketch stays in view until every region of it is used.
   ↔ a length, ∠ an angle, # a number - and follows it as the model moves.
   Tap a tag to type its value or a formula, or drag the value: the model
   follows as you go, and lines show what it's made from and what uses it.
-  The card has New Variable and the whole list; tap Variables again to switch off.
+  The line has New Variable and the whole list; tap Variables again to switch off.
   Type them into any field (`wall * 2`) or pick them from the **ƒx** menu
   next to a value. Change the variable later and everything using it updates.
-- The **on-screen numpad** (the Numpad button at the right edge - tap it
-  on or off) replaces the system keyboard for value boxes. It's on by default
+- The **on-screen numpad** (Settings at the right edge, Number pad on
+  screen) replaces the system keyboard for value boxes. It's on by default
   on phones, tablets and headsets. Tapping a box selects its value, so typing
   replaces it; nothing is applied until you press ↵. After the second tap of
   a line, its length box opens right away. Drag the numpad by its grip where
@@ -439,11 +460,12 @@ three.js view. Units are millimetres internally; the display unit is a setting.
   Subtract, Intersect), Construct ▸ (planes, axes), Insert ▸ (variables,
   images, files), Tools ▸ (Offset Face, Offset Edge, Split Body, Fill to Plane, Thread,
   Repair Body…).
-- Something selected → only tools valid for it are shown (unusable ones are
-  hidden, not greyed). Faces get a drag arrow (offset), straight edges a
-  Move/Rotate gimbal (Fillet / Chamfer in the list), bodies a gimbal
-  (move/rotate, with Copy). A sketch region gets Extrude's arrow plus
-  Revolve / Sweep / Loft.
+- Something selected → each group lists the tools valid for it first, then
+  its other tools (those ask for their own pick). The pick is dragged by
+  itself or by its handle: faces an arrow (offset), edges a dot (fillet,
+  inward a chamfer), bodies a gimbal (move/rotate, with Copy; its middle dot
+  moves the pivot). A sketch region gets Extrude's arrow plus Revolve /
+  Sweep / Loft.
 - Every operation is a *feature* in History; editing a feature replays
   everything after it.
 - Values: type while dragging, or tap a number on the line at the bottom (the tool's options); expressions and

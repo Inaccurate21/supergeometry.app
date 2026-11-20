@@ -1,12 +1,13 @@
 // Quick actions: a short row of round buttons right beside whatever is
 // picked - on the model a face, an edge, a point, a body, a sketch's shape, a
 // plane, an axis, an image; in a sketch its curves and points - with the two
-// tools most likely next for it (a flat face: Sketch, Shell, Move; a round one:
-// Thread; an edge: Chamfer, Move; a body: Shell, Fillet; a sketch's curves:
-// Construction, Delete). The most likely of all already has its handle on it
-// (a face's arrow, an edge's fillet dot, a gimbal): these are the next ones, a
-// tap away instead of a trip round the wheel. On the model they are the very
-// tools the wheel offers for the pick (the same ToolItems).
+// tools most likely next for it (a flat face: Sketch, Move; a round one:
+// Thread, Fillet; an edge: Chamfer, Move; a body: Fillet, Mirror; a sketch's
+// curves: Construction, Delete). The most likely of all already has its handle
+// on it (a face's arrow, an edge's fillet dot, a gimbal): these are the next
+// ones. On the model the row ends with Delete and More, which opens every
+// other tool the pick has (Shell among them); they are the very tools the line
+// at the bottom offers for the pick (the same ToolItems).
 
 import type { Vec3 } from "../doc/types";
 import { icons } from "../ui/icons";
@@ -17,10 +18,10 @@ import { clampToFree } from "./annotate";
 /** By kind of pick: the tools to offer, best first (the first two there are and can be used now). */
 export const QUICK = {
   // (A freeform surface's face: Edit Freeform first - shaping it again is what it is for.)
-  face: ["editFreeform", "thread", "sketch", "shell", "move", "fillet", "thicken"],
+  face: ["editFreeform", "thread", "sketch", "move", "fillet", "thicken"],
   edge: ["chamfer", "thread", "move", "connect"],
   vertex: ["moveVertex", "delete"],
-  body: ["shell", "fillet", "mirror"],
+  body: ["fillet", "mirror"],
   profile: ["sketch", "revolve"],
   plane: ["sketch", "plane"],
   axis: ["delete"],
@@ -41,9 +42,8 @@ export interface QuickPlace {
   gap?: number;
 }
 
-/** At most this many: only the important things (more is the wheel's job). A flat face: Sketch, Shell and Move/Rotate. */
+/** At most this many: only the important things (the rest is under More at the row's end). */
 const MOST = 2;
-const MOST_OF: Partial<Record<QuickKind, number>> = { face: 3 };
 
 export class QuickActions {
   private readonly box = document.createElement("div");
@@ -59,7 +59,7 @@ export class QuickActions {
       }
     };
     walk(items);
-    const picked = (QUICK[kind] as readonly string[]).map((id) => byId.get(id)).filter((it): it is ToolItem => !!it && !it.disabled && !!it.run && (!it.beta || it.id === "editFreeform")).slice(0, MOST_OF[kind] ?? MOST);
+    const picked = (QUICK[kind] as readonly string[]).map((id) => byId.get(id)).filter((it): it is ToolItem => !!it && !it.disabled && !!it.run && (!it.beta || it.id === "editFreeform")).slice(0, MOST);
     if (!all) return picked.length ? new QuickActions(view, picked, at, place) : null;
     // On the model: Delete beside them, and a last button that opens every other tool the pick has (asked for: "I
     // also want to have other tools there that could be used on that element. And also delete"). The few most likely
