@@ -429,6 +429,8 @@ export class FreeformTool implements Tool {
         value: this.boxByFinger,
         onChange: (on) => {
           boxByFinger = on;
+          // (Its switch on the line shows how it is now: it was read once, and stayed as it was however it was set.)
+          this.panel();
           this.app.ui.setHint(on ? "Draw a box with your finger round the points to pick (the ones behind are picked too). Two fingers still move the view." : "A finger turns the view again.");
         },
       });
@@ -459,7 +461,10 @@ export class FreeformTool implements Tool {
         },
       });
       if (this.symPicking) {
-        const mid = this.centroid(this.cage.verts.map((_, i) => i));
+        // (The middle of its size, not of its points: more detail on one side - an inset face - pulled the mirror
+        // towards it, and nothing on the two sides matched.)
+        const vs = this.cage.verts;
+        const mid = [0, 1, 2].map((k) => (Math.min(...vs.map((v) => v[k])) + Math.max(...vs.map((v) => v[k]))) / 2) as Vec3;
         items.push({ type: "choice", label: "Mirror across", options: [{ id: "x", label: "X" }, { id: "y", label: "Y" }, { id: "z", label: "Z" }], value: "", onChange: (k) => this.setSymmetry(mid, k === "x" ? [1, 0, 0] : k === "y" ? [0, 1, 0] : [0, 0, 1]) });
       }
     }
@@ -495,7 +500,7 @@ export class FreeformTool implements Tool {
     if (loops.length === 1) items.push({ type: "button", label: "Fill hole", icon: "fill", onClick: () => this.fillHoles(loops) });
     if (loops.length === 2) items.push({ type: "button", label: "Bridge holes", icon: "loft", onClick: () => this.fillHoles(loops) });
     // Two runs of border edges (two edges, two rows): a strip of faces between them.
-    else {
+    {
       const runs = this.placing ? [] : this.pickedRuns();
       if (runs.length === 2 && !runs.every((r) => r.closed)) items.push({ type: "button", label: "Connect edges", icon: "loft", onClick: () => this.connectRuns(runs) });
     }
@@ -614,8 +619,17 @@ export class FreeformTool implements Tool {
   private pickedLoops(): number[][] {
     const verts = new Set(this.selectedVerts());
     const chosen = new Set<string>();
-    for (const [a, b] of boundaryEdges(this.cage)) if (verts.has(a) && verts.has(b)) chosen.add(cageEdgeKey(a, b));
-    return chosen.size ? holeLoops(this.cage, chosen) : [];
+    const border = boundaryEdges(this.cage);
+    for (const [a, b] of border) if (verts.has(a) && verts.has(b)) chosen.add(cageEdgeKey(a, b));
+    if (!chosen.size) return [];
+    // One edge of a hole's rim is enough: the hole is the whole rim it is on. (It took every edge of the rim picked,
+    // which nothing said - one edge tapped offered only Add edge loop.)
+    // (A hole, not a sheet's own outline: that is most of the sheet's points, and "filling" it would lay a second
+    // face over the whole sheet. An outline with every edge picked is still taken, as before.)
+    const exact = holeLoops(this.cage, chosen);
+    const all = holeLoops(this.cage, new Set(border.map(([a, b]) => cageEdgeKey(a, b))));
+    const whole = all.filter((loop) => loop.length * 2 <= this.cage.verts.length && loop.some((a, k) => chosen.has(cageEdgeKey(a, loop[(k + 1) % loop.length]))));
+    return [...whole, ...exact.filter((l) => !whole.some((w) => w.length === l.length && w.every((x) => l.includes(x))))];
   }
 
   /** Picked border edges grouped into runs (edges picked, or the points along them). */
@@ -786,7 +800,6 @@ export class FreeformTool implements Tool {
   private liveItems(): PanelItem[] {
     const l = this.live;
     if (!l) return [];
-    const mm = (v: number) => fmtLen(v);
     if (l.kind === "sheet")
       return [
         { type: "number", label: "Width", value: l.size[0], kind: "length", min: 0.01, onInput: (v) => (this.setLive({ size: [v, l.size[1]] as unknown as Vec3 }), this.frameSoon()) },
@@ -822,14 +835,17 @@ export class FreeformTool implements Tool {
     }
     if (l.kind === "sweep")
       return [
-        { type: "slider", label: "Length", value: l.length, min: Math.max(1, Math.round(l.size * 0.2)), max: Math.round(l.size * 10), step: 1, show: mm, onInput: (v) => this.setLive({ length: v }) },
+        // (A length like any other: typed and shown in the unit in use. As a slider it was typed in millimetres
+        // whatever the unit, and stopped at ten times the face's size.)
+        { type: "number", label: "Length", value: l.length, kind: "length", min: 0.01, onInput: (v) => this.setLive({ length: v }) },
         { type: "slider", label: "Bend", value: l.bend, min: -150, max: 150, step: 1, show: (v) => `${v}°`, onInput: (v) => this.setLive({ bend: v }) },
         { type: "slider", label: "Taper", value: l.taper, min: 0.2, max: 2.5, step: 0.05, show: (v) => `${v.toFixed(2)}×`, onInput: (v) => this.setLive({ taper: v }) },
         { type: "slider", label: "Steps", value: l.steps, min: 1, max: 12, step: 1, onInput: (v) => this.setLive({ steps: v }) },
       ];
-    if (l.kind === "inset") return [{ type: "slider", label: "Inset", value: l.amount, min: 0.05, max: 0.9, step: 0.01, show: (v) => `${Math.round(v * 100)}%`, onInput: (v) => this.setLive({ amount: v }) }];
+    // (In percent, as it is shown: typed as a number it was taken as a fraction - 40 gave 90 %, the most there is.)
+    if (l.kind === "inset") return [{ type: "slider", label: "Inset", value: Math.round(l.amount * 100), min: 5, max: 90, step: 1, show: (v) => `${Math.round(v)}%`, onInput: (v) => this.setLive({ amount: v / 100 }) }];
     return [
-      { type: "slider", label: "Arch", value: l.arch, min: 0, max: Math.round(l.span * 3), step: 1, show: mm, onInput: (v) => this.setLive({ arch: v, segments: v > 0 && l.segments < 2 ? 6 : l.segments }) },
+      { type: "number", label: "Arch", value: l.arch, kind: "length", min: 0, onInput: (v) => this.setLive({ arch: v, segments: v > 0 && l.segments < 2 ? 6 : l.segments }) },
       { type: "slider", label: "Segments", value: l.segments, min: 1, max: 12, step: 1, onInput: (v) => this.setLive({ segments: v }) },
     ];
   }
@@ -1660,6 +1676,8 @@ export class FreeformTool implements Tool {
       this.app.store.add(f);
       id = f.id;
     }
+    // Left open with no thickness: a surface, which nothing solid can be done with - said as it is made, with the ways on.
+    if (open && !(this.thickness > 0)) this.app.ui.toast("This is an open surface, not a solid yet. Edit Freeform to give it a Thickness or fill its hole - or Fill to Plane.");
     this.app.setTool(null);
     return id;
   }

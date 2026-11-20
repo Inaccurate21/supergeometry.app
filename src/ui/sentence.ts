@@ -85,7 +85,7 @@ interface Word {
   /** What it opens: a tool's kinds, a choice's other options. */
   kids?: Word[];
   /** A number: typed, or dragged sideways. */
-  value?: { now: number; text: string; kind: "length" | "angle" | "number" | "int"; put(v: number): void; min?: number; max?: number };
+  value?: { now: number; text: string; kind: "length" | "angle" | "number" | "int"; put(v: number): void; min?: number; max?: number; step?: number };
   /** Takes the subject away (the pick let go). */
   lets?: boolean;
   /** In its place, with nothing for what is picked now: dimmed, and a tap says this. */
@@ -566,7 +566,9 @@ export class Sentence {
     // rest - how it ends, which side, draft, what it does to the bodies it meets - is one word, Options, a tap away.
     // (Extrude's first line was seven things; Fillet put three choices before its radius. They ran to two rows, and
     // a first-timer read every one.) Anything in Options changed from here is still said on the model as before.
-    if (panel && document.documentElement.dataset.screen === "phone" && matchMedia("(max-width: 720px) and (orientation: portrait)").matches) {
+    // (Not Freeform: its line is what is done to the points picked - Extrude face, Inset, Delete - and all three of
+    // ΔX, ΔY, ΔZ; folded, its tools were a tap further away than the values.)
+    if (panel && !/^Freeform/.test(panel.title) && document.documentElement.dataset.screen === "phone" && matchMedia("(max-width: 720px) and (orientation: portrait)").matches) {
       let sizes = 0;
       const main = (w: Word) => (w.kind === "value" && sizes++ < 2) || w.kind === "slot" || w.blank || (w.kind === "button" && /^(Apply|Add|Flip)/.test(w.label));
       const keep = words.filter(main);
@@ -612,7 +614,8 @@ export class Sentence {
         const text = it.type === "slider" ? (it.show?.(it.value) ?? String(+it.value.toFixed(2))) : len ? `${+toDisplay(it.value).toFixed(3)} ${UNIT_LABEL[units()]}` : kind === "angle" ? `${+it.value.toFixed(2)}°` : String(+it.value.toFixed(3));
         const put = (to: number) => {
           let v = to;
-          if (it.type === "slider") v = Math.min(it.max, Math.max(it.min, v));
+          // (A slider's value goes in its own steps - Steps and Faces are whole numbers, typed 3.4 or dragged part way.)
+          if (it.type === "slider") v = Math.min(it.max, Math.max(it.min, it.step ? +(Math.round(v / it.step) * it.step).toFixed(6) : v));
           else if (it.min !== undefined) v = Math.max(it.min, v);
           if (kind === "int") v = Math.round(v);
           it.onInput(v);
@@ -621,7 +624,7 @@ export class Sentence {
           ui.syncPanelValue(it, v);
           this.changed();
         };
-        out.push({ key, kind: "value", cap: it.label, label: text, value: { now: it.value, text, kind, put, min: it.type === "slider" ? it.min : it.min, max: it.type === "slider" ? it.max : undefined } });
+        out.push({ key, kind: "value", cap: it.label, label: text, value: { now: it.value, text, kind, put, min: it.type === "slider" ? it.min : it.min, max: it.type === "slider" ? it.max : undefined, step: it.type === "slider" ? it.step : undefined } });
       } else if (it.type === "button") out.push({ key, kind: "button", label: it.label, icon: it.icon ?? iconNameFor(it.label), pulse: it.primary, run: () => it.onClick() });
       else if (it.type === "chips") {
         if (!it.chips.length) continue;
@@ -897,9 +900,9 @@ export class Sentence {
     const v = w.value!;
     // (A length steps in the unit shown; slower past the first stretch would be finer, but a step a few px wide is felt.)
     const unit = v.kind === "length" ? 1 / toDisplay(1) : 1;
-    const px = v.kind === "int" ? 14 : 7;
+    const px = v.kind === "int" || (v.step ?? 0) >= 1 ? 14 : 7;
     const steps = Math.trunc(dx / px);
-    const size = v.kind === "int" ? 1 : v.kind === "angle" ? 1 : v.kind === "length" ? unit * (Math.abs(toDisplay(from)) >= 100 ? 5 : from !== 0 && Math.abs(toDisplay(from)) < 2 ? 0.1 : 1) : Math.abs(from) >= 20 ? 1 : 0.05;
+    const size = v.step ? v.step : v.kind === "int" ? 1 : v.kind === "angle" ? 1 : v.kind === "length" ? unit * (Math.abs(toDisplay(from)) >= 100 ? 5 : from !== 0 && Math.abs(toDisplay(from)) < 2 ? 0.1 : 1) : Math.abs(from) >= 20 ? 1 : 0.05;
     let to = from + steps * size;
     if (v.min !== undefined) to = Math.max(v.min, to);
     if (v.max !== undefined) to = Math.min(v.max, to);
