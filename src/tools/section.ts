@@ -5,7 +5,6 @@ import type { ToolPointer } from "../view/input";
 import { DragTyping } from "./dragTyping";
 import { axisDrag, Handle } from "./handles";
 import { hitToSel, type AppContext, type Tool } from "./tool";
-import type { WheelHandle } from "../ui/wheel";
 
 export interface SectionState {
   plane: PlaneDef;
@@ -22,8 +21,6 @@ export interface SectionState {
 export interface SectionHost extends AppContext {
   section: SectionState | null;
   setSection(s: SectionState | null): void;
-  /** The wheel of the open tool's options (Add Plane, Flip...). */
-  readonly optionsWheel?: WheelHandle;
 }
 
 /** The plane the view is cut with (offset and flip applied). */
@@ -51,7 +48,7 @@ export class SectionTool implements Tool {
     this.app.ui.setBottom(this.app.bottomTools());
     if (this.app.section) this.showControls();
     else this.askForPlane();
-    if (this.show && this.app.section) setTimeout(() => this.live && this.app.optionsWheel?.unfold());
+    if (this.show && this.app.section) setTimeout(() => this.live && this.app.wheel.unfold());
   }
 
   private live = false;

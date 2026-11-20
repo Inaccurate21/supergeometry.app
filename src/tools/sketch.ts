@@ -559,7 +559,7 @@ export class SketchTool implements Tool {
       // (With the wheels, the card's plane buttons are on the options wheel, out
       // of sight: the floor is mostly behind the front plane from the usual
       // view, and a tap for it took the front - said where the names are.)
-      this.app.ui.setHint(document.body.classList.contains("wheel-ui") ? "Tap a plane or a flat face to draw on - or XY (floor), XZ or YZ by name on the Options wheel (the sliders icon)." : "Tap a plane or a flat face to draw on.");
+      this.app.ui.setHint(document.body.classList.contains("wheel-ui") ? "Tap a plane or a flat face to draw on - or XY (floor), XZ or YZ by name on the wheel." : "Tap a plane or a flat face to draw on.");
       // The three origin planes as buttons too: in a 3D view they overlap near
       // the origin, and a tap meant for the floor can land on the front plane.
       const pick = (id: string) => () => {

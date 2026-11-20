@@ -143,7 +143,6 @@ export function installDebug(app: App): void {
     refImages: () => app.refImages.describe(),
     refAdd: (name: string, src: string) => void app.refImages.add(name, src),
     settingsWheel: () => app.settingsWheel.describe(),
-    optionsWheel: () => app.optionsWheel.describe(),
 
     /** Pick things, as taps would (sg.sel builds them). */
     select(...sel: Sel[]) {

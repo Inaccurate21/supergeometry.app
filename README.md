@@ -439,7 +439,7 @@ three.js view. Units are millimetres internally; the display unit is a setting.
   Revolve / Sweep / Loft.
 - Every operation is a *feature* in History; editing a feature replays
   everything after it.
-- Values: type while dragging, or on the Options wheel; expressions and
+- Values: type while dragging, or on the wheel (the tool's options); expressions and
   variables are accepted everywhere a number is.
 
 **Project file (`.super`, JSON).**

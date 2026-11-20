@@ -152,7 +152,7 @@ export const icons = {
   isolate: svg('<circle cx="12" cy="12" r="4"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/>'),
   body: svg('<path d="M12 3l8 4.5v9L12 21l-8-4.5v-9z" fill="currentColor" fill-opacity=".2"/>'),
   // A cog: the settings (on the tool wheel).
-  /** A tool's options (the Options wheel): three sliders. */
+  /** A tool's options (on the wheel): three sliders. */
   options: svg('<path d="M4 6h9M17 6h3M4 12h3M11 12h9M4 18h11M19 18h1"/><circle cx="15" cy="6" r="2"/><circle cx="9" cy="12" r="2"/><circle cx="17" cy="18" r="2"/>'),
   // For the wheels' switches and choices: what each one is (on or off shows by its highlight).
   grid: svg('<rect x="4" y="4" width="16" height="16" rx="1"/><path d="M4 9.3h16M4 14.6h16M9.3 4v16M14.6 4v16"/>'),
