@@ -400,6 +400,9 @@ export class Sentence {
     const more = [...(by.get("own") ?? []), ...(by.get("more") ?? []), ...view].map((it) => this.verb(it));
     words.push(this.group("more", "More", "more", more, why));
     if (more.length) groups.push({ cap: sel.length ? name : "More", words: more });
+    // (On the line from More to Create - the wheel's order the other way round, as asked for.)
+    words.reverse();
+    groups.reverse();
     return { subject, words, groups, others, about: sel.length ? `pick:${sel.map((x) => JSON.stringify(x)).join()}` : "make" };
   }
 
@@ -554,7 +557,8 @@ export class Sentence {
       this.typing?.end(false);
       this.open = null;
     }
-    this.fill(this.row, [...lead, b.subject, ...b.words], fresh);
+    // (Nothing picked: no subject - the groups say it all.)
+    this.fill(this.row, [...lead, ...(b.subject.key === "s-make" ? [] : [b.subject]), ...b.words], fresh);
     this.row.classList.toggle("sn-make", b.subject.key === "s-make");
     // (A tool's sentence is read whole: it runs on to the next line, as writing does. What a pick offers is one line to slide along.)
     this.row.classList.toggle("sn-wrap", b.about.startsWith("tool:"));
