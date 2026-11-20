@@ -13,7 +13,7 @@ import { Gimbal, IN_PLANE, type GimbalPart } from "./gimbal";
 import { buildConstraints, CONSTRAINT_BUTTONS, ConstraintGlyphs, dimOf, distanceOf, existingConstraints, setDim } from "./sketchConstraints";
 import { settings } from "../settings";
 import { isCoarse, screenClass } from "../device";
-import { arcFrom3, closestOnPrim, entityPolylines, entityPrims } from "../sketch/curves";
+import { arcFrom3, closestOnPrim, entityPolylines, entityPrims, evalPrim } from "../sketch/curves";
 import {
   offsetChain,
   outlineOffsetCurves,
@@ -324,6 +324,8 @@ export class SketchTool implements Tool {
     offsetOf?: string;
     /** Where the face's outline was tapped (an offset of it is linked to it). */
     offsetAt?: Vec2;
+    /** Where a curve of the sketch was tapped for an offset (its drag handle sits there). */
+    offsetGrip?: Vec2;
     /** Offset Edge on a body's edge: the edge tapped (its curve was brought into the sketch as a dashed guide, and that is what is offset). */
     offsetEdge?: { body: string; edge: number };
     /** ... and the guides brought in for it (the edge's own, and with Chain the rest of its face's outline). */
@@ -591,6 +593,7 @@ export class SketchTool implements Tool {
 
   exit(): void {
     this.clearQuick();
+    this.dropOffsetGrip();
     this.app.wheel.cover(false);
     this.regionArrow?.handle.dispose();
     this.regionArrow = null;
@@ -1257,7 +1260,9 @@ export class SketchTool implements Tool {
     this.arcM = this.arcBend = null;
     this.typedThisShape = false;
     this.edit.picking = kind === "mirror" ? undefined : this.edit.picking;
-    this.edit.offsetOf = this.edit.offsetEdge = undefined;
+    this.edit.offsetOf = this.edit.offsetEdge = this.edit.offsetGrip = undefined;
+    this.lightEdges(null);
+    this.dropOffsetGrip();
     this.edit.extendFrom = this.edit.alignFrom = undefined;
     this.edit.filletFrom = undefined;
     // A circular pattern always asks for its centre.
@@ -1505,8 +1510,9 @@ export class SketchTool implements Tool {
           memory.offsetMode = m as "edge" | "chain";
           // (A body's edge was tapped: Chain is the whole outline of its face, brought in now.)
           if (this.edit.offsetEdge && m === "chain") return this.offsetFromEdge(this.edit.offsetEdge, this.edit.offsetAt);
+          if (this.edit.offsetEdge) this.lightEdges(this.edit.offsetEdge);
           // (Of the face's own outline: still inside it - one edge and the whole loop count their sides differently.)
-          if (this.edit.offsetOf?.startsWith("bnd-")) memory.offset = this.inward(Math.abs(memory.offset));
+          if (this.edit.offsetOf?.startsWith("bnd-")) (memory.offset = this.inward(Math.abs(memory.offset))), this.lightEdges(this.outlineEdge);
           this.updatePanel();
           this.refreshPreview();
         } });
@@ -1709,6 +1715,11 @@ export class SketchTool implements Tool {
 
   hover(p: ToolPointer | null): void {
     if (p) this.pen = p.type === "pen";
+    if (this.offsetGrip) {
+      const over = !!p && this.offsetGrip.arrows.some((h) => h.hit(p));
+      this.offsetGrip.arrows.forEach((h) => h.setHot(over));
+      if (over) return this.app.setHover(null);
+    }
     if (p && this.phase === "plane") {
       // Show which plane / face / sketch a tap would pick.
       const hit = this.app.view.pick(p.x, p.y, { edges: false, vertices: false, planes: true, planesFirst: true, profiles: true, edgeTolPx: 0 });
@@ -1743,6 +1754,11 @@ export class SketchTool implements Tool {
       const hit = this.app.view.pick(p.x, p.y, { curves: this.sketchId ?? true, profiles: false, bodies: false, planes: false, axes: false, edgeTolPx: p.tol });
       const onCurve = hit?.kind === "curve" && hit.sketch === this.sketchId;
       this.app.setHover(onCurve ? { kind: "curve", sketch: hit.sketch, entity: hit.entity } : null);
+      // Offset Edge takes an edge of a body too: it lights up under the pointer, as a curve of the sketch does.
+      if (this.kind === "offset" && !onCurve) {
+        const edge = this.app.view.pick(p.x, p.y, { profiles: false, planes: false, axes: false, curves: false, edgeTolPx: p.tol });
+        if (edge?.kind === "edge") this.app.setHover({ kind: "edge", body: edge.body, edge: edge.edge });
+      }
       // Second pick of Extend/Fillet: show the result as dashed lines before tapping.
       this.previewJoin(onCurve ? this.curveAt(p) : null);
       if (!this.edit.picking && !this.wantsCentre) return;
@@ -1766,6 +1782,8 @@ export class SketchTool implements Tool {
     // The extrude arrow of a tapped shape, grabbed: only now does Extrude start
     // (the sketch closes), and this same drag sizes it.
     if (this.regionArrow?.handle.hit(p)) return this.extrudeFromArrow(p);
+    // The offset's double arrow, grabbed: this drag sets how far it goes (and to which side).
+    if (this.offsetGrip?.arrows.some((h) => h.hit(p))) return (this.offsetGrip.dragging = true);
     if (this.kind === "patternLinear" && this.startPatternDrag(p)) return true;
     // Drags (the gimbal's too) start once the pointer moves (dragStart): a
     // gimbal grabbed on the press took every tap near it - with a point picked
@@ -1809,6 +1827,7 @@ export class SketchTool implements Tool {
   }
 
   drag(p: ToolPointer): void {
+    if (this.offsetGrip?.dragging) return this.dragOffset(p);
     if (this.swipe) {
       // Along the way from the last spot (a quick swipe skips over thin curves otherwise).
       const { x, y } = this.swipe.last;
@@ -1926,6 +1945,11 @@ export class SketchTool implements Tool {
   }
 
   up(p: ToolPointer): void {
+    if (this.offsetGrip?.dragging) {
+      this.offsetGrip.dragging = false;
+      // (The line at the bottom shows the distance it was left at.)
+      return this.updatePanel();
+    }
     if (this.swipe) {
       const sw = this.swipe;
       this.swipe = null;
@@ -2551,6 +2575,9 @@ export class SketchTool implements Tool {
             this.edit.offsetAt = o.uv;
             this.edit.offsetOf = o.e.id;
             memory.offset = this.inward(Math.abs(defaultOffset(o.e)));
+            const under = this.app.view.pick(p.x, p.y, { profiles: false, planes: false, axes: false, curves: false, edgeTolPx: p.tol });
+            this.outlineEdge = under?.kind === "edge" ? { body: under.body, edge: under.edge } : null;
+            this.lightEdges(this.outlineEdge);
             this.edit.offsetEdge = undefined;
             this.updatePanel();
             this.refreshPreview();
@@ -2558,7 +2585,8 @@ export class SketchTool implements Tool {
           }
           // An edge of a body that is no curve of this sketch (the sketch is on a plane, or the edge is another
           // face's): tapped, it is offset all the same - its curve comes in as a dashed guide that follows it.
-          if (!c) {
+          // (Its dashed guide from an offset made before counts as the edge, not as a curve of the sketch.)
+          if (!c || this.entities.some((e) => e.id === c.id && e.construction)) {
             const hit = this.app.view.pick(p.x, p.y, { profiles: false, planes: false, axes: false, curves: false, edgeTolPx: p.tol });
             if (hit?.kind === "edge") return this.offsetFromEdge({ body: hit.body, edge: hit.edge }, this.uvAt(p) ?? undefined);
           }
@@ -2576,9 +2604,11 @@ export class SketchTool implements Tool {
             // A tenth of the curve tapped (keeping the side it went last time).
             const e = this.entities.find((x) => x.id === id);
             if (e) memory.offset = (memory.offset < 0 ? -1 : 1) * defaultOffset(e);
+            this.edit.offsetGrip = uv;
           }
           this.edit.offsetOf = id;
           this.edit.offsetEdge = undefined;
+          this.lightEdges(null);
           this.updatePanel();
           this.refreshPreview();
         });
@@ -3497,7 +3527,9 @@ export class SketchTool implements Tool {
     this.lockIndex = 0;
     this.typing.reset();
     this.edit.picking = undefined;
-    this.edit.offsetOf = this.edit.offsetEdge = undefined;
+    this.edit.offsetOf = this.edit.offsetEdge = this.edit.offsetGrip = undefined;
+    this.lightEdges(null);
+    this.dropOffsetGrip();
     this.edit.extendFrom = this.edit.alignFrom = undefined;
     this.edit.filletFrom = undefined;
     this.cancelFillet();
@@ -3622,6 +3654,7 @@ export class SketchTool implements Tool {
   }
 
   private refreshPreview(p?: ToolPointer): void {
+    this.placeOffsetGrip();
     if (this.phase !== "draw" || !this.plane) return;
     this.refreshPatternGimbal();
     this.clearOverlays();
@@ -4439,10 +4472,13 @@ export class SketchTool implements Tool {
   }
 
   private showSelection(): void {
-    if (!this.sketchId) return;
+    // (The body edges an offset is being made from stay lit with whatever is picked: the sketch draws its picks again
+    // whenever it is rebuilt, and they went out the moment the edge's guide came in.)
+    if (!this.sketchId) return void (this.offsetLit.length && this.app.setSelection(this.offsetLit));
     this.app.setSelection([
       ...[...this.selected].map((entity) => ({ kind: "curve" as const, sketch: this.sketchId!, entity })),
       ...this.selPts.map((r) => ({ kind: "point" as const, sketch: this.sketchId!, entity: r.e, p: r.p })),
+      ...this.offsetLit,
     ]);
     this.refreshGimbal();
   }
@@ -4714,6 +4750,104 @@ export class SketchTool implements Tool {
   }
 
   /**
+   * The offset's handle: a double arrow on the new curve, across from where
+   * the curve it is made from was tapped, and the distance in a box beside it.
+   * Dragged, it sets how far the offset goes - through the curve to the other
+   * side too; the box takes a typed distance (Enter applies the offset).
+   */
+  private offsetGrip: { arrows: [Handle, Handle]; box: DimWidget; from: Vec2; n: Vec2; dragging: boolean } | null = null;
+
+  private dropOffsetGrip(): void {
+    const g = this.offsetGrip;
+    if (!g) return;
+    g.arrows.forEach((h) => h.dispose());
+    g.box.dispose();
+    this.offsetGrip = null;
+  }
+
+  /** The curve an offset is being made from (of the sketch, or the face's outline). */
+  private offsetSource(): SketchEntity | undefined {
+    const id = this.edit.offsetOf;
+    return id ? (id.startsWith("bnd-") ? this.outline.find((e) => e.id === id) : this.entities.find((e) => e.id === id)) : undefined;
+  }
+
+  /** Put the handle where the offset is now (made when an offset starts, gone when it ends). */
+  private placeOffsetGrip(): void {
+    const src = this.kind === "offset" && this.phase === "draw" && this.plane ? this.offsetSource() : undefined;
+    const made = src ? this.offsetResult() : [];
+    if (!src || !this.plane || !made.length) return this.dropOffsetGrip();
+    const plane = this.plane;
+    let g = this.offsetGrip;
+    if (!g || !g.dragging) {
+      // Across from where it was tapped: the nearest point of the curve, and the way square to it there.
+      const tapped = this.edit.offsetGrip ?? this.edit.offsetAt;
+      let best: { pt: Vec2; n: Vec2; d: number } | null = null;
+      for (const pr of entityPrims(src)) {
+        const c = closestOnPrim(pr, tapped ?? evalPrim(pr, 0.5));
+        if (best && c.d >= best.d) continue;
+        const a = evalPrim(pr, Math.max(0, c.t - 1e-3));
+        const b = evalPrim(pr, Math.min(1, c.t + 1e-3));
+        const L = Math.hypot(b[0] - a[0], b[1] - a[1]) || 1;
+        best = { pt: c.pt, n: [-(b[1] - a[1]) / L, (b[0] - a[0]) / L], d: c.d };
+      }
+      if (!best) return this.dropOffsetGrip();
+      if (!g) {
+        const box = new DimWidget(this.app.view, {
+          value: Math.abs(memory.offset),
+          boxAt: "beyond",
+          boxGap: 34,
+          onInput: (v) => v > 0 && ((memory.offset = (memory.offset < 0 ? -1 : 1) * v), this.refreshPreview(), this.updatePanel()),
+          onCommit: () => this.applyOffset(),
+        });
+        g = this.offsetGrip = { arrows: [new Handle(this.app.view, "arrow"), new Handle(this.app.view, "arrow")], box, from: best.pt, n: best.n, dragging: false };
+      }
+      g.from = best.pt;
+      g.n = best.n;
+    }
+    // Where the new curve is, square across from there (which side, and how far).
+    let far = 0;
+    let gap = Infinity;
+    for (const e of made)
+      for (const pr of entityPrims(e)) {
+        const c = closestOnPrim(pr, g.from);
+        if (c.d < gap) (gap = c.d), (far = (c.pt[0] - g.from[0]) * g.n[0] + (c.pt[1] - g.from[1]) * g.n[1]);
+      }
+    const side = far < 0 ? -1 : 1;
+    const at: Vec2 = [g.from[0] + g.n[0] * far, g.from[1] + g.n[1] * far];
+    const w = (uv: Vec2) => sketchToWorld(plane, uv).toArray() as Vec3;
+    const o = w([0, 0]);
+    const tip = w([g.n[0] * side, g.n[1] * side]);
+    const dir: Vec3 = [tip[0] - o[0], tip[1] - o[1], tip[2] - o[2]];
+    g.arrows[0].set(w(at), dir);
+    g.arrows[1].set(w(at), [-dir[0], -dir[1], -dir[2]]);
+    g.box.set(w(g.from), w(at));
+    // (Not while it is being typed into: the box is the one saying the distance then.)
+    if (!document.activeElement?.closest?.(".dim-widget")) g.box.setValue(Math.abs(memory.offset));
+  }
+
+  /** The handle dragged: the offset goes to where the pointer is, square across from the curve - either side of it. */
+  private dragOffset(p: ToolPointer): void {
+    const g = this.offsetGrip;
+    const uv = this.uvAt(p);
+    if (!g || !uv) return;
+    const want = (uv[0] - g.from[0]) * g.n[0] + (uv[1] - g.from[1]) * g.n[1];
+    const d = Math.abs(want);
+    if (d < 1e-6) return;
+    const target: Vec2 = [g.from[0] + g.n[0] * want, g.from[1] + g.n[1] * want];
+    // (Which sign of the distance is that side depends on the curve and on Edge or Chain: the one that lands nearer is it.)
+    let best: { v: number; miss: number } | null = null;
+    for (const v of [d, -d]) {
+      memory.offset = v;
+      let miss = Infinity;
+      for (const e of this.offsetResult()) for (const pr of entityPrims(e)) miss = Math.min(miss, closestOnPrim(pr, target).d);
+      if (!best || miss < best.miss) best = { v, miss };
+    }
+    memory.offset = roundSig(best!.v);
+    g.box.setValue(Math.abs(memory.offset));
+    this.refreshPreview();
+  }
+
+  /**
    * An offset of the face's own outline that starts inside the face (a lip, a
    * pocket's edge), as a distance with its sign: the whole loop goes inward
    * with a minus; one edge alone goes to its left, so the side the middle of
@@ -4740,17 +4874,31 @@ export class SketchTool implements Tool {
    * Chain: every edge of the flat face the edge is on that faces the sketch,
    * so the whole outline goes together.
    */
+  /** The edges an offset from this body edge takes: the edge itself, or with Chain every edge of the flat face it is on that faces the sketch. */
+  private edgesFor(hit: { body: string; edge: number }): number[] {
+    const b = this.app.view.body(hit.body);
+    if (!b || !this.plane || memory.offsetMode !== "chain") return [hit.edge];
+    const n = this.plane.normal;
+    const facing = (i: number) => Math.abs(b.faces[i].normal[0] * n[0] + b.faces[i].normal[1] * n[1] + b.faces[i].normal[2] * n[2]);
+    const on = b.faces.map((_, i) => i).filter((i) => b.faces[i].plane && edgesOfFace(this.app, hit.body, i).includes(hit.edge));
+    const best = on.sort((x, y) => facing(y) - facing(x))[0];
+    return best !== undefined && facing(best) > 0.5 ? edgesOfFace(this.app, hit.body, best) : [hit.edge];
+  }
+
+  /** The face's own edge tapped for an offset (to light it, and its whole outline with Chain). */
+  private outlineEdge: { body: string; edge: number } | null = null;
+  /** The body edges an offset is being made from, lit while it is set up (what was tapped - a finger has no pointer to hover with). */
+  private offsetLit: Sel[] = [];
+  private lightEdges(hit: { body: string; edge: number } | null): void {
+    if (!hit && !this.offsetLit.length) return;
+    this.offsetLit = hit ? this.edgesFor(hit).map((edge) => ({ kind: "edge" as const, body: hit.body, edge })) : [];
+    this.showSelection();
+  }
+
   private offsetFromEdge(hit: { body: string; edge: number }, at?: Vec2): void {
     const b = this.app.view.body(hit.body);
     if (!b || !this.plane) return;
-    let edges = [hit.edge];
-    if (memory.offsetMode === "chain") {
-      const n = this.plane.normal;
-      const facing = (i: number) => Math.abs(b.faces[i].normal[0] * n[0] + b.faces[i].normal[1] * n[1] + b.faces[i].normal[2] * n[2]);
-      const on = b.faces.map((_, i) => i).filter((i) => b.faces[i].plane && edgesOfFace(this.app, hit.body, i).includes(hit.edge));
-      const best = on.sort((x, y) => facing(y) - facing(x))[0];
-      if (best !== undefined && facing(best) > 0.5) edges = edgesOfFace(this.app, hit.body, best);
-    }
+    const edges = this.edgesFor(hit);
     const order = this.app.store.features.map((f) => f.id);
     const here = this.sketchId ? order.indexOf(this.sketchId) : order.length;
     const before = (step: string) => order.indexOf(step) >= 0 && order.indexOf(step) < here;
@@ -4793,6 +4941,7 @@ export class SketchTool implements Tool {
     memory.offset = (memory.offsetMode === "chain" && guides.length > 1 ? -1 : memory.offset < 0 ? -1 : 1) * Math.abs(defaultOffset(src));
     this.updatePanel();
     this.refreshPreview();
+    this.lightEdges(hit);
     this.setHint("Set the distance (Flip for the other side), then Apply. The dashed line is the body's edge: the offset is made from it.");
   }
 
