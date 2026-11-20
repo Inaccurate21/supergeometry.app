@@ -206,16 +206,40 @@ export class Sentence {
     // (Never through to the model: a press on the line is the line's.)
     for (const type of ["pointerdown", "pointerup", "click", "dblclick", "wheel", "contextmenu"] as const) this.root.addEventListener(type, (e) => e.stopPropagation());
     this.root.addEventListener("contextmenu", (e) => e.preventDefault());
-    // A press anywhere else puts the sheet away (and is whatever it is there).
+    // A press anywhere else puts the sheet away (and is whatever it is there) - but not one on the view that turns,
+    // moves or zooms it: a list opened from the line (Transform > Pattern > ...) stays up while the model is looked
+    // at from another side, until something in it is chosen or the model is tapped.
+    let viewPress: { id: number; x: number; y: number; moved: boolean } | null = null;
     document.addEventListener(
       "pointerdown",
       (e) => {
         if (!this.open || this.root.contains(e.target as Node) || (e.target as HTMLElement).closest?.(".numpad")) return;
+        if (e.target === this.host.view.canvas && this.open.kind !== "type") {
+          // (A second finger down: a pinch - never a tap.)
+          viewPress = viewPress ? { ...viewPress, moved: true } : { id: e.pointerId, x: e.clientX, y: e.clientY, moved: false };
+          return;
+        }
         this.typing?.end(true);
         this.close();
       },
       true,
     );
+    document.addEventListener(
+      "pointermove",
+      (e) => {
+        if (viewPress && !viewPress.moved && e.pointerId === viewPress.id && Math.hypot(e.clientX - viewPress.x, e.clientY - viewPress.y) > (e.pointerType === "touch" ? 10 : 4)) viewPress.moved = true;
+      },
+      true,
+    );
+    const lifted = (e: PointerEvent) => {
+      const p = viewPress;
+      if (!p || e.pointerId !== p.id) return;
+      viewPress = null;
+      // (A tap on the model: it picks, or lets go - the list was for what was picked before.)
+      if (!p.moved && e.type === "pointerup" && e.button !== 2) this.close();
+    };
+    document.addEventListener("pointerup", lifted, true);
+    document.addEventListener("pointercancel", lifted, true);
     // Esc puts the sheet away first (then it is the tool's, as ever).
     document.addEventListener(
       "keydown",
@@ -780,6 +804,7 @@ export class Sentence {
     d.classList.toggle("quiet", !!w.quiet);
     d.classList.toggle("capped", !!w.cap);
     d.classList.toggle("off", !!w.off);
+    d.classList.toggle("opened", w.key === this.openTop);
     (d as HTMLButtonElement).disabled = !!w.quiet && !w.run && !w.kids;
     d.replaceChildren();
     if (w.cap) d.append(el("span", "sn-cap", w.cap));
@@ -871,6 +896,22 @@ export class Sentence {
     this.end.querySelector(".sn-all")?.classList.remove("on");
   }
 
+  /** The word on the line that the open list came from (it, or the one it is under), lit while the list is up. */
+  private openTop: string | null = null;
+
+  /** The words from the line down to `key` (Transform, Pattern). */
+  private pathTo(key: string): Word[] {
+    const seek = (ws: Word[]): Word[] | null => {
+      for (const w of ws) {
+        if (w.key === key) return [w];
+        const k = w.kids && seek(w.kids);
+        if (k) return [w, ...k];
+      }
+      return null;
+    };
+    return seek(this.built?.words ?? []) ?? [];
+  }
+
   private find(key: string): Word | null {
     const b = this.built;
     if (!b) return null;
@@ -891,6 +932,12 @@ export class Sentence {
     const b = this.built;
     // (Open over the model: the round buttons beside the pick step back for it.)
     document.body.classList.toggle("sn-open", !!o && !!b && this.on);
+    const path = o && o.kind !== "all" ? this.pathTo(o.key) : [];
+    const top = path[0]?.key ?? null;
+    if (top !== this.openTop) {
+      this.openTop = top;
+      for (const d of Array.from(this.row.querySelectorAll<HTMLElement>(".sn-word"))) d.classList.toggle("opened", !!top && d.dataset.key === top);
+    }
     if (!o || !b) {
       this.sheet.hidden = true;
       this.sheet.replaceChildren();
@@ -909,7 +956,8 @@ export class Sentence {
     else {
       const w = this.find(o.key);
       if (!w?.kids?.length) return void this.close();
-      blocks.push({ cap: w.cap ?? w.label, words: w.kids });
+      // (Under another: where it is - "Transform › Pattern".)
+      blocks.push({ cap: path.length > 1 ? path.map((x) => x.cap ?? x.label).join(" › ") : (w.cap ?? w.label), words: w.kids });
     }
     this.sheet.hidden = false;
     this.sheet.className = `sn-sheet sn-${o.kind}`;
