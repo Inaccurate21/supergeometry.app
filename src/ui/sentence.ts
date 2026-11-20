@@ -9,8 +9,10 @@
 // type or to drag sideways ("12 mm"). The tick ends the sentence (Done), the
 // eraser takes the last part back (Cancel, then the pick itself).
 //
-// With nothing picked the sentence starts with "Make": only what makes
-// something new is offered, with the view's own tools. A thread runs from the
+// The line holds the tools by group (Sketch, Freeform, Transform, Construct,
+// Modify, Combine, Create), each group what the pick offers - with nothing
+// picked every tool, each asking for its pick as it starts. A group is dimmed
+// only when nothing in it can be used. A thread runs from the
 // subject to the thing it names on the model, so it is always plain what the
 // sentence is about.
 //
@@ -40,6 +42,9 @@ export interface SentenceHost {
   mode(): "model" | "sketch" | "freeform" | "tool";
   /** In a sketch: how many curves and points are picked. */
   sketchPicked(): number;
+  /** A tool started with nothing picked that is waiting for its pick (its name), and letting it go. */
+  waiting(): string | null;
+  stopWaiting(): void;
   /** Where the pick is on the model (for the thread to it). */
   anchor(): Vec3 | null;
   /** In a sketch: tap the view again where it was last tapped (a tool that acts where it is tapped, started for the piece picked there). */
@@ -107,29 +112,7 @@ const buzz = (ms: number | number[] = 5) => {
   }
 };
 const notSep = (it: ToolItem) => !it.id.startsWith("---");
-const needsPick = (it: ToolItem) => !!(it.run as { needsPick?: boolean } | undefined)?.needsPick;
-
-/** Started with nothing picked, these change what is there (they are offered once the bodies or the edge are picked). */
-const CHANGES = new Set(["offsetEdge", "subtract", "intersect"]);
-
-/** Only what makes something new (nothing picked): a tool that asks for a pick after its tap is left out, with any group left empty. */
-function makers(items: ToolItem[]): ToolItem[] {
-  const out: ToolItem[] = [];
-  for (const it of items) {
-    if (CHANGES.has(it.id)) continue;
-    if (it.children?.length) {
-      const children = makers(it.children);
-      const runs = it.run && !needsPick(it);
-      if (!children.length && !runs) continue;
-      out.push({ ...it, children, run: runs ? it.run : undefined });
-    } else if (it.run && !needsPick(it)) out.push(it);
-  }
-  return out;
-}
-
-/** In a sketch: tools for curves that are picked (the rest draw something new). */
-const SK_PICKED = new Set(["move", "rotate", "scale", "mirror", "pattern", "offset", "fillet", "trim", "extend", "split", "align", "delete"]);
-/** Of those, the ones that act where the view is tapped: started for the piece picked, at the place it was picked. */
+/** In a sketch: the tools that act where the view is tapped. With a curve picked they start on it, at the place it was picked (no second tap). */
 const SK_RETAP = new Set(["trim", "extend", "split", "offset", "fillet"]);
 /** And of those, the ones done at that tap (nothing more to set): picking is on again after it. */
 const SK_ONCE = new Set(["trim", "split"]);
@@ -378,9 +361,13 @@ export class Sentence {
     let name = "";
     let others: string[] | undefined;
     if (!sel.length) {
-      // Nothing picked: each main group's makers (a group that is a tool itself - Sketch - is its own).
-      for (const g of makers(items)) for (const it of g.children?.length ? g.children.filter(notSep) : [g]) put(g.id, it);
-      subject = { key: "s-make", kind: "subject", label: "Make", quiet: true };
+      // Nothing picked: every main tool that can be started now (one that needs a pick asks for it as it starts).
+      // (A group is dimmed only when nothing in it can be used - asked for: Create, Combine and Transform were
+      // dimmed with nothing picked though their tools start and then say what to tap.)
+      for (const g of items) for (const it of g.children?.length ? g.children.filter(notSep) : [g]) put(g.id, it);
+      // (A tool waiting for its pick: said over the line, with an x to let it go - the guide text says what to tap.)
+      const waits = this.host.waiting();
+      subject = waits ? { key: "s-wait", kind: "subject", label: `${waits.replace(/ \(.*\)$/, "")}: tap the model`, lets: true, on: true, run: () => this.host.stopWaiting() } : { key: "s-make", kind: "subject", label: "Make", quiet: true };
     } else {
       const des = items.find((it) => it.id === "deselect");
       items = items.filter((it) => it !== des);
@@ -422,7 +409,7 @@ export class Sentence {
     // (On the line from More to Create - the wheel's order the other way round, as asked for.)
     words.reverse();
     groups.reverse();
-    return { subject, words, groups, others, grouped: true, about: sel.length ? `pick:${sel.map((x) => JSON.stringify(x)).join()}` : "make" };
+    return { subject, words, groups, others, grouped: true, about: sel.length ? `pick:${sel.map((x) => JSON.stringify(x)).join()}` : subject.key === "s-wait" ? `wait:${subject.label}` : "make" };
   }
 
   /** A sketch: what draws something new - and, with curves picked, what can be done with them. */
@@ -434,11 +421,11 @@ export class Sentence {
     const tools = items.filter((it) => it !== exit && it !== select);
     const drawing = tools.some((it) => it.active);
     const at = tools.find((it) => it.active);
-    const forPick = tools.filter((it) => SK_PICKED.has(it.id));
     const retapped = (it: ToolItem): Word => {
       const w = this.verb(it);
-      // (It acts where the view is tapped: on the piece picked, where it was picked. One done at that tap leaves picking on.)
-      if (SK_RETAP.has(it.id) && it.run) {
+      // (It acts where the view is tapped. A curve picked: on that piece, where it was picked - and one done at that
+      // tap leaves picking on. Nothing picked: it is on, and the next tap is its.)
+      if (picked > 0 && SK_RETAP.has(it.id) && it.run) {
         const start = (run: () => void) => () => {
           run();
           this.host.retap();
@@ -457,14 +444,11 @@ export class Sentence {
     words.push(...mine);
     // (Said once: the window's own Delete, not the column's too.)
     const said = new Set(mine.map((w) => w.label));
-    const busy = forPick.find((it) => it.active);
-    if (busy) {
-      // A tool for the picked curves is at work (Extend waiting for the line to reach): it alone, lit, until it is put down.
-      words.push(this.verb(busy));
-    } else if (tools.length) {
+    if (tools.length) {
       // (None while its plane is still being chosen: there is nothing to draw on yet.)
-      // Its groups, each in its place: Draw (always: it starts something new), Modify and Transform (for curves that are picked), More.
-      const offered = (it: ToolItem) => !SK_PICKED.has(it.id) || (picked > 0 && !said.has(it.label));
+      // Its groups, each in its place: Draw, Modify, Transform - all its tools, whatever is picked (each can be started
+      // now: with nothing picked it asks for its curve as it starts).
+      const offered = (it: ToolItem) => !said.has(it.label);
       const placed = new Set<ToolItem>();
       for (const g of SK_GROUPS) {
         const its = g.tools.map((id) => tools.find((it) => it.id === id)).filter((it): it is ToolItem => !!it && offered(it));
@@ -473,7 +457,7 @@ export class Sentence {
         words.push(this.group(g.id, g.label, g.icon, w, "Pick a line or a shape of the sketch first."));
         if (w.length) groups.push({ cap: g.label, words: w });
       }
-      // (Delete: a tap, once curves are picked - unless their window has it already.)
+      // (Delete: a tap - the curves picked, else the tool that deletes what is tapped; unless their window has it already.)
       const del = tools.find((it) => it.id === "delete");
       if (del && offered(del)) words.push(this.verb(del));
       if (del) placed.add(del);
@@ -490,7 +474,7 @@ export class Sentence {
       exit: exit?.run ? { label: "Exit Sketch", run: () => exit.run!(), pulse: exit.pulse } : undefined,
       // (What of the sketch is being worked on: the curves picked, else the tool that is on - "Sketch > Line".)
       title: panel && mine.length ? { key: "t-title", kind: "subject", label: panel.title, quiet: true, on: true } : at ? { key: "t-title", kind: "subject", label: at.label, quiet: true, on: true } : undefined,
-      grouped: !busy && !mine.length,
+      grouped: !mine.length,
       about: `sketch:${picked > 0 ? "picked" : drawing ? "draw" : "idle"}`,
     };
   }
@@ -653,8 +637,12 @@ export class Sentence {
       if (room >= this.natural + 8) this.line.classList.remove("sn-compact");
     }
     // (Closed up with room to spare for each - a tablet, a phone on its side: bigger names than on a phone held upright.)
+    // (Reckoned from the line's own width and the end buttons at their bigger size, never from the row as it is now:
+    // bigger names widen the end buttons, which narrowed the row, which made the names small again - on a phone
+    // 390 wide, in a sketch with a tool on, it flipped on every layout and the line shook.)
     const n = r.childElementCount;
-    this.line.classList.toggle("sn-roomy", this.line.classList.contains("sn-compact") && n > 0 && r.clientWidth / n >= 66);
+    const room = this.line.clientWidth - this.end.childElementCount * 62 - 12;
+    this.line.classList.toggle("sn-roomy", this.line.classList.contains("sn-compact") && n > 0 && room / n >= 66);
     const more = !r.classList.contains("sn-wrap") && r.scrollWidth > r.clientWidth + 1;
     // (Both keep their room while there is more either way: one coming or going must not change how much fits.)
     this.line.classList.toggle("sn-more", more);

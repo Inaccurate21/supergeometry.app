@@ -115,6 +115,8 @@ export class App implements AppContext {
       selection: () => this.selection,
       mode: () => (this.tool === this.selectTool ? "model" : this.tool instanceof SketchTool ? "sketch" : this.tool instanceof FreeformTool ? "freeform" : "tool"),
       sketchPicked: () => (this.tool instanceof SketchTool ? this.tool.pickedCount : 0),
+      waiting: () => (this.tool === this.selectTool ? this.selectTool.waiting : null),
+      stopWaiting: () => this.selectTool.stopWaiting(),
       anchor: () => this.pickAnchor(),
       retap: () => {
         const p = this.lastTapAt;

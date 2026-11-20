@@ -429,7 +429,7 @@ OpenCascade (via replicad) running in a Web Worker; the UI is plain DOM over a
 three.js view. Units are millimetres internally; the display unit is a setting.
 
 **Interaction model.**
-- Nothing selected → the line at the bottom offers what makes something new (Sketch, Freeform, Construct); the rest once something is picked: Sketch, Freeform,
+- Nothing selected → the line at the bottom has every tool (one that needs a pick asks for it as it starts): Sketch, Freeform,
   Extrude, Revolve, Sweep, Loft, Shell, Transform ▸ (Move/Rotate, Scale,
   Translate, Mirror, Rotate Around Axis, Patterns), Boolean ▸ (Union,
   Subtract, Intersect), Construct ▸ (planes, axes), Insert ▸ (variables,

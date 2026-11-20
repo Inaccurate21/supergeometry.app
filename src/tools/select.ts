@@ -565,7 +565,7 @@ export class SelectTool implements Tool {
                 this.app.firstShape()
                 ? "Your shape is ready: tap it, then drag its arrow up."
                 : this.app.store.features.length
-                  ? "Tap part of the model. The line at the bottom then shows what you can do with it."
+                  ? "Tap part of the model: the line at the bottom shows what you can do with it. Or pick a tool there first."
                   : "Tap Sketch to start: draw a shape, then pull it into 3D."
               : this.app.store.features.length
                 ? "Pick a tool, or tap the model to select part of it."
@@ -660,6 +660,16 @@ export class SelectTool implements Tool {
     this.app.setSelection([s]);
     run();
     return true;
+  }
+
+  /** The tool started with nothing picked that is waiting for its pick now (the sentence bar says so over the line), and letting it go. */
+  get waiting(): string | null {
+    return this.pending?.label ?? null;
+  }
+  stopWaiting(): void {
+    if (!this.pending) return;
+    this.pending = null;
+    this.refresh();
   }
 
   waitFor(label: string, accepts: Sel["kind"][], run: () => void): void {
