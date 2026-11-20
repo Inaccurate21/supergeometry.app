@@ -2065,7 +2065,7 @@ function opAffine(op: Extract<Feature, { type: "transform" }>["op"]): Affine | n
 
 /** Shell a freeform: remove the cage quads under the picked faces, thicken the sheet inward. */
 function shellFreeform(ff: { feature: Extract<Feature, { type: "freeform" }>; m: Affine }, faces: Face[], t: number): Shape3D {
-  const cage = { faces: ff.feature.cage.faces, verts: ff.feature.cage.verts.map((v) => applyAffine(ff.m, v)) };
+  const cage = { ...ff.feature.cage, verts: ff.feature.cage.verts.map((v) => applyAffine(ff.m, v)) };
   // Each body face is one cage quad's patch: match by the patch's middle point.
   const sub3 = subdivide(cage, 3);
   const mid = sub3.n / 2;
@@ -2087,7 +2087,7 @@ function shellFreeform(ff: { feature: Extract<Feature, { type: "freeform" }>; m:
 
 /** A freeform's shape with its cage mapped by m (thickness grows with the overall scale). */
 function freeformShape(f: Extract<Feature, { type: "freeform" }>, m: Affine): Shape3D {
-  const cage = { faces: f.cage.faces, verts: f.cage.verts.map((v) => applyAffine(m, v)) };
+  const cage = { ...f.cage, verts: f.cage.verts.map((v) => applyAffine(m, v)) };
   const det = Math.abs(m[0] * (m[5] * m[10] - m[6] * m[9]) - m[1] * (m[4] * m[10] - m[6] * m[8]) + m[2] * (m[4] * m[9] - m[5] * m[8]));
   const thicken = f.thickness ? { thickness: f.thickness * Math.cbrt(det || 1), side: f.thickSide ?? "up" } : undefined;
   return checkedFreeform(cage, thicken);

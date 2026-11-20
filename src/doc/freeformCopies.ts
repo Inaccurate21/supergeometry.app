@@ -135,6 +135,7 @@ export function detachFreeformCopy(doc: ProjectDoc, bodyId: string, newId: strin
       verts: ff.feature.cage.verts.map((v) => applyAffine(ff.m, v)),
       // A mirror turns the shape inside out: wind the quads the other way.
       faces: ff.feature.cage.faces.map((q) => (flip ? ([q[0], q[3], q[2], q[1]] as typeof q) : ([...q] as typeof q))),
+      ...(ff.feature.cage.creases ? { creases: structuredClone(ff.feature.cage.creases) } : {}),
     },
   };
   const features = [...doc.features];

@@ -11,6 +11,14 @@ export interface Cage {
   verts: Vec3[];
   /** Quads, as vertex indices in order around the face. */
   faces: [number, number, number, number][];
+  /**
+   * Sharp edges: cage edges the surface keeps a crease along instead of
+   * rounding over - it follows them as an open border is followed (a smooth
+   * curve through the edge's points), and where three or more meet, or one
+   * ends at a corner of the border, the point is a corner. One on its own,
+   * ending in the middle of the surface, fades out there.
+   */
+  creases?: [number, number][];
 }
 
 export type CagePrimitive = "box" | "plane" | "cylinder" | "sphere" | "torus";
@@ -181,6 +189,8 @@ export interface Subdivided {
   grids: number[][][];
   /** Size of each grid side in cells (2^levels). */
   n: number;
+  /** The sharp edges at this level (as "a,b" with a < b), where the cage has some. */
+  creased?: Set<string>;
 }
 
 const add3 = (a: Vec3, b: Vec3): Vec3 => [a[0] + b[0], a[1] + b[1], a[2] + b[2]];
@@ -192,6 +202,8 @@ const mul3 = (a: Vec3, k: number): Vec3 => [a[0] * k, a[1] * k, a[2] * k];
  * corner (a sheet laid over a face: the face's own corners).
  */
 export function subdivide(cage: Cage, levels = 3, sharp?: Set<number>): Subdivided {
+  // Sharp edges, as they are at each level (each is two at the next).
+  let creased = new Set((cage.creases ?? []).map(([a, b]) => (a < b ? `${a},${b}` : `${b},${a}`)));
   let points = cage.verts.map((p) => [...p] as Vec3);
   let grids = cage.faces.map((f) => [
     [f[0], f[3]],
@@ -222,7 +234,7 @@ export function subdivide(cage: Cage, levels = 3, sharp?: Set<number>): Subdivid
     for (const [key, fs] of edgeFaces) {
       const [a, b] = key.split(",").map(Number);
       const mid = mul3(add3(points[a], points[b]), 0.5);
-      edgePos.set(key, fs.length === 2 ? mul3(add3(add3(points[a], points[b]), add3(facePt[fs[0]], facePt[fs[1]])), 0.25) : mid);
+      edgePos.set(key, fs.length === 2 && !creased.has(key) ? mul3(add3(add3(points[a], points[b]), add3(facePt[fs[0]], facePt[fs[1]])), 0.25) : mid);
     }
     // Vertex points.
     const vFaces = new Map<number, number[]>();
@@ -233,11 +245,15 @@ export function subdivide(cage: Cage, levels = 3, sharp?: Set<number>): Subdivid
       const es = vEdges.get(v);
       const fs = vFaces.get(v);
       if (!es || !fs) return p;
-      const boundary = es.filter((k) => edgeFaces.get(k)!.length === 1);
+      const border = es.filter((k) => edgeFaces.get(k)!.length === 1);
+      const crease = creased.size ? es.filter((k) => creased.has(k) && edgeFaces.get(k)!.length === 2) : [];
+      // (A sharp edge is followed as the border is. Three or more at a point, sharp or border: a corner.)
+      if (crease.length && border.length + crease.length > 2) return p;
+      const boundary = crease.length ? [...border, ...crease] : border;
       if (boundary.length >= 2) {
         // Boundary: a cubic B-spline along the border; a corner (two faces meet at an angle) stays put.
         // (Told which points are corners: only those - a sheet's own corner on a round edge isn't one.)
-        if (sharp ? sharp.has(v) : fs.length === 1) return p;
+        if (!crease.length && (sharp ? sharp.has(v) : fs.length === 1)) return p;
         const others = boundary.slice(0, 2).map((k) => {
           const [a, b] = k.split(",").map(Number);
           return points[a === v ? b : a];
@@ -266,10 +282,20 @@ export function subdivide(cage: Cage, levels = 3, sharp?: Set<number>): Subdivid
       for (let i = 0; i < n; i++) for (let j = 0; j < n; j++) ng[2 * i + 1][2 * j + 1] = faceIdx[qi++];
       return ng;
     });
+    if (creased.size) {
+      const halves = new Set<string>();
+      for (const key of creased) {
+        const m = edgeIdx.get(key);
+        if (m === undefined) continue;
+        const [a, b] = key.split(",").map(Number);
+        halves.add(ekey(a, m)).add(ekey(m, b));
+      }
+      creased = halves;
+    }
     points = next;
     n = N;
   }
-  return { points, grids, n };
+  return { points, grids, n, ...(creased.size ? { creased } : {}) };
 }
 
 /**
@@ -303,9 +329,25 @@ export function limitPoints(s: Subdivided, sharp?: Set<number>): Vec3[] {
       if (edgeCount.get(ekey(v, a)) === 1) border[v].push(a);
       if (edgeCount.get(ekey(v, b)) === 1) border[v].push(b);
     }
+  // Sharp edges: followed as the border is.
+  const sharpAt = P.map(() => [] as number[]);
+  for (const key of s.creased ?? []) {
+    const [a, b] = key.split(",").map(Number);
+    if (edgeCount.get(key) !== 2) continue;
+    sharpAt[a].push(b);
+    sharpAt[b].push(a);
+  }
   return P.map((p, v) => {
     if (!faces[v]) return p;
-    const bd = [...new Set(border[v])];
+    const open = [...new Set(border[v])];
+    const cr = sharpAt[v];
+    if (cr.length) {
+      // Two (sharp or border) through the point: on that curve. More: a corner. One, in the middle: it fades out (smooth).
+      const through = [...new Set([...open, ...cr])];
+      if (through.length > 2) return p;
+      if (through.length === 2) return [0, 1, 2].map((k) => (P[through[0]][k] + 4 * p[k] + P[through[1]][k]) / 6) as Vec3;
+    }
+    const bd = open;
     if (bd.length) {
       // On an open border: a corner (one face) stays; otherwise the border curve's point.
       if ((sharp ? sharp.has(v) : faces[v] === 1) || bd.length !== 2) return p;
@@ -434,7 +476,7 @@ function compose(a: Rows, b: Rows): Rows {
 
 /** The layout key of a cage: its faces (positions don't matter). */
 export function layoutKey(cage: Cage): string {
-  return `${cage.verts.length}|${cage.faces.join(";")}`;
+  return `${cage.verts.length}|${cage.faces.join(";")}${cage.creases?.length ? `|${cage.creases.join(";")}` : ""}`;
 }
 
 /**
@@ -452,11 +494,14 @@ export function subdivisionPlan(cage: Cage, levels = 3): SubdivPlan {
     [f[1], f[2]],
   ]);
   let n = 1;
+  // Sharp edges (see subdivide), as pairs: the numbering of a level's edges changes with it.
+  let sharpPairs: [number, number][] = (cage.creases ?? []).map(([a, b]) => [a, b]);
   const addTo = (m: Map<number, number>, i: number, w: number) => m.set(i, (m.get(i) ?? 0) + w);
   for (let lvl = 0; lvl < levels; lvl++) {
     const quads: number[][] = [];
     for (const g of grids) for (let i = 0; i < n; i++) for (let j = 0; j < n; j++) quads.push([g[i][j], g[i + 1][j], g[i + 1][j + 1], g[i][j + 1]]);
     const ekey = (a: number, b: number) => (a < b ? a * count + b : b * count + a);
+    const creased = new Set(sharpPairs.map(([a, b]) => ekey(a, b)));
     // Edges in first-seen order (subdivide numbers its edge points that way).
     const edgeFaces = new Map<number, number[]>();
     quads.forEach((q, qi) => {
@@ -486,9 +531,12 @@ export function subdivisionPlan(cage: Cage, levels = 3): SubdivPlan {
       if (!es.length || !fs.length) {
         m.set(v, 1);
       } else {
-        const boundary = es.filter((k) => edgeFaces.get(k)!.length === 1);
-        if (boundary.length >= 2) {
-          if (fs.length === 1) m.set(v, 1);
+        const border = es.filter((k) => edgeFaces.get(k)!.length === 1);
+        const crease = creased.size ? es.filter((k) => creased.has(k) && edgeFaces.get(k)!.length === 2) : [];
+        const boundary = crease.length ? [...border, ...crease] : border;
+        if (crease.length && boundary.length > 2) m.set(v, 1);
+        else if (boundary.length >= 2) {
+          if (!crease.length && fs.length === 1) m.set(v, 1);
           else {
             addTo(m, v, 0.75);
             for (const k of boundary.slice(0, 2)) {
@@ -514,7 +562,7 @@ export function subdivisionPlan(cage: Cage, levels = 3): SubdivPlan {
     for (const [key, fs] of edgeFaces) {
       const [a, b] = ends(key);
       const m = new Map<number, number>();
-      if (fs.length === 2) {
+      if (fs.length === 2 && !creased.has(key)) {
         addTo(m, a, 0.25);
         addTo(m, b, 0.25);
         for (const f of fs) for (const q of quads[f]) addTo(m, q, 0.0625);
@@ -535,6 +583,14 @@ export function subdivisionPlan(cage: Cage, levels = 3): SubdivPlan {
     const edgeIdx = new Map<number, number>();
     let e = count;
     for (const key of edgeFaces.keys()) edgeIdx.set(key, e++);
+    if (sharpPairs.length) {
+      const halves: [number, number][] = [];
+      for (const [a, b] of sharpPairs) {
+        const mid = edgeIdx.get(ekey(a, b));
+        if (mid !== undefined) halves.push([a, mid], [mid, b]);
+      }
+      sharpPairs = halves;
+    }
     let qi = 0;
     const N = 2 * n;
     const faceBase = e;
@@ -570,12 +626,24 @@ export function subdivisionPlan(cage: Cage, levels = 3): SubdivPlan {
       if (edgeCount.get(ek(v, a)) === 1) border[v].push(a);
       if (edgeCount.get(ek(v, b)) === 1) border[v].push(b);
     }
+  const sharpAt: number[][] = Array.from({ length: count }, () => []);
+  for (const [a, b] of sharpPairs) {
+    if (edgeCount.get(ek(a, b)) !== 2) continue;
+    sharpAt[a].push(b);
+    sharpAt[b].push(a);
+  }
   const lim = new RowBuilder();
   for (let v = 0; v < count; v++) {
     const m = new Map<number, number>();
     const bd = [...new Set(border[v])];
     const nE = nbE[v].size;
-    if (!faces[v] || (bd.length && (faces[v] === 1 || bd.length !== 2)) || (!bd.length && nE !== faces[v])) m.set(v, 1);
+    const through = sharpAt[v].length ? [...new Set([...bd, ...sharpAt[v]])] : [];
+    if (through.length > 2) m.set(v, 1);
+    else if (through.length === 2) {
+      addTo(m, through[0], 1 / 6);
+      addTo(m, v, 4 / 6);
+      addTo(m, through[1], 1 / 6);
+    } else if (!faces[v] || (bd.length && (faces[v] === 1 || bd.length !== 2)) || (!bd.length && nE !== faces[v])) m.set(v, 1);
     else if (bd.length) {
       addTo(m, bd[0], 1 / 6);
       addTo(m, v, 4 / 6);
@@ -706,13 +774,65 @@ export function moveTurnScale(pts: Vec3[], mode: "move" | "turn" | "scale", [x, 
 /** Remove faces; points no face uses any more go too (indices are renumbered). */
 export function deleteFaces(cage: Cage, faces: number[]): Cage {
   const drop = new Set(faces);
-  return compact({ verts: cage.verts, faces: cage.faces.filter((_, i) => !drop.has(i)) });
+  return compact({ verts: cage.verts, faces: cage.faces.filter((_, i) => !drop.has(i)), creases: cage.creases });
 }
 
 function compact(cage: Cage): Cage {
   const used = [...new Set(cage.faces.flat())].sort((a, b) => a - b);
   const map = new Map(used.map((v, i) => [v, i]));
-  return { verts: used.map((v) => cage.verts[v]), faces: cage.faces.map((f) => f.map((v) => map.get(v)!) as Cage["faces"][number]) };
+  const out: Cage = { verts: used.map((v) => cage.verts[v]), faces: cage.faces.map((f) => f.map((v) => map.get(v)!) as Cage["faces"][number]) };
+  return withCreases(out, (cage.creases ?? []).flatMap(([a, b]) => (map.has(a) && map.has(b) ? [[map.get(a)!, map.get(b)!] as [number, number]] : [])));
+}
+
+/** The cage with these sharp edges - those that are edges of it (none: no list at all). */
+export function withCreases(cage: Cage, creases: [number, number][]): Cage {
+  const { creases: _old, ...rest } = cage;
+  if (!creases.length) return rest;
+  const edges = new Set<string>();
+  for (const f of cage.faces) for (let k = 0; k < 4; k++) edges.add(ekey(f[k], f[(k + 1) % 4]));
+  const seen = new Set<string>();
+  const kept = creases.filter(([a, b]) => edges.has(ekey(a, b)) && !seen.has(ekey(a, b)) && !!seen.add(ekey(a, b)));
+  return kept.length ? { ...rest, creases: kept } : rest;
+}
+
+/**
+ * A cage made from another by a tool (a loop added, faces pulled out, a hole
+ * filled...) with the other's sharp edges on it: each where it still is - the
+ * same edge, or, where the tool cut it (a loop across it), the pieces of it.
+ * Found by where the points are: the tools number points as they please.
+ */
+export function carryCreases(prev: Cage, next: Cage): Cage {
+  if (next.creases || !prev.creases?.length) return next;
+  const at = new Map<string, number>();
+  const pos = (p: Vec3) => `${p[0].toFixed(6)},${p[1].toFixed(6)},${p[2].toFixed(6)}`;
+  next.verts.forEach((p, i) => at.set(pos(p), i));
+  const edges = new Set<string>();
+  for (const f of next.faces) for (let k = 0; k < 4; k++) edges.add(ekey(f[k], f[(k + 1) % 4]));
+  const out: [number, number][] = [];
+  for (const [a, b] of prev.creases) {
+    const [pa, pb] = [prev.verts[a], prev.verts[b]];
+    const [ia, ib] = [at.get(pos(pa)), at.get(pos(pb))];
+    if (ia === undefined || ib === undefined) continue;
+    if (edges.has(ekey(ia, ib))) {
+      out.push([ia, ib]);
+      continue;
+    }
+    // Cut: the points of the new cage along it, in order, joined where they are edges.
+    const d: Vec3 = [pb[0] - pa[0], pb[1] - pa[1], pb[2] - pa[2]];
+    const l2 = d[0] * d[0] + d[1] * d[1] + d[2] * d[2];
+    if (l2 < 1e-18) continue;
+    const on: { i: number; t: number }[] = [];
+    next.verts.forEach((q, i) => {
+      const w: Vec3 = [q[0] - pa[0], q[1] - pa[1], q[2] - pa[2]];
+      const t = (w[0] * d[0] + w[1] * d[1] + w[2] * d[2]) / l2;
+      if (t < -1e-9 || t > 1 + 1e-9) return;
+      const off = Math.hypot(w[0] - d[0] * t, w[1] - d[1] * t, w[2] - d[2] * t);
+      if (off < Math.sqrt(l2) * 1e-6) on.push({ i, t });
+    });
+    on.sort((x, y) => x.t - y.t);
+    for (let k = 0; k + 1 < on.length; k++) if (edges.has(ekey(on[k].i, on[k + 1].i))) out.push([on[k].i, on[k + 1].i]);
+  }
+  return withCreases(next, out);
 }
 
 const ekey = (a: number, b: number) => (a < b ? `${a},${b}` : `${b},${a}`);
@@ -776,7 +896,7 @@ export function refineCage(cage: Cage): Cage {
   const s = subdivide(cage, 1);
   const faces: Cage["faces"] = [];
   for (const g of s.grids) for (let i = 0; i < 2; i++) for (let j = 0; j < 2; j++) faces.push([g[i][j], g[i + 1][j], g[i + 1][j + 1], g[i][j + 1]]);
-  return compact({ verts: s.points, faces });
+  return compact({ verts: s.points, faces, creases: [...(s.creased ?? [])].map((k) => k.split(",").map(Number) as [number, number]) });
 }
 
 /**
@@ -1220,6 +1340,102 @@ const dot3 = (a: Vec3, b: Vec3) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
 const cross3 = (a: Vec3, b: Vec3): Vec3 => [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]];
 
 // ------------------------------------------------- adding cage detail
+
+/**
+ * Take an edge loop out: the loop of edges through a-b (straight on through
+ * each point four edges meet at, round the shape or from border to border)
+ * goes, and the two faces either side of each of its edges become one. The
+ * points of the loop go with it. Null where the loop cannot be followed (a
+ * point on it where three or five edges meet), or where an edge of it is on
+ * the border.
+ */
+/**
+ * The loop of edges through a-b: straight on through each point four edges
+ * meet at, round the shape or from border to border. Null where it cannot be
+ * followed (a point where three or five edges meet) - or, `lenient`, the part
+ * of it that can.
+ */
+export function edgeLoopOf(cage: Cage, a: number, b: number, lenient = false): [number, number][] | null {
+  const efs = edgeFaceMap(cage);
+  if (!efs.has(ekey(a, b))) return null;
+  const around = new Map<number, number[]>();
+  for (const key of efs.keys()) {
+    const [p, q] = key.split(",").map(Number);
+    around.set(p, [...(around.get(p) ?? []), q]);
+    around.set(q, [...(around.get(q) ?? []), p]);
+  }
+  // From `from` on through `at`: the edge at `at` that shares no face with the one arrived by.
+  const onward = (from: number, at: number): number | null | undefined => {
+    const ns = around.get(at) ?? [];
+    const border = ns.filter((n) => efs.get(ekey(at, n))!.length === 1);
+    // (At the border the loop ends: its last point has the two border edges and the one arrived by.)
+    if (border.length) return ns.length === 3 && border.length === 2 ? null : undefined;
+    if (ns.length !== 4) return undefined;
+    const mine = new Set(efs.get(ekey(from, at)));
+    const next = ns.filter((n) => n !== from && !efs.get(ekey(at, n))!.some((f) => mine.has(f)));
+    return next.length === 1 ? next[0] : undefined;
+  };
+  const loop: [number, number][] = [[a, b]];
+  const seen = new Set([ekey(a, b)]);
+  let closed = false;
+  for (const dir of [0, 1]) {
+    let [from, at] = dir ? [b, a] : [a, b];
+    for (let guard = 0; guard < cage.verts.length + 2; guard++) {
+      const next = onward(from, at);
+      if (next === undefined) {
+        if (lenient) break;
+        return null;
+      }
+      if (next === null) break;
+      if (seen.has(ekey(at, next))) {
+        closed = true;
+        break;
+      }
+      seen.add(ekey(at, next));
+      loop.push([at, next]);
+      [from, at] = [at, next];
+    }
+    if (closed) break;
+  }
+  return loop;
+}
+
+export function removeEdgeLoop(cage: Cage, a: number, b: number): Cage | null {
+  const efs = edgeFaceMap(cage);
+  const loop = edgeLoopOf(cage, a, b);
+  if (!loop) return null;
+  const gone = new Set<number>();
+  const made: Quad[] = [];
+  for (const [p, q] of loop) {
+    const fs = efs.get(ekey(p, q))!;
+    if (fs.length !== 2) return null;
+    // The face that winds p then q, and the one that winds q then p: p-q-c-d and q-p-e-f.
+    const turn = (f: Quad, x: number, y: number): Quad | null => {
+      for (let k = 0; k < 4; k++) if (f[k] === x && f[(k + 1) % 4] === y) return [f[k], f[(k + 1) % 4], f[(k + 2) % 4], f[(k + 3) % 4]];
+      return null;
+    };
+    const A = turn(cage.faces[fs[0]], p, q) ?? turn(cage.faces[fs[1]], p, q);
+    const B = turn(cage.faces[fs[0]], q, p) ?? turn(cage.faces[fs[1]], q, p);
+    if (!A || !B) return null;
+    made.push([A[3], B[2], B[3], A[2]]);
+    gone.add(fs[0]).add(fs[1]);
+  }
+  // (A face on both sides of two loop edges - a loop one face wide round a corner - cannot be merged twice.)
+  if (gone.size !== loop.length * 2) return null;
+  // Sharp edges the loop crossed: each was cut in two at a point of the loop - with that point gone, it is one again.
+  const onLoop = new Set(loop.flat());
+  const creases: [number, number][] = [];
+  const cutAt = new Map<number, number[]>();
+  for (const [p, q] of cage.creases ?? []) {
+    if (onLoop.has(p) && onLoop.has(q)) continue;
+    if (onLoop.has(p)) cutAt.set(p, [...(cutAt.get(p) ?? []), q]);
+    else if (onLoop.has(q)) cutAt.set(q, [...(cutAt.get(q) ?? []), p]);
+    else creases.push([p, q]);
+  }
+  for (const ends of cutAt.values()) if (ends.length === 2) creases.push([ends[0], ends[1]]);
+  const out = compact({ verts: cage.verts, faces: [...cage.faces.filter((_, i) => !gone.has(i)), ...made], creases });
+  return out.faces.length ? out : null;
+}
 
 type Quad = Cage["faces"][number];
 

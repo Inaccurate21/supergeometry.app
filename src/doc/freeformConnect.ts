@@ -19,7 +19,7 @@ const dist = (a: Vec3, b: Vec3) => Math.hypot(a[0] - b[0], a[1] - b[1], a[2] - b
 function worldCage(doc: ProjectDoc, body: string): { feature: FreeformFeature; cage: Cage; m: number[] } | null {
   const ff = freeformBodies(doc.features).get(body);
   if (!ff || ff.feature.id !== body) return null;
-  return { feature: ff.feature, m: ff.m, cage: { faces: ff.feature.cage.faces, verts: ff.feature.cage.verts.map((v) => applyAffine(ff.m, v)) } };
+  return { feature: ff.feature, m: ff.m, cage: { ...ff.feature.cage, verts: ff.feature.cage.verts.map((v) => applyAffine(ff.m, v)) } };
 }
 
 /** The open-border cage edges under the picked body edges (null if one isn't on a border). */
@@ -111,6 +111,6 @@ export function connectEdges(doc: ProjectDoc, picks: PickedEdge[]): ConnectResul
  */
 function store(doc: ProjectDoc, f: FreeformFeature, cage: Cage, m: number[], extra: Partial<FreeformFeature> = {}): ProjectDoc {
   const inv = invertAffine(m);
-  const updated: FreeformFeature = { ...f, ...extra, cage: { faces: cage.faces, verts: cage.verts.map((v) => applyAffine(inv, v)) } };
+  const updated: FreeformFeature = { ...f, ...extra, cage: { ...cage, verts: cage.verts.map((v) => applyAffine(inv, v)) } };
   return { ...doc, features: doc.features.filter((x) => !(x.type === "freeformEdit" && x.target === f.id)).map((x): Feature => (x.id === f.id ? updated : x)) };
 }

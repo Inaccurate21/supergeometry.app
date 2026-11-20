@@ -449,7 +449,7 @@ export interface MoveFaceFeature extends FeatureBase {
  */
 export interface FreeformFeature extends FeatureBase {
   type: "freeform";
-  cage: { verts: Vec3[]; faces: [number, number, number, number][] };
+  cage: { verts: Vec3[]; faces: [number, number, number, number][]; creases?: [number, number][] };
   /** Made as an open surface on purpose (a sheet): no "not closed" warning. */
   surface?: boolean;
   /** An open freeform becomes a solid this thick (0 / missing: stays a surface). */
