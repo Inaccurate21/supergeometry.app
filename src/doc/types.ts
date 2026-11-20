@@ -1006,4 +1006,6 @@ export interface OutlineOffset {
   distance: number;
   /** Where the outline was tapped (sketch coordinates): the loop nearest it is offset. */
   at: Vec2;
+  /** Just the edge nearest `at`, not the whole loop it is part of (Offset Edge's "Edge"). */
+  single?: boolean;
 }

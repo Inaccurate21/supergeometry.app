@@ -61,7 +61,7 @@ import type { PanelItem, ToolItem } from "../ui/ui";
 import { evaluate, fmtLen, trim as trimNum } from "../units";
 import type { ToolPointer } from "../view/input";
 import { dotMaterial, sketchToWorld } from "../view/viewport";
-import { edgeRefOf, hitToSel, sourceFrame, sourcesOf, type AppContext, type Sel, type Tool } from "./tool";
+import { edgeRefOf, edgesOfFace, hitToSel, sourceFrame, sourcesOf, type AppContext, type Sel, type Tool } from "./tool";
 
 export type SketchKind = Kind;
 type Kind =
@@ -109,7 +109,7 @@ const HINTS: Record<Kind, string> = {
   polygon: "Tap the centre, then where a corner should be.",
   text: "Tap where the text should start, then type it in the card.",
   project: "Tap edges of a body, or lines of another sketch, to copy them into this sketch. Double-tap copies a whole sketch.",
-  offset: "Tap a line or shape to draw a copy of it a set distance away.",
+  offset: "Tap a line or shape - or an edge of a body - to draw a copy of it a set distance away.",
   fillet: "Tap a corner to round it, or two lines that meet. Then drag or type the radius.",
   move: "Tap what to move, then drag the arrows to move it or the ring to turn it (or type exact values).",
   scale: "Tap what to resize, then drag the middle square (or an arrow's square end for one way only), or type how many times bigger.",
@@ -324,6 +324,10 @@ export class SketchTool implements Tool {
     offsetOf?: string;
     /** Where the face's outline was tapped (an offset of it is linked to it). */
     offsetAt?: Vec2;
+    /** Offset Edge on a body's edge: the edge tapped (its curve was brought into the sketch as a dashed guide, and that is what is offset). */
+    offsetEdge?: { body: string; edge: number };
+    /** ... and the guides brought in for it (the edge's own, and with Chain the rest of its face's outline). */
+    offsetGuides?: string[];
     /** Extend: the first curve half picked (its nearer end will meet the second pick). */
     extendFrom?: { id: string; at: Vec2 };
     /** Align: the line that will move. */
@@ -1253,7 +1257,7 @@ export class SketchTool implements Tool {
     this.arcM = this.arcBend = null;
     this.typedThisShape = false;
     this.edit.picking = kind === "mirror" ? undefined : this.edit.picking;
-    this.edit.offsetOf = undefined;
+    this.edit.offsetOf = this.edit.offsetEdge = undefined;
     this.edit.extendFrom = this.edit.alignFrom = undefined;
     this.edit.filletFrom = undefined;
     // A circular pattern always asks for its centre.
@@ -1497,7 +1501,15 @@ export class SketchTool implements Tool {
         break;
       case "offset":
         // Edge: just the tapped curve. Chain: the whole connected outline, kept closed.
-        items.push({ type: "choice", options: [{ id: "edge", label: "Edge" }, { id: "chain", label: "Chain" }], value: memory.offsetMode, onChange: (m) => ((memory.offsetMode = m as "edge" | "chain"), this.updatePanel(), this.refreshPreview()) });
+        items.push({ type: "choice", options: [{ id: "edge", label: "Edge" }, { id: "chain", label: "Chain" }], value: memory.offsetMode, onChange: (m) => {
+          memory.offsetMode = m as "edge" | "chain";
+          // (A body's edge was tapped: Chain is the whole outline of its face, brought in now.)
+          if (this.edit.offsetEdge && m === "chain") return this.offsetFromEdge(this.edit.offsetEdge, this.edit.offsetAt);
+          // (Of the face's own outline: still inside it - one edge and the whole loop count their sides differently.)
+          if (this.edit.offsetOf?.startsWith("bnd-")) memory.offset = this.inward(Math.abs(memory.offset));
+          this.updatePanel();
+          this.refreshPreview();
+        } });
         if (this.edit.offsetOf) {
           items.push({ type: "number", label: "Distance", value: memory.offset, kind: "length", onInput: (v) => ((memory.offset = v), this.refreshPreview()) });
           items.push({ type: "button", label: "Flip", icon: "flip", onClick: () => ((memory.offset = -memory.offset), this.updatePanel(), this.refreshPreview()) });
@@ -2467,7 +2479,7 @@ export class SketchTool implements Tool {
         return this.app.setTool(null);
       }
       if (this.filletEdit) this.cancelFillet();
-      this.edit.offsetOf = this.edit.extendFrom = this.edit.alignFrom = this.edit.filletFrom = undefined;
+      this.edit.offsetOf = this.edit.offsetEdge = this.edit.extendFrom = this.edit.alignFrom = this.edit.filletFrom = undefined;
       this.edit.pivot = undefined;
       this.edit.picking = undefined;
       // Scale by reference: its points go too (and a factor only they had set).
@@ -2536,12 +2548,19 @@ export class SketchTool implements Tool {
           const link = c?.id.startsWith("lnk-") ? this.boundary.find((x) => x.id === c.id) : undefined;
           const nearer = o && link && o.d <= Math.min(...entityPrims(link).map((pr) => closestOnPrim(pr, o.uv).d));
           if (o && (!c || nearer)) {
-            memory.offset = -Math.abs(defaultOffset(o.e));
             this.edit.offsetAt = o.uv;
             this.edit.offsetOf = o.e.id;
+            memory.offset = this.inward(Math.abs(defaultOffset(o.e)));
+            this.edit.offsetEdge = undefined;
             this.updatePanel();
             this.refreshPreview();
             return;
+          }
+          // An edge of a body that is no curve of this sketch (the sketch is on a plane, or the edge is another
+          // face's): tapped, it is offset all the same - its curve comes in as a dashed guide that follows it.
+          if (!c) {
+            const hit = this.app.view.pick(p.x, p.y, { profiles: false, planes: false, axes: false, curves: false, edgeTolPx: p.tol });
+            if (hit?.kind === "edge") return this.offsetFromEdge({ body: hit.body, edge: hit.edge }, this.uvAt(p) ?? undefined);
           }
         }
         return this.tapCurve(p, (id, uv) => {
@@ -2550,14 +2569,16 @@ export class SketchTool implements Tool {
           // linked - it's made again from the face when the face changes.
           if (id.startsWith("bnd-")) {
             const e = this.outline.find((x) => x.id === id);
-            if (e) memory.offset = -Math.abs(defaultOffset(e));
             this.edit.offsetAt = uv;
+            this.edit.offsetOf = id;
+            if (e) memory.offset = this.inward(Math.abs(defaultOffset(e)));
           } else {
             // A tenth of the curve tapped (keeping the side it went last time).
             const e = this.entities.find((x) => x.id === id);
             if (e) memory.offset = (memory.offset < 0 ? -1 : 1) * defaultOffset(e);
           }
           this.edit.offsetOf = id;
+          this.edit.offsetEdge = undefined;
           this.updatePanel();
           this.refreshPreview();
         });
@@ -3476,7 +3497,7 @@ export class SketchTool implements Tool {
     this.lockIndex = 0;
     this.typing.reset();
     this.edit.picking = undefined;
-    this.edit.offsetOf = undefined;
+    this.edit.offsetOf = this.edit.offsetEdge = undefined;
     this.edit.extendFrom = this.edit.alignFrom = undefined;
     this.edit.filletFrom = undefined;
     this.cancelFillet();
@@ -4175,7 +4196,7 @@ export class SketchTool implements Tool {
     // Offset waiting for Apply: an empty tap applies it.
     if (this.kind === "offset" && this.edit.offsetOf && this.offsetResult().length) return this.applyOffset();
     if (this.edit.extendFrom || this.edit.alignFrom || this.edit.filletFrom || this.edit.offsetOf) {
-      this.edit.extendFrom = this.edit.alignFrom = this.edit.filletFrom = this.edit.offsetOf = undefined;
+      this.edit.extendFrom = this.edit.alignFrom = this.edit.filletFrom = this.edit.offsetOf = this.edit.offsetEdge = undefined;
       this.clearPreviewJoin();
       this.app.setSelection([]);
       this.setHint();
@@ -4675,15 +4696,104 @@ export class SketchTool implements Tool {
   /** New curves the offset would add (one curve, or the whole chain in Chain mode). */
   private offsetResult(): SketchEntity[] {
     const id = this.edit.offsetOf;
-    if (id?.startsWith("bnd-") && this.edit.offsetAt) return outlineOffsetCurves(this.outline, [{ id: "new", distance: memory.offset, at: this.edit.offsetAt }]);
+    // (Of the face's own outline: Edge is just the edge tapped, Chain the whole loop it is part of.)
+    if (id?.startsWith("bnd-") && this.edit.offsetAt) return outlineOffsetCurves(this.outline, [{ id: "new", distance: memory.offset, at: this.edit.offsetAt, ...(memory.offsetMode === "edge" ? { single: true } : {}) }]);
     const src = this.entities.find((e) => e.id === id);
     if (!id || !src) return [];
+    // (From a body's edge: the guide it is made from is dashed, the offset is a curve like any other.)
+    const real = (es: SketchEntity[]) => (this.edit.offsetEdge ? es.map((e) => ({ ...e, construction: this.construction || undefined })) : es);
     if (memory.offsetMode === "chain" && (src.kind === "line" || src.kind === "arc" || (src.kind === "spline" && !src.closed))) {
-      const all = offsetChain(this.entities, id, memory.offset);
-      if (all) return all.slice(this.entities.length);
+      // (A chain is walked along the sketch's own curves, not its dashed ones: the guides of this edge count as its own here.)
+      const guides = new Set(this.edit.offsetEdge ? (this.edit.offsetGuides ?? []) : []);
+      const pool = guides.size ? this.entities.map((e) => (guides.has(e.id) ? { ...e, construction: undefined } : e)) : this.entities;
+      const all = offsetChain(pool, id, memory.offset);
+      if (all) return real(all.slice(pool.length));
     }
     const o = offsetEntity(src, memory.offset);
-    return o ? [o] : [];
+    return o ? real([o]) : [];
+  }
+
+  /**
+   * An offset of the face's own outline that starts inside the face (a lip, a
+   * pocket's edge), as a distance with its sign: the whole loop goes inward
+   * with a minus; one edge alone goes to its left, so the side the middle of
+   * the face is on is found.
+   */
+  private inward(d: number): number {
+    const e = this.outline.find((x) => x.id === this.edit.offsetOf);
+    if (memory.offsetMode === "chain" || !e) return -d;
+    const ends = this.outline.flatMap((x) => (x.kind === "line" || x.kind === "arc" ? [x.a, x.b] : x.kind === "spline" ? [x.points[0], x.points[x.points.length - 1]] : x.kind === "circle" || x.kind === "ellipse" ? [x.center] : []));
+    if (!ends.length) return -d;
+    const mid: Vec2 = [ends.reduce((s, p) => s + p[0], 0) / ends.length, ends.reduce((s, p) => s + p[1], 0) / ends.length];
+    const far = (sign: number) => {
+      const o = offsetEntity(e, sign * d);
+      if (!o) return Infinity;
+      return Math.min(...entityPrims(o).map((pr) => closestOnPrim(pr, mid).d));
+    };
+    return far(1) <= far(-1) ? d : -d;
+  }
+
+  /**
+   * Offset Edge on an edge of a body: the edge's curve is brought into the
+   * sketch as a dashed guide (it follows the edge when the body changes, where
+   * the edge is there before the sketch) and that guide is what is offset.
+   * Chain: every edge of the flat face the edge is on that faces the sketch,
+   * so the whole outline goes together.
+   */
+  private offsetFromEdge(hit: { body: string; edge: number }, at?: Vec2): void {
+    const b = this.app.view.body(hit.body);
+    if (!b || !this.plane) return;
+    let edges = [hit.edge];
+    if (memory.offsetMode === "chain") {
+      const n = this.plane.normal;
+      const facing = (i: number) => Math.abs(b.faces[i].normal[0] * n[0] + b.faces[i].normal[1] * n[1] + b.faces[i].normal[2] * n[2]);
+      const on = b.faces.map((_, i) => i).filter((i) => b.faces[i].plane && edgesOfFace(this.app, hit.body, i).includes(hit.edge));
+      const best = on.sort((x, y) => facing(y) - facing(x))[0];
+      if (best !== undefined && facing(best) > 0.5) edges = edgesOfFace(this.app, hit.body, best);
+    }
+    const order = this.app.store.features.map((f) => f.id);
+    const here = this.sketchId ? order.indexOf(this.sketchId) : order.length;
+    const before = (step: string) => order.indexOf(step) >= 0 && order.indexOf(step) < here;
+    const ends = (e: SketchEntity): Vec2[] => (e.kind === "line" || e.kind === "arc" ? [e.a, e.b] : e.kind === "spline" ? [e.points[0], e.points[e.points.length - 1]] : e.kind === "circle" || e.kind === "ellipse" ? [e.center] : []);
+    const near = (p: Vec2, q: Vec2) => Math.hypot(p[0] - q[0], p[1] - q[1]) < 1e-6;
+    const added: SketchEntity[] = [];
+    const links: EdgeLink[] = [];
+    const guides: string[] = [];
+    let seed: string | undefined;
+    for (const edge of edges) {
+      const g = b.edgeGroups.find((x) => x.edge === edge);
+      if (!g) continue;
+      const pts: Vec3[] = [];
+      for (let i = g.start; i < g.start + g.count; i++) if ((i - g.start) % 2 === 0 || i === g.start + g.count - 1) pts.push([b.edgePositions[i * 3], b.edgePositions[i * 3 + 1], b.edgePositions[i * 3 + 2]]);
+      const ref = edgeRefOf(this.app, { body: hit.body, edge });
+      const free = !ref?.steps?.length || !ref.steps.every(before) || !(b.edges[edge].was ?? []).every(before);
+      const e = projectPolyline(pts, this.plane, b.edges[edge].type, free);
+      // (Seen end on from here - a point: nothing to offset.)
+      if (!e) continue;
+      // Already in the sketch (projected before, or tapped a moment ago): that curve is the guide.
+      const mine = ends(e);
+      const had = [...this.entities, ...added].find((x) => x.kind === e.kind && ends(x).length === mine.length && (mine.every((p, k) => near(p, ends(x)[k])) || mine.every((p, k) => near(p, ends(x)[mine.length - 1 - k]))));
+      const id = had?.id ?? (free ? uid() : `${LINKED}${uid()}`);
+      if (!had) {
+        added.push({ ...e, id, construction: true });
+        if (!free && ref) links.push({ id, edge: ref });
+      }
+      guides.push(id);
+      if (edge === hit.edge) seed = id;
+    }
+    if (!seed) return this.app.ui.toast("That edge is seen end on from this sketch: nothing to offset");
+    if (added.length) this.commit([...this.entities, ...added], this.constraints, links);
+    const src = this.entities.find((e) => e.id === seed);
+    if (!src) return;
+    this.edit.offsetEdge = hit;
+    this.edit.offsetGuides = guides;
+    this.edit.offsetAt = at;
+    this.edit.offsetOf = seed;
+    // (A whole outline starts inside it - a lip, a pocket's edge - as the face's own outline does; one edge keeps the side it went last.)
+    memory.offset = (memory.offsetMode === "chain" && guides.length > 1 ? -1 : memory.offset < 0 ? -1 : 1) * Math.abs(defaultOffset(src));
+    this.updatePanel();
+    this.refreshPreview();
+    this.setHint("Set the distance (Flip for the other side), then Apply. The dashed line is the body's edge: the offset is made from it.");
   }
 
   private applyOffset(): void {
@@ -4691,7 +4801,7 @@ export class SketchTool implements Tool {
     if (!made.length) return this.app.ui.toast("That offset would collapse the curve");
     // Of the face's outline: kept as a link to it, not as curves of their own.
     if (this.edit.offsetOf?.startsWith("bnd-") && this.edit.offsetAt) {
-      const link = { id: uid(), distance: memory.offset, at: this.edit.offsetAt };
+      const link = { id: uid(), distance: memory.offset, at: this.edit.offsetAt, ...(memory.offsetMode === "edge" ? { single: true } : {}) };
       // (Nothing drawn on it yet: the sketch is made with the offset in it - one step.)
       if (!this.sketchId) {
         const f: SketchFeature = { ...(this.pending ?? this.app.store.newIdentity("sketch")), type: "sketch", plane: this.plane!, attachedTo: this.attachedTo, onPlane: this.onPlane, entities: [], constraints: [], outlineOffsets: [link] };
@@ -4706,7 +4816,7 @@ export class SketchTool implements Tool {
       }
 
       this.app.ui.toast("Offset of the face's edge: it follows the face when the face changes size");
-      this.edit.offsetOf = this.edit.offsetAt = undefined;
+      this.edit.offsetOf = this.edit.offsetAt = this.edit.offsetEdge = undefined;
       return this.resetDrawing();
     }
 
@@ -4719,7 +4829,7 @@ export class SketchTool implements Tool {
         cs.push({ id: uid(), type: "coincident", pts: [{ e: a.id, p: "b" }, { e: b.id, p: "a" }] });
     }
     this.commitAdd(made, cs);
-    this.edit.offsetOf = undefined;
+    this.edit.offsetOf = this.edit.offsetEdge = undefined;
     this.resetDrawing();
   }
 

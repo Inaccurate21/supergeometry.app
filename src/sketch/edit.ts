@@ -1784,7 +1784,7 @@ export function outlineOffsetCurves(boundary: SketchEntity[], links: OutlineOffs
     }
     if (!seed) continue;
     let made: SketchEntity[] = [];
-    if (seed.kind === "line" || seed.kind === "arc" || (seed.kind === "spline" && !seed.closed)) made = offsetChain(boundary, seed.id, o.distance)?.slice(boundary.length) ?? [];
+    if (!o.single && (seed.kind === "line" || seed.kind === "arc" || (seed.kind === "spline" && !seed.closed))) made = offsetChain(boundary, seed.id, o.distance)?.slice(boundary.length) ?? [];
     else {
       const one = offsetEntity(seed, o.distance);
       if (one) made = [one];
