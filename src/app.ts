@@ -47,6 +47,7 @@ import type { ToolItem } from "./ui/ui";
 import { UI } from "./ui/ui";
 import { Wheel } from "./ui/wheel";
 import { Sentence } from "./ui/sentence";
+import { Ghost } from "./tools/ghost";
 import { arrangement, materialRegions } from "./sketch/regions";
 import { evaluate, setUnits, setVariables, fmtLen } from "./units";
 import { InputRouter } from "./view/input";
@@ -81,9 +82,8 @@ export class App implements AppContext {
   readonly settingsWheel = new Wheel({ ui: this.ui, mainTools: () => [] }, "settings");
   /** The sentence bar: the pick, then what it offers, on one line - the way to the tools. */
   sentence!: Sentence;
-  /** The step a tool just added (nothing picked or started since): the sentence bar offers what is likely next for it. */
-  private justMade: string | null = null;
-  private stepsSeen = 0;
+  /** The look ahead a tool under the pointer is showing on the model (see ghost.ts). */
+  private peekGhost: Ghost | null = null;
   /** Where the view was last tapped (the sentence bar starts a sketch tool that acts where it is tapped right there). */
   private lastTapAt: { x: number; y: number; type: "mouse" | "pen" | "touch" } | null = null;
   /** Pictures to look at while modelling, each in a window over the model (under the buttons). */
@@ -120,8 +120,10 @@ export class App implements AppContext {
       mode: () => (this.tool === this.selectTool ? "model" : this.tool instanceof SketchTool ? "sketch" : this.tool instanceof FreeformTool ? "freeform" : "tool"),
       sketchPicked: () => (this.tool instanceof SketchTool ? this.tool.pickedCount : 0),
       waiting: () => (this.tool === this.selectTool ? this.selectTool.waiting : null),
-      next: () => this.nextSteps(),
-      dropNext: () => ((this.justMade = null), this.sentence.changed()),
+      peek: (segs) => {
+        this.peekGhost?.dispose();
+        this.peekGhost = segs ? new Ghost(this.view, segs) : null;
+      },
       adding: () => this.selectTool.adding,
       setAdding: (on) => ((this.selectTool.adding = on), this.sentence.changed()),
       stopWaiting: () => this.selectTool.stopWaiting(),
@@ -333,45 +335,6 @@ export class App implements AppContext {
   }
 
   /**
-   * What is likely next for the step just made, as a few things to tap: its
-   * body's edges rounded, the body hollowed, the model printed or shared.
-   * (None once something is picked or another tool is started.)
-   */
-  private nextSteps(): ToolItem[] {
-    const f = this.justMade ? this.store.features.find((x) => x.id === this.justMade) : undefined;
-    if (!f || this.tool !== this.selectTool || this.selection.length) return [];
-    // (Its body: the one it made, or the one it worked on - named outright, or through the edges and faces it took.)
-    const of = f as unknown as { target?: string; body?: string; bodies?: string[]; edges?: { body?: string }[]; faces?: { body?: string }[]; face?: { body?: string } };
-    const body = [f.id, of.target, of.body, ...(of.bodies ?? []), of.edges?.[0]?.body, of.faces?.[0]?.body, of.face?.body].find((id) => !!id && this.view.bodyList.some((b) => b.id === id));
-    const out: ToolItem[] = [];
-    // (The body picked, then its own tool of that name: what the line would offer for it.)
-    const forBody = (id: string, label: string, icon: ToolItem["icon"]) => {
-      if (!body) return;
-      out.push({
-        id: `next-${id}`,
-        label,
-        icon,
-        run: () => {
-          this.setSelection([{ kind: "body", body }]);
-          const walk = (items: ToolItem[]): ToolItem | undefined => {
-            for (const it of items) {
-              if (it.id === id && !it.disabled && it.run) return it;
-              const k = walk(it.children ?? []);
-              if (k) return k;
-            }
-            return undefined;
-          };
-          walk(this.ui.shown().column)?.run?.();
-        },
-      });
-    };
-    if (f.type !== "fillet" && f.type !== "sketch") forBody("fillet", "Round its edges", "fillet");
-    if (f.type !== "shell" && f.type !== "sketch") forBody("shell", "Hollow it", "shell");
-    if (this.view.bodyList.length) out.push({ id: "next-print", label: "Print / Share", icon: "share", run: () => void this.printShare() });
-    return out;
-  }
-
-  /**
    * Print / Share: is the model fit to print (each body closed, no hair-thin
    * faces, one piece), and the files to take it away as. (Export was only in
    * File, under names a first-timer does not know.)
@@ -471,10 +434,6 @@ export class App implements AppContext {
   setTool(tool: Tool | null): void {
     const next = tool ?? this.selectTool;
     const leavingOp = this.tool !== this.selectTool;
-    // A tool that leaves a step behind: what is likely next for it is offered (until something is picked or started).
-    const made = next === this.selectTool && leavingOp && this.store.features.length > this.stepsSeen ? (this.store.features[this.store.features.length - 1]?.id ?? null) : null;
-    this.justMade = made;
-    this.stepsSeen = this.store.features.length;
     // A sketch left right after a shape was closed in it: that shape is what comes next (see below).
     const closed = next === this.selectTool && this.tool instanceof SketchTool ? this.tool.justClosed : null;
     this.tool.exit?.();
@@ -1868,9 +1827,9 @@ export class App implements AppContext {
     const was = this.store.features.length ? this.store.doc.name : null;
     await this.switchProject(emptyDoc(), newProjectId());
     if (was) this.ui.toast(`“${was}” is kept in File → Open`);
-    // The first minute makes something: a new project opens in a sketch on the floor with Rectangle on - two taps
-    // are a shape, Exit pulses, the shape is pulled up. (Other plane, and Exit, are at hand for anything else.)
-    if (!this.store.features.length && this.tool === this.selectTool) this.setTool(new SketchTool(this, { plane: { origin: [0, 0, 0], xDir: [1, 0, 0], normal: [0, 0, 1] }, kind: "rect" }));
+    // The first minute makes something: a new project opens in a sketch on the floor with Line on, as every new
+    // sketch does - tap, tap, back to the start: a shape; Exit pulses, the shape is pulled up.
+    if (!this.store.features.length && this.tool === this.selectTool) this.setTool(new SketchTool(this, { plane: { origin: [0, 0, 0], xDir: [1, 0, 0], normal: [0, 0, 1] }, kind: "line" }));
     if (await this.updates.check()) await this.updates.reset();
   }
 

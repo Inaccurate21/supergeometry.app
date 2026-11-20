@@ -154,7 +154,7 @@ export class OffsetEdgeOp extends FeatureOp<SketchFeature> {
       return;
     }
     if (!this.arrows) {
-      this.arrows = [new Handle(this.app.view, "arrow"), new Handle(this.app.view, "arrow")];
+      this.arrows = [new Handle(this.app.view, "arrow", 34), new Handle(this.app.view, "arrow", 34)];
       this.dim = new DimWidget(this.app.view, { boxAt: "beyond", boxGap: 96, dir: fr.out, value: this.distance, onInput: (v) => this.setDistance(v), onCommit: () => this.done() });
     }
     const mid = scale(add(this.line.a, this.line.b), 0.5);

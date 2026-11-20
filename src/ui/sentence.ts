@@ -42,12 +42,11 @@ export interface SentenceHost {
   mode(): "model" | "sketch" | "freeform" | "tool";
   /** In a sketch: how many curves and points are picked. */
   sketchPicked(): number;
-  /** What is likely next for the step just made (nothing picked): a few things to tap, and letting them go. */
-  next(): ToolItem[];
-  dropNext(): void;
   /** Each tap adds to the pick (else a tap picks that thing alone), and switching that. */
   adding(): boolean;
   setAdding(on: boolean): void;
+  /** A look ahead drawn on the model (dashed line segments), or none. */
+  peek(segs: number[] | null): void;
   /** A tool started with nothing picked that is waiting for its pick (its name), and letting it go. */
   waiting(): string | null;
   stopWaiting(): void;
@@ -61,6 +60,10 @@ export interface SentenceHost {
 interface Word {
   /** The same word, drawn again: it stays where it is (a new one comes in). */
   key: string;
+  /** What it would do to the pick, as dashed lines on the model, shown while the pointer is over it. */
+  peek?: () => number[];
+  /** A group with something picked: its other tools - not for this pick as it is, each asks for its own as it starts - under the pick's own in its list. */
+  rest?: Word[];
   kind: "subject" | "verb" | "slot" | "choice" | "toggle" | "value" | "button";
   label: string;
   /** A small name over it (what the option is: "Ends", "Distance"). */
@@ -114,8 +117,6 @@ interface Built {
   title?: Word;
   /** After the subject, in its tag: the + that makes each tap add to the pick. */
   more?: Word;
-  /** Nothing picked, a step just made: "Next" and what is likely next for it, in the tag. */
-  next?: Word[];
   /** The line holds groups, each in its place (not a tool's options): when they do not all fit, they close up to fit - a row of small buttons, never slid. */
   grouped?: boolean;
   /** Whose sentence it is: a new subject brings every word in afresh. */
@@ -378,16 +379,19 @@ export class Sentence {
       kbd: it.shortcut,
       run: it.run ? () => it.run!() : undefined,
       kids: kids.length ? kids : undefined,
+      peek: it.peek,
       first: !!it.variantsWhenActive && !!it.run,
       value: v ? { now: Number(v.now) || 0, text: v.now, kind: v.int ? "int" : "number", put: (n) => v.put(n), min: v.min, max: v.max } : undefined,
     };
   }
 
   /** A group on the line: its tools a tap away, or - with nothing in it for this pick - dimmed in its place, saying why. */
-  private group(id: string, label: string, icon: IconName, words: Word[], why: string): Word {
+  private group(id: string, label: string, icon: IconName, words: Word[], why: string, rest: Word[] = []): Word {
     // (Sketch with nothing picked is the tool itself: a tap starts it.)
-    if (words.length === 1 && words[0].label === label && !words[0].kids) return { ...words[0], key: `g-${id}` };
-    return { key: `g-${id}`, kind: "verb", label, icon, kids: words.length ? words : undefined, pulse: words.some((w) => w.pulse), off: words.length ? undefined : why };
+    if (words.length === 1 && !rest.length && words[0].label === label && !words[0].kids) return { ...words[0], key: `g-${id}` };
+    // (Nothing in it for the pick: its other tools are the list.)
+    const kids = words.length ? words : rest;
+    return { key: `g-${id}`, kind: "verb", label, icon, kids: kids.length ? kids : undefined, rest: words.length && rest.length ? rest : undefined, pulse: words.some((w) => w.pulse), off: kids.length ? undefined : why };
   }
 
   /**
@@ -448,8 +452,14 @@ export class Sentence {
     const groups: Built["groups"] = [];
     for (const id of GROUPS) {
       const g = main.find((m) => m.id === id);
-      const its = [...(by.get(id) ?? [])].sort((x, y) => rank(x) - rank(y)).map((it) => this.verb(it));
-      words.push(this.group(id, g?.label ?? id, g?.icon ?? "more", its, why));
+      const mine = [...(by.get(id) ?? [])].sort((x, y) => rank(x) - rank(y));
+      const its = mine.map((it) => this.verb(it));
+      // Something picked: every other tool of the group is there too, under the pick's own (asked for: "it shows only
+      // a certain suite of tools. I want to show all available tools") - one that cannot use this pick asks for its
+      // own as it starts. (Not one the pick has under a longer name: Pattern, with Pattern - Linear there.)
+      const have = new Set(mine.flatMap((it) => [it.id, ALIAS[it.id] ?? it.id, it.label]));
+      const rest = sel.length ? usable(g?.children ?? []).filter(notSep).filter((it) => !have.has(it.id) && !have.has(it.label) && !mine.some((m) => m.label.startsWith(it.label))).map((it) => this.verb(it, "r")) : [];
+      words.push(this.group(id, g?.label ?? id, g?.icon ?? "more", its, why, rest));
       if (its.length) groups.push({ cap: g?.label ?? id, words: its });
     }
     // More: the pick's own (Delete, Color), what is brought in, and the view's tools.
@@ -459,11 +469,8 @@ export class Sentence {
     // (On the line from More to Create - the wheel's order the other way round, as asked for.)
     words.reverse();
     groups.reverse();
-    // A step just made, nothing picked: what is likely next for it, over the line.
-    const likely = sel.length || subject.key === "s-wait" ? [] : this.host.next();
-    const next: Word[] | undefined = likely.length ? [{ key: "s-next", kind: "subject", label: "Next", lets: true, run: () => this.host.dropNext() }, ...likely.map((it) => this.verb(it, "n"))] : undefined;
     const plus: Word | undefined = sel.length ? { key: "s-add", kind: "button", label: "+", on: this.host.adding(), run: () => this.host.setAdding(!this.host.adding()) } : undefined;
-    return { subject, words, groups, others, more: plus, next, grouped: true, about: sel.length ? `pick:${sel.map((x) => JSON.stringify(x)).join()}` : subject.key === "s-wait" ? `wait:${subject.label}` : "make" };
+    return { subject, words, groups, others, more: plus, grouped: true, about: sel.length ? `pick:${sel.map((x) => JSON.stringify(x)).join()}` : subject.key === "s-wait" ? `wait:${subject.label}` : "make" };
   }
 
   /** A sketch: what draws something new - and, with curves picked, what can be done with them. */
@@ -624,7 +631,7 @@ export class Sentence {
       this.open = null;
     }
     // (Nothing picked: no subject - the groups say it all.)
-    const about = [...lead, ...(b.subject.key === "s-make" ? [] : [b.subject]), ...(b.more ? [b.more] : []), ...(b.title ? [b.title] : []), ...(b.next ?? [])];
+    const about = [...lead, ...(b.subject.key === "s-make" ? [] : [b.subject]), ...(b.more ? [b.more] : []), ...(b.title ? [b.title] : [])];
     this.fill(this.tag, about, fresh);
     this.tag.hidden = !about.length;
     this.fill(this.row, b.words, fresh);
@@ -768,7 +775,16 @@ export class Sentence {
     // A tap; a number dragged sideways; a press held on a word with kinds opens them.
     let down: { x: number; y: number; t: number; v: number; scrub: boolean; id: number } | null = null;
     let held = 0;
+    // The pointer over a tool: what it would do, drawn on the model in dashed yellow, for as long as it is there.
+    // (A finger has no hover: on a touch screen the tool's own preview, as it starts, is the picture.)
+    d.addEventListener("pointerenter", (e) => {
+      if (e.pointerType === "touch") return;
+      const segs = word().peek?.();
+      this.host.peek(segs?.length ? segs : null);
+    });
+    d.addEventListener("pointerleave", () => this.host.peek(null));
     d.addEventListener("pointerdown", (e) => {
+      this.host.peek(null);
       const now = word();
       down = { x: e.clientX, y: e.clientY, t: performance.now(), v: now.value?.now ?? 0, scrub: false, id: e.pointerId };
       clearTimeout(held);
@@ -921,7 +937,7 @@ export class Sentence {
     const seek = (ws: Word[]): Word[] | null => {
       for (const w of ws) {
         if (w.key === key) return [w];
-        const k = w.kids && seek(w.kids);
+        const k = (w.kids && seek(w.kids)) ?? (w.rest && seek(w.rest));
         if (k) return [w, ...k];
       }
       return null;
@@ -929,13 +945,16 @@ export class Sentence {
     return seek(this.built?.words ?? []) ?? [];
   }
 
+  /** The thread from the pick to its name is drawn (off: see `drawThread`). */
+  private threads = false;
+
   private find(key: string): Word | null {
     const b = this.built;
     if (!b) return null;
     const seek = (ws: Word[]): Word | null => {
       for (const w of ws) {
         if (w.key === key) return w;
-        const k = w.kids && seek(w.kids);
+        const k = (w.kids && seek(w.kids)) ?? (w.rest && seek(w.rest));
         if (k) return k;
       }
       return null;
@@ -978,6 +997,7 @@ export class Sentence {
       if (!w?.kids?.length) return void this.close();
       // (Under another: where it is - "Transform › Pattern".)
       blocks.push({ cap: path.length > 1 ? path.map((x) => x.cap ?? x.label).join(" › ") : (w.cap ?? w.label), words: w.kids });
+      if (w.rest?.length) blocks.push({ cap: `Other ${(w.cap ?? w.label).toLowerCase()} tools (each asks for its own pick)`, words: w.rest });
     }
     this.sheet.hidden = false;
     this.sheet.className = `sn-sheet sn-${o.kind}`;
@@ -1091,7 +1111,9 @@ export class Sentence {
    */
   private drawThread(fresh = false): void {
     if (!this.on) return;
-    const a = this.anchor;
+    // (No line from the pick to its name: the name with its + says what is picked, and the pick is lit - the line was
+    // one more thing over the model. Kept for a tool's blank it may be wanted for.)
+    const a = this.threads ? this.anchor : null;
     const subject = a && this.tag.querySelector('[data-key="s-pick"]');
     const s = a && this.host.view.toScreen(a);
     if (!a || !subject || !s) {

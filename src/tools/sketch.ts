@@ -2479,7 +2479,25 @@ export class SketchTool implements Tool {
       const s = this.app.view.toScreen(sketchToWorld(this.plane!, q));
       return !!s && s[0] >= x0 && s[0] <= x1 && s[1] >= y0 && s[1] <= y1;
     };
-    const picked = this.entities.filter((e) => entityPolylines(e).every((poly) => poly.every(inside))).map((e) => e.id);
+    // Whatever the box touches is picked - a curve does not have to be all inside it.
+    const cuts = (p: [number, number], q: [number, number]): boolean => {
+      // (A piece of a curve crosses the box when it crosses one of its four sides.)
+      const side = (ax: number, ay: number, bx: number, by: number) => {
+        const d = (q[0] - p[0]) * (by - ay) - (q[1] - p[1]) * (bx - ax);
+        if (Math.abs(d) < 1e-12) return false;
+        const s = ((ax - p[0]) * (by - ay) - (ay - p[1]) * (bx - ax)) / d;
+        const u = ((ax - p[0]) * (q[1] - p[1]) - (ay - p[1]) * (q[0] - p[0])) / d;
+        return s >= 0 && s <= 1 && u >= 0 && u <= 1;
+      };
+      return side(x0, y0, x1, y0) || side(x1, y0, x1, y1) || side(x1, y1, x0, y1) || side(x0, y1, x0, y0);
+    };
+    const touched = (poly: Vec2[]): boolean => {
+      const s = poly.map((q) => this.app.view.toScreen(sketchToWorld(this.plane!, q)));
+      if (poly.some(inside)) return true;
+      for (let i = 0; i + 1 < s.length; i++) if (s[i] && s[i + 1] && cuts(s[i] as [number, number], s[i + 1] as [number, number])) return true;
+      return false;
+    };
+    const picked = this.entities.filter((e) => entityPolylines(e).some(touched)).map((e) => e.id);
     if (!add) {
       this.selected.clear();
       this.selPts = [];
@@ -2518,6 +2536,12 @@ export class SketchTool implements Tool {
 
   tap(p: ToolPointer, count: number): void {
     if (this.phase === "plane") return this.pickPlane(p);
+    // A double tap on something drawn, with the sketch seen at a slant: the view turns to face the sketch.
+    if (count === 2 && this.plane && !this.pts.length && this.curveAt(p)) {
+      const d = this.app.view.cam.viewDir();
+      const n = this.plane.normal;
+      if (Math.abs(d.x * n[0] + d.y * n[1] + d.z * n[2]) < 0.999) this.app.view.cam.lookAlong(n, this.plane.xDir);
+    }
     if (this.edit.picking) return this.pickForEdit(p);
     // A tap on empty space finishes what's waiting for Apply (like elsewhere).
     // (Not while a turn still needs its centre: that tap is the centre.)
@@ -4804,7 +4828,7 @@ export class SketchTool implements Tool {
           onInput: (v) => v > 0 && ((memory.offset = (memory.offset < 0 ? -1 : 1) * v), this.refreshPreview(), this.updatePanel()),
           onCommit: () => this.applyOffset(),
         });
-        g = this.offsetGrip = { arrows: [new Handle(this.app.view, "arrow"), new Handle(this.app.view, "arrow")], box, from: best.pt, n: best.n, dragging: false };
+        g = this.offsetGrip = { arrows: [new Handle(this.app.view, "arrow", 34), new Handle(this.app.view, "arrow", 34)], box, from: best.pt, n: best.n, dragging: false };
       }
       g.from = best.pt;
       g.n = best.n;

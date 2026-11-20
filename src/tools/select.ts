@@ -1,6 +1,7 @@
 import { QuickActions, type QuickKind, type QuickPlace } from "./quickActions";
 import { circleAxis } from "./slots";
 import { isTouchDevice } from "../device";
+import { peekSegs } from "./ghost";
 import { settings } from "../settings";
 import { BODY_COLORS, BODY_OPACITY, DEFAULT_BODY_COLOR, bodyColor } from "../doc/types";
 import type { DeleteGeomFeature, EdgeLink, FaceFreeformFeature, FreeformFeature, EdgeRef, ExtrudeSource, FaceRef, ImageFeature, PlaneDef, PlaneFeature, SketchFeature, Vec3 } from "../doc/types";
@@ -731,7 +732,11 @@ export class SelectTool implements Tool {
 
   /** The list for what's picked, its groups apart with a dim line. */
   private actions(): ToolItem[] {
-    return withGroups(this.actionList());
+    // Each tool that has a telling picture of what it would do to the pick shows it while the pointer is over it.
+    const sel = this.picks;
+    const look = (items: ToolItem[]): ToolItem[] =>
+      items.map((it) => ({ ...it, peek: () => peekSegs(this.app, it.id, sel), ...(it.children ? { children: look(it.children) } : {}) }));
+    return withGroups(look(this.actionList()));
   }
 
   /**

@@ -8,7 +8,11 @@ import type { ToolPointer } from "../view/input";
 // Amber, so a handle never disappears against the blue of a selection.
 const COLOR = 0xffa31a;
 const HOT = 0xffd27a;
-const ARROW_PX = 84;
+// (Slim and short: a line with a dark edge under it, so it reads over a lit face and over the grid alike, and a
+// head sized for a finger whatever the arrow's length.)
+const ARROW_PX = 64;
+const HEAD_PX = 70;
+const EDGE = 0x15171b;
 
 /**
  * A drag handle drawn at constant screen size: an arrow along a direction, or a
@@ -23,16 +27,26 @@ export class Handle {
   private mat = new MeshBasicMaterial({ color: COLOR, depthTest: false, transparent: true });
   private head: Mesh;
   private shaft: LineSegments2 | null = null;
+  /** The dark edge under the shaft. */
+  private under: LineSegments2 | null = null;
+  private underMat: ReturnType<Viewport["lineMaterial"]> | null = null;
   private lineMat;
   private onFrame = () => this.layout();
 
-  constructor(private view: Viewport, readonly shape: "arrow" | "dot") {
-    this.lineMat = view.lineMaterial(COLOR, 4);
+  /** `px`: how long an arrow is on screen (a pair back to back - a double arrow - is drawn shorter). */
+  constructor(private view: Viewport, readonly shape: "arrow" | "dot", private px = ARROW_PX) {
+    this.lineMat = view.lineMaterial(COLOR, 3);
     this.lineMat.transparent = true;
-    this.head = new Mesh(shape === "arrow" ? new ConeGeometry(0.11, 0.3, 20) : new SphereGeometry(0.12, 20, 12), this.mat);
+    this.head = new Mesh(shape === "arrow" ? new ConeGeometry(0.095, 0.3, 24) : new SphereGeometry(0.1, 20, 12), this.mat);
     this.head.renderOrder = 50;
     this.group.add(this.head);
     if (shape === "arrow") {
+      this.underMat = view.lineMaterial(EDGE, 6);
+      this.underMat.transparent = true;
+      this.underMat.opacity = 0.55;
+      this.under = new LineSegments2(new LineSegmentsGeometry(), this.underMat);
+      this.under.renderOrder = 49;
+      this.group.add(this.under);
       this.shaft = new LineSegments2(new LineSegmentsGeometry(), this.lineMat);
       this.shaft.renderOrder = 50;
       this.group.add(this.shaft);
@@ -51,7 +65,7 @@ export class Handle {
     this.mat.color.setHex(on ? HOT : COLOR);
     if (this.shaft) {
       this.view.releaseLineMaterial(this.lineMat);
-      this.lineMat = this.view.lineMaterial(on ? HOT : COLOR, on ? 6 : 4);
+      this.lineMat = this.view.lineMaterial(on ? HOT : COLOR, on ? 4.5 : 3);
       this.lineMat.transparent = true;
       this.shaft.material = this.lineMat;
     }
@@ -90,16 +104,18 @@ export class Handle {
     this.view.overlay.remove(this.group);
     this.head.geometry.dispose();
     this.shaft?.geometry.dispose();
+    this.under?.geometry.dispose();
+    if (this.underMat) this.view.releaseLineMaterial(this.underMat);
     this.view.releaseLineMaterial(this.lineMat);
     this.view.requestRender();
   }
 
   private size(): number {
-    return this.view.cam.worldPerPixel(this.view.height) * ARROW_PX;
+    return this.view.cam.worldPerPixel(this.view.height) * this.px;
   }
 
   private headScale(): number {
-    return this.size() * (this.hot ? 1.45 : 1);
+    return this.view.cam.worldPerPixel(this.view.height) * HEAD_PX * (this.hot ? 1.3 : 1);
   }
 
   private tip(): Vector3 {
@@ -113,8 +129,14 @@ export class Handle {
       const tip = this.tip();
       this.head.position.copy(tip);
       this.head.quaternion.setFromUnitVectors(new Vector3(0, 1, 0), this.dir);
-      const start = this.base.clone().addScaledVector(this.dir, s * 0.12);
-      (this.shaft!.geometry as LineSegmentsGeometry).setPositions([...start.toArray(), ...tip.toArray()]);
+      // (From a little off its foot to the head's base; the head's point is the arrow's tip.)
+      const h = this.headScale() * 0.3;
+      this.head.position.copy(tip).addScaledVector(this.dir, -h / 2);
+      const start = this.base.clone().addScaledVector(this.dir, Math.min(s * 0.12, Math.max(0, s - h)));
+      const end = this.base.clone().addScaledVector(this.dir, Math.max(0, s - h));
+      const at = [...start.toArray(), ...end.toArray()];
+      (this.shaft!.geometry as LineSegmentsGeometry).setPositions(at);
+      (this.under!.geometry as LineSegmentsGeometry).setPositions(at);
     } else {
       this.head.position.copy(this.base);
     }

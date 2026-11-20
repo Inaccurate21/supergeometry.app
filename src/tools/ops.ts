@@ -20,6 +20,7 @@ import { faceBeforeShell } from "./shellFace";
 import { entityPolylines } from "../sketch/curves";
 import { arrangement, drawnRegions, regionRef } from "../sketch/regions";
 import { DimWidget } from "./annotate";
+import { Ghost, ringGhost, rowGhost } from "./ghost";
 import { Gimbal, GIMBAL_AXES, IN_PLANE, SCALE_PARTS, type GimbalPart } from "./gimbal";
 import { DragTyping, type DragTypingTarget } from "./dragTyping";
 import { isTouchDevice } from "../device";
@@ -1752,13 +1753,13 @@ export class TransformOp extends FeatureOp<TransformFeature> {
   protected hint(): string {
     switch (this.kind) {
       case "move":
-        return "Drag an arrow to slide it, an arc to turn it, or type exact values. Tap empty space when done.";
+        return "Drag an arrow to slide it, an arc to turn it, or type exact values. Drag the dot in the middle to move the point it turns about - it snaps to corners and edges. Tap empty space when done.";
       case "mirror":
         return "The body is flipped across the plane. A copy is made unless you turn Copy off.";
       case "translate":
         return "Tap a point on the body, then the point it should move to.";
       default:
-        return ({ rotate: "Set the angle to turn the body around the axis.", linear: this.dir ? "Drag the arrow, or type, to set how far apart the copies are; Count is how many." : "Tap an edge, an axis or a face: the copies go along it.", circular: this.axis ? "Drag the dot round the axis, or type, to set the angle the copies are spread over; Count is how many." : "Tap an axis, or a round edge or face: the copies go round it." } as Record<string, string>)[this.kind] ?? `${TITLES[this.kind]}: set the values, then tap empty space.`;
+        return ({ rotate: "Set the angle to turn the body around the axis.", linear: this.dir ? "Drag the arrow, or type, to set how far apart the copies are; Count is how many." : "Tap an edge, an axis or a face: the copies go along it (point at one to see how, in dashed yellow).", circular: this.axis ? "Drag the dot round the axis, or type, to set the angle the copies are spread over; Count is how many." : "Tap an axis, or a round edge or face: the copies go round it (point at an axis to see how)." } as Record<string, string>)[this.kind] ?? `${TITLES[this.kind]}: set the values, then tap empty space.`;
     }
   }
 
@@ -1851,6 +1852,8 @@ export class TransformOp extends FeatureOp<TransformFeature> {
     this.gimbal?.dispose();
     this.copyToggle?.dispose();
     this.dropPatternGrip();
+    this.patGhost?.dispose();
+    this.patGhost = null;
     super.exit();
   }
 
@@ -1926,7 +1929,37 @@ export class TransformOp extends FeatureOp<TransformFeature> {
     } else this.dropPatternGrip();
   }
 
+  /** How the pattern would go along what is under the pointer, before its direction (or axis) is picked. */
+  private patGhost: Ghost | null = null;
+  private patGhostSig = "";
+  private lookAhead(p: ToolPointer | null): void {
+    const o = this.feature.op;
+    const view = this.app.view;
+    let segs: number[] = [];
+    let sig = "";
+    if (p && o.kind === "linear" && !this.dir) {
+      const hit = view.pick(p.x, p.y, { edgeTolPx: p.tol, profiles: false, planes: false, axes: true, worldAxes: true });
+      const dir = hit?.kind === "axis" ? view.axisOf(hit.id)?.plane.normal : hit?.kind === "edge" ? view.body(hit.body)?.edges[hit.edge]?.dir : hit?.kind === "face" ? view.body(hit.body)?.faces[hit.face]?.normal : undefined;
+      if (dir) {
+        sig = `l|${dir.map((x) => x.toFixed(4))}|${o.count}`;
+        if (sig !== this.patGhostSig) segs = rowGhost(this.app, this.feature.bodies, dir, patternSpacing(bodyExtent(this.app, this.feature.bodies, norm(dir)), 20), o.count);
+      }
+    } else if (p && o.kind === "circular" && !this.axis) {
+      const hit = view.pick(p.x, p.y, { edgeTolPx: p.tol, profiles: false, planes: false, axes: true, worldAxes: true });
+      const ax = hit?.kind === "axis" ? view.axisOf(hit.id)?.plane : undefined;
+      if (ax) {
+        sig = `c|${ax.origin.map((x) => x.toFixed(4))}|${ax.normal.map((x) => x.toFixed(4))}|${o.count}|${o.angle}`;
+        if (sig !== this.patGhostSig) segs = ringGhost(this.app, this.feature.bodies, { origin: ax.origin, dir: ax.normal }, o.angle, o.count);
+      }
+    }
+    if (sig === this.patGhostSig) return;
+    this.patGhostSig = sig;
+    this.patGhost?.dispose();
+    this.patGhost = segs.length ? new Ghost(view, segs) : null;
+  }
+
   hover(p: ToolPointer | null): void {
+    this.lookAhead(p);
     if (this.patHandle) {
       const on = !!p && (!!this.patDrag || this.patHandle.hit(p));
       this.patHandle.setHot(on);
@@ -1938,6 +1971,8 @@ export class TransformOp extends FeatureOp<TransformFeature> {
 
   /** Started by dragging the body itself: the press that opened this slides it over the floor (seen from the side: across the screen). */
   private grabbed = false;
+  /** The gimbal's middle dot is being moved (the point it turns about), not the body. */
+  private pivotDrag = false;
   grabAnywhere(): this {
     this.grabbed = true;
     return this;
@@ -1951,9 +1986,17 @@ export class TransformOp extends FeatureOp<TransformFeature> {
       return true;
     }
     const flat = Math.abs(this.app.view.cam.viewDir().z) > 0.25;
-    const part: GimbalPart | null | undefined = this.grabbed ? (flat ? { kind: "plane", i: 2 } : { kind: "center" }) : this.gimbal?.hit(p);
+    const grabbed = this.grabbed;
+    const part: GimbalPart | null | undefined = grabbed ? (flat ? { kind: "plane", i: 2 } : { kind: "center" }) : this.gimbal?.hit(p);
     this.grabbed = false;
     if (!part || o.kind !== "move") return false;
+    // The dot in the middle, grabbed: it is the point everything turns about, and it is moved - to a corner, onto
+    // an edge or a face (it snaps there), or anywhere - like the centre the view turns about. The body stays.
+    if (part.kind === "center" && !grabbed) {
+      this.pivotDrag = true;
+      this.gimbal!.setHot(part);
+      return true;
+    }
     // A different rotation axis than the one already used: start from the current angle 0 on that axis.
     if (part.kind === "ring" && o.rotate && o.rotate.angle && axisIndex(o.rotate.axis) !== part.i) {
       this.app.ui.toast("One rotation axis per move - press Done, then rotate around the next axis");
@@ -1992,6 +2035,23 @@ export class TransformOp extends FeatureOp<TransformFeature> {
       this.typedInto("op.angle", "");
       this.setSpread(a);
       this.app.ui.setLabel(p.x, p.y, `${Math.round(a * 10) / 10}°${a === 360 ? " (all the way round)" : ""}  · type a value`);
+      return;
+    }
+    if (this.pivotDrag && o.kind === "move") {
+      const view = this.app.view;
+      const hit = view.pick(p.x, p.y, { profiles: false, planes: false, axes: false, edgeTolPx: Math.max(10, p.tol) });
+      const now = add(this.center, o.translate);
+      const n = view.cam.viewDir().toArray() as Vec3;
+      const at: Vec3 | null =
+        hit?.kind === "vertex" ? (view.vertexOf(hit.body, hit.vertex) ?? hit.point) : hit?.kind === "edge" || hit?.kind === "face" ? hit.point : view.rayToPlane(p.x, p.y, { origin: now, normal: n, xDir: xDirFor(n) });
+      if (!at) return;
+      this.app.setHover(hit?.kind === "vertex" ? { kind: "vertex", body: hit.body, vertex: hit.vertex } : hit?.kind === "edge" ? { kind: "edge", body: hit.body, edge: hit.edge } : null);
+      // (Where the dot is shown is the centre moved with the body so far.)
+      this.center = sub(at, o.translate);
+      if (o.rotate) o.rotate.origin = this.center;
+      this.gimbal?.setCenter(at);
+      this.app.ui.setLabel(p.x, p.y, hit?.kind === "vertex" ? "Centre: on the corner" : hit?.kind === "edge" ? "Centre: on the edge" : hit?.kind === "face" ? "Centre: on the face" : "Centre");
+      if (o.rotate?.angle) this.update();
       return;
     }
     const dr = this.dragging;
@@ -2040,6 +2100,13 @@ export class TransformOp extends FeatureOp<TransformFeature> {
       this.typing.reset();
       this.app.ui.setLabel(0, 0, null);
       this.patHandle?.setHot(false);
+      return;
+    }
+    if (this.pivotDrag) {
+      this.pivotDrag = false;
+      this.app.setHover(null);
+      this.app.ui.setLabel(0, 0, null);
+      this.gimbal?.setHot(null);
       return;
     }
     const dragged = !!this.dragging;
