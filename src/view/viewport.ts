@@ -391,10 +391,9 @@ export class Viewport {
       const body = this.bodyMat.clone();
       if (hex) body.color.set(hex);
       body.userData.opacity = o;
-      // The cut face is the body's colour, a little darker, so it reads as the same part.
-      const cap = hatched(this.capMat.clone());
-      if (hex) cap.color.set(hex).multiplyScalar(0.72);
-      m = { body, cap };
+      // The cut face is the same for every body, whatever its colour: pink with its dark diagonal lines - a cut
+      // reads as a cut. (It was the body's colour, a little darker.)
+      m = { body, cap: this.capMat };
       this.colorMats.set(key, m);
     }
     return m;
