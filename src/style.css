@@ -7067,3 +7067,58 @@ body.sn-crowd #left-col {
 html[data-screen="phone"] body.sn-open #left-col {
   visibility: hidden;
 }
+
+/* Items and History are as tall as what is in them (asked for: "we should make those change size depending on how
+   many items/actions are there. For example not go all the way down on mobile and tablet because then it would
+   overlap the bottom bar"). They were the screen's whole height with two rows in them. With more than fits, they
+   scroll. A desk screen: down to the bottom edge at most (the line and undo stand beside them there). A tablet, and
+   a phone on its side: never as far down as the line at the bottom and the tag over it. */
+#items,
+#history {
+  bottom: auto !important;
+  max-height: calc(100dvh - 16px - var(--safe-t) - var(--safe-b));
+}
+html[data-screen="tablet"] #items,
+html[data-screen="tablet"] #history {
+  max-height: calc(100dvh - 150px - var(--safe-t) - var(--safe-b));
+}
+@media (max-height: 500px) and (min-width: 721px) {
+  #items,
+  #history,
+  html[data-screen="tablet"] #items,
+  html[data-screen="tablet"] #history {
+    /* (Clear of the line and of the tag over it.) */
+    max-height: calc(100dvh - 52px - 128px - var(--safe-t) - var(--safe-b));
+  }
+}
+@media (max-width: 720px) {
+  #history,
+  html[data-screen="tablet"] #history {
+    max-height: 45vh;
+  }
+  #items,
+  html[data-screen="tablet"] #items {
+    max-height: 55vh;
+  }
+}
+/* (A tablet: Items stops above undo / redo, so those stay in their corner - and the line has that room.) */
+html[data-screen="tablet"] body.items-open #undo-dock {
+  left: calc(8px + var(--safe-l));
+}
+
+/* A narrow screen: Items or History is a card across the top that comes down past the middle - the three at the
+   left edge step aside while one is open. */
+@media (max-width: 720px) {
+  body.items-open #left-col,
+  body.history-open #left-col {
+    visibility: hidden;
+  }
+}
+
+/* A phone on its side with Items open: the guide text stands beside the Items card, not under it. */
+@media (max-height: 500px) and (min-width: 721px) and (max-width: 1100px) {
+  html body.items-open #hint {
+    left: calc(246px + var(--safe-l));
+    max-width: calc(100vw - 246px - 280px - var(--safe-l) - var(--safe-r));
+  }
+}

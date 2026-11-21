@@ -337,7 +337,9 @@ export class Sentence {
     const upright = document.documentElement.dataset.screen === "phone" && matchMedia("(max-width: 720px) and (orientation: portrait)").matches;
     if (!upright) {
       const dock = document.getElementById("undo-dock")?.getBoundingClientRect();
-      const hist = document.body.classList.contains("history-open") ? document.getElementById("history")?.getBoundingClientRect() : undefined;
+      // (History only where it comes down as far as the line: it is as tall as its steps now, and on a tablet never that far.)
+      const histAll = document.body.classList.contains("history-open") ? document.getElementById("history")?.getBoundingClientRect() : undefined;
+      const hist = histAll && histAll.bottom > innerHeight - (62 + (this.tag.hidden ? 0 : 44) + 8) ? histAll : undefined;
       // (The right column, where it comes down as far as the line - a phone on its side.)
       const col = document.getElementById("right-col")?.getBoundingClientRect();
       const low = col && col.width && col.bottom > innerHeight - (62 + (this.tag.hidden ? 0 : 44) + 18) ? innerWidth - col.left + 8 : 0;
