@@ -41,6 +41,7 @@ import { BooleanOp } from "./tools/booleanOp";
 import { FeatureOp, sketchesUsed } from "./tools/featureOp";
 import { SketchTool } from "./tools/sketch";
 import { definedCurves } from "./sketch/constraints";
+import { keepSizes } from "./doc/unitChange";
 import { bodiesOf, edgeRefOf, edgesOfFace, faceRefOf, sameSel, sourceFrame, sourcesOf, type AppContext, type Sel, type Tool } from "./tools/tool";
 import { setupRightColumn } from "./ui/panels";
 import type { ToolItem } from "./ui/ui";
@@ -683,7 +684,14 @@ export class App implements AppContext {
   }
 
   private setUnits(u: Units): void {
-    this.store.commit((d) => (d.units = u));
+    let kept = { changed: 0, lost: 0 };
+    this.store.commit((d) => {
+      // Every formula keeps the size it had: its plain lengths now say the unit they were typed in.
+      kept = keepSizes(d, d.units ?? "mm", u);
+      d.units = u;
+    });
+    if (kept.lost) this.ui.toast(`${kept.lost} formula${kept.lost === 1 ? "" : "s"} could not be kept as ${kept.lost === 1 ? "it was" : "they were"}: check the sizes that use ${kept.lost === 1 ? "it" : "them"}`, "error");
+    else if (kept.changed) this.ui.toast(`Nothing changes size: the plain numbers in ${kept.changed === 1 ? "a formula" : `${kept.changed} formulas`} now say their unit`);
   }
 
   private async regenerate(): Promise<void> {

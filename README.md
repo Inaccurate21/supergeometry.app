@@ -344,6 +344,12 @@ sketch. A sketch stays in view until every region of it is used.
   The line has New Variable and the whole list; tap Variables again to switch off.
   Type them into any field (`wall * 2`) or pick them from the **ƒx** menu
   next to a value. Change the variable later and everything using it updates.
+  A size that follows a variable says so on the line (`od / 2 = 60 mm`).
+  Formulas take `+ - * / ^`, brackets, units (`2 in + 5 mm`) and `sqrt`,
+  `abs`, `sin`, `cos`, `tan`, `asin`, `acos`, `atan`, `floor`, `ceil`,
+  `round`, `min`, `max` - `floor(length / pitch)` is how many fit. Changing
+  the project's unit changes no size: plain numbers in formulas are given
+  the unit they were typed in.
 - The **on-screen numpad** (Settings at the right edge, Number pad on
   screen) replaces the system keyboard for value boxes. It's on by default
   on phones, tablets and headsets. Tapping a box selects its value, so typing

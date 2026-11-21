@@ -276,7 +276,8 @@ export function useSpot(u: VarUse, features: readonly Feature[], world: AnchorWo
   if (!f) return null;
   if (f.type === "sketch") {
     const c = f.constraints?.find((x) => x.id === u.where);
-    const at = c && dimSpot(c, f.entities);
+    // (A point placed by it - X typed as "pcd / 2": at that point. It had no tag at all.)
+    const at = c && (dimSpot(c, f.entities) ?? (c.type === "fix" && c.at ? c.at : null));
     if (!at) return null;
     const p = toWorld(world.sketchPlanes[f.id] ?? f.plane, at);
     // A construction line is no part of a body: it stays where it was drawn
@@ -308,7 +309,12 @@ export function useSpot(u: VarUse, features: readonly Feature[], world: AnchorWo
   const plane = world.planes?.find((x) => x.id === f.id);
   if (plane) return plane.plane.origin;
   const b = bodyOf(f);
-  return b ? bodyMiddle(world, b) : null;
+  const mid = b ? bodyMiddle(world, b) : null;
+  if (mid) return mid;
+  // A pattern whose copies have since gone into another body (holes cut with them): on what it turns about, or at
+  // its first copy's place - the count of a ring of holes had no tag.
+  if (f.type === "transform" && f.op.kind === "circular") return f.op.axis.origin;
+  return null;
 }
 
 export interface VarTag {
@@ -329,7 +335,7 @@ export interface VarTag {
 /** One tag per variable. */
 export function variableTags(variables: readonly Variable[], features: readonly Feature[], world: AnchorWorld): VarTag[] {
   const uses = usesOf(features);
-  return variables.map((v) => {
+  const tags: VarTag[] = variables.map((v) => {
     // Its tag at the use that says most where it acts: a turn's pivot, then a
     // step's value, then a dimension of the shape, then a construction line -
     // where it's the value itself before where it's part of a formula.
@@ -352,4 +358,16 @@ export function variableTags(variables: readonly Variable[], features: readonly 
     const to = variables.filter((w) => madeFrom(w.name, variables).includes(v.name)).map((w) => w.name);
     return { name: v.name, marks, to, kind: kindOfVariable(v.name, variables, uses), at: spots[0] ?? null, others: spots.slice(1), from: madeFrom(v.name, variables) };
   });
+  // One that only other variables are made from (a wall that the hub's size is worked out from) has no place of its
+  // own: it goes by the first of those that has one (the tags there fan out), so it can be tapped like the rest.
+  for (let pass = 0; pass < tags.length; pass++) {
+    let moved = false;
+    for (const t of tags) {
+      if (t.at) continue;
+      const by = t.to.map((n) => tags.find((x) => x.name === n)).find((x) => x?.at);
+      if (by?.at) (t.at = by.at), (moved = true);
+    }
+    if (!moved) break;
+  }
+  return tags;
 }

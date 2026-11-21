@@ -5,7 +5,8 @@ import type { Feature, ImageFeature, PlaneDef, SketchEntity, SketchFeature } fro
 import { GROUND } from "../geom";
 import { uid } from "../sketch/edit";
 import type { AppContext } from "../tools/tool";
-import { bareExpr, evaluate, fmtLen, setVariables, withUnitOf } from "../units";
+import { bareExpr, evaluate, fmtLen, RESERVED, setVariables, withUnitOf } from "../units";
+import { namesIn } from "../doc/varAnchors";
 import { DIALOG_ACTION } from "../ui/dialogAction";
 import { read3mf } from "./formats";
 import { parseSVG } from "./svg";
@@ -146,8 +147,10 @@ export async function createVariable(app: AppContext, value = ""): Promise<strin
   for (;;) {
     const r = await createOne(app, name, value);
     first ??= r.made;
-    if (!r.another) return first;
-    // A bad name or value: the next window has what was typed, to put right.
+    // A bad name or value: the next window has what was typed, to put right (after OK too: the window closed, and
+    // what was typed was gone).
+    const again = !r.made && !!(r.typed.name.trim() || r.typed.expr.trim());
+    if (!r.another && !again) return first;
     [name, value] = r.made ? ["", ""] : [r.typed.name, r.typed.expr];
   }
 }
@@ -166,19 +169,36 @@ async function createOne(app: AppContext, name: string, value: string): Promise<
 function makeVariable(app: AppContext, list: AppContext["store"]["doc"]["variables"], v: Record<string, string>): string | null {
   const name = v.name.trim();
   // (A variable called sin or pi hid the function: sin(30) stopped working.)
-  if (!/^[a-z_][a-z0-9_]*$/i.test(name) || /^(mm|cm|m|in|ft|deg|pi|sqrt|abs|sin|cos|tan)$/i.test(name)) {
+  if (!/^[a-z_][a-z0-9_]*$/i.test(name) || RESERVED.test(name)) {
     app.ui.toast("Names use letters, digits and _ (not starting with a digit, and not a unit or a function like sin or pi)", "error");
     return null;
   }
+  // (od and Od would be two variables, and one typed for the other is a wrong size with nothing said.)
+  const twin = list.find((x) => x.name !== name && x.name.toLowerCase() === name.toLowerCase());
+  if (twin) {
+    app.ui.toast(`There is a variable ${twin.name} already: ${name} differs only in its capitals`, "error");
+    return null;
+  }
+  const was = list.find((x) => x.name === name);
   const next = [...list.filter((x) => x.name !== name), { name, expr: v.expr.trim() || "0" }];
   setVariables(next);
-  if (evaluate(v.expr || "0") === null) {
+  // (An angle - "30 deg" - is a value too: it was refused here, and taken in the list of them all.)
+  if (evaluate(v.expr || "0") === null && evaluate(v.expr || "0", "angle") === null) {
     setVariables(list);
-    app.ui.toast(`"${v.expr}" isn't a valid value`, "error");
+    const unknown = namesIn(v.expr).filter((x) => x !== name && !next.some((y) => y.name === x) && !RESERVED.test(x));
+    app.ui.toast(
+      new RegExp(`(^|[^A-Za-z0-9_])${name}($|[^A-Za-z0-9_])`).test(v.expr)
+        ? `${name} can't use itself`
+        : unknown.length
+          ? `${unknown.join(", ")}: no variable has that name`
+          : `"${v.expr}" isn't a valid value`,
+      "error",
+    );
     return null;
   }
   app.store.commit((d) => (d.variables = next));
-  app.ui.toast(`${name} = ${v.expr}`);
+  // (One there already by that name is changed, and said so.)
+  app.ui.toast(was && was.expr !== v.expr.trim() ? `${name} changed: ${was.expr} → ${v.expr.trim()}` : `${name} = ${v.expr}`);
   return name;
 }
 
@@ -207,19 +227,31 @@ export async function editVariables(app: AppContext): Promise<void> {
       const bad = next.find((x) => evaluate(x.expr) === null && evaluate(x.expr, "angle") === null);
       if (bad) {
         setVariables(list);
-        return app.ui.toast(`"${bad.expr}" isn't a valid value for ${bad.name}`, "error");
+        // (Said as it is: another variable still uses the one being deleted.)
+        const lost = list.filter((x) => !next.some((y) => y.name === x.name)).find((x) => new RegExp(`(^|[^A-Za-z0-9_])${x.name}($|[^A-Za-z0-9_])`).test(bad.expr));
+        return app.ui.toast(lost ? `${bad.name} uses ${lost.name} (${bad.name} = ${bad.expr}): change ${bad.name} first` : `"${bad.expr}" isn't a valid value for ${bad.name}`, "error");
       }
       // Deleted while steps still use it: they keep the sizes they have now, as
       // plain numbers (else every rebuild said "can't be evaluated").
       const gone = list.filter((x) => !next.some((y) => y.name === x.name)).map((x) => x.name);
-      const uses = (expr: string) => gone.some((n) => new RegExp(`(^|[^a-z0-9_])${n}($|[^a-z0-9_])`, "i").test(expr));
+      // (Capitals count: W deleted is not w deleted.)
+      const uses = (expr: string) => gone.some((n) => new RegExp(`(^|[^A-Za-z0-9_])${n}($|[^A-Za-z0-9_])`).test(expr));
       let kept = 0;
       if (next.some((x, i) => x.name !== list[i]?.name || x.expr !== list[i]?.expr) || next.length !== list.length)
         app.store.commit((d) => {
           d.variables = next;
           for (const f of d.features) {
             for (const [path, expr] of Object.entries(f.exprs ?? {})) if (uses(expr)) (delete f.exprs![path], kept++);
-            if (f.type === "sketch") for (const c of f.constraints ?? []) if (c.expr && uses(c.expr)) (delete c.expr, kept++);
+            if (f.type === "sketch")
+              for (const c of f.constraints ?? []) {
+                if (c.expr && uses(c.expr)) (delete c.expr, kept++);
+                // (A point placed by it too: left, every rebuild said it can't be evaluated.)
+                if (c.atExpr?.some((e) => e && uses(e))) {
+                  c.atExpr = c.atExpr.map((e) => (e && uses(e) ? null : e));
+                  if (!c.atExpr.some((e) => e)) delete c.atExpr;
+                  kept++;
+                }
+              }
           }
         });
       if (kept) app.ui.toast(`${gone.join(", ")} deleted - the ${kept === 1 ? "size" : `${kept} sizes`} that used ${gone.length > 1 ? "them" : "it"} ${kept === 1 ? "keeps its value" : "keep their values"}`);

@@ -11,13 +11,25 @@ let variables: Variable[] = [];
 
 export function setUnits(u: Units): void {
   current = u;
+  known.clear();
 }
 export function units(): Units {
   return current;
 }
 export function setVariables(v: Variable[]): void {
   variables = v;
+  known.clear();
 }
+
+/**
+ * What each variable came to, for the unit and kind of field it was asked in: worked out once, however many values
+ * use it. (Each use read its whole chain again: a variable used twice in each of twenty that build on one another
+ * was a million readings.)
+ */
+const known = new Map<string, number>();
+
+/** Names a variable can't have: a unit or a function would be read instead of it. */
+export const RESERVED = /^(mm|cm|m|in|ft|deg|pi|sqrt|abs|sin|cos|tan|asin|acos|atan|floor|ceil|round|min|max)$/i;
 
 /**
  * A variable's value as shown: "220 mm" is just "220" when mm is the unit in
@@ -59,7 +71,7 @@ export function trim(v: number, digits = 3): string {
 export function evaluate(text: string, kind: "length" | "number" | "angle" = "length"): number | null {
   try {
     const scaleFor = kind === "length" ? UNIT_MM[current] : 1;
-    const v = new Parser(decimalComma(text), scaleFor, kind === "length", 0).parse();
+    const v = new Parser(decimalComma(text), scaleFor, kind === "length", []).parse();
     // (2^1000 is a number, but no size: 1000 km is the most a box takes.)
     return Number.isFinite(v) && Math.abs(v) <= 1e9 ? v : null;
   } catch {
@@ -68,22 +80,55 @@ export function evaluate(text: string, kind: "length" | "number" | "angle" = "le
 }
 
 /**
+ * A formula's size in mm, read with these variables and with plain numbers counted as `scale` mm each (for working
+ * out what a formula would come to in another unit, without changing the one in use).
+ */
+export function valueAt(text: string, scale: number, vars: Variable[]): number | null {
+  const had = variables;
+  variables = vars;
+  known.clear();
+  try {
+    const v = new Parser(decimalComma(text), scale, true, []).parse();
+    return Number.isFinite(v) ? v : null;
+  } catch {
+    return null;
+  } finally {
+    variables = had;
+    known.clear();
+  }
+}
+
+/**
  * "5,5" is 5.5 (a decimal comma: much of Europe writes it so, and a phone's
  * keyboard offers it). "1,000" stays unread: one, or a thousand?
  */
 function decimalComma(text: string): string {
+  // (In min(...) and max(...) a comma parts the values.)
+  if (/\b(min|max)\s*\(/i.test(text)) return text;
   return /,\d{3}(?!\d)/.test(text) ? text : text.replace(/(\d),(\d)/g, "$1.$2");
 }
 
 const DEG = Math.PI / 180;
-/** Functions a field can use: sqrt(3), sin(30) (degrees), abs(-2). */
-const FUNCS: Record<string, (x: number) => number> = {
+/**
+ * Functions a field can use: sqrt(3), sin(30) (degrees), abs(-2); asin, acos and atan give degrees; floor, ceil and
+ * round make a whole number (how many holes fit: floor(length / pitch)); min and max take several values.
+ */
+const FUNCS: Record<string, (...x: number[]) => number> = {
   sqrt: Math.sqrt,
   abs: Math.abs,
   sin: (x) => Math.sin(x * DEG),
   cos: (x) => Math.cos(x * DEG),
   tan: (x) => Math.tan(x * DEG),
+  asin: (x) => Math.asin(x) / DEG,
+  acos: (x) => Math.acos(x) / DEG,
+  atan: (x) => Math.atan(x) / DEG,
+  floor: (x) => Math.floor(x + 1e-9),
+  ceil: (x) => Math.ceil(x - 1e-9),
+  round: Math.round,
+  min: (...x) => Math.min(...x),
+  max: (...x) => Math.max(...x),
 };
+const MANY = new Set(["min", "max"]);
 
 class Parser {
   private i = 0;
@@ -91,7 +136,8 @@ class Parser {
     private s: string,
     private defaultScale: number,
     private lengths: boolean,
-    private depth: number,
+    /** The variables being read on the way here: one of them met again goes round in a circle. */
+    private chain: string[],
   ) {}
 
   parse(): number {
@@ -173,14 +219,26 @@ class Parser {
         // sqrt(3), sin(30): the bracket is a plain number in the field's unit (angles in degrees).
         this.ws();
         if (this.s[this.i++] !== "(") throw new Error("Missing (");
-        const a = this.expr() / k;
+        const args = [this.expr() / k];
         this.ws();
+        while (MANY.has(name[0].toLowerCase()) && (this.s[this.i] === "," || this.s[this.i] === ";")) {
+          this.i++;
+          args.push(this.expr() / k);
+          this.ws();
+        }
         if (this.s[this.i++] !== ")") throw new Error("Missing )");
-        return fn(a) * k;
+        return fn(...args) * k;
       }
       if (!variable && name[0].toLowerCase() === "pi") return this.unit(Math.PI);
-      if (!variable || this.depth > 8) throw new Error(`Unknown variable ${name[0]}`);
-      return new Parser(variable.expr, this.defaultScale, this.lengths, this.depth + 1).parse();
+      if (!variable) throw new Error(`Unknown variable ${name[0]}`);
+      // (A long chain is fine - it stopped at eight deep, and the ninth variable "couldn't be evaluated" - a circle is not.)
+      if (this.chain.includes(variable.name) || this.chain.length > 200) throw new Error(`${variable.name} uses itself`);
+      const key = `${variable.name}|${this.defaultScale}|${this.lengths}`;
+      const had = known.get(key);
+      if (had !== undefined) return had;
+      const v = new Parser(decimalComma(variable.expr), this.defaultScale, this.lengths, [...this.chain, variable.name]).parse();
+      known.set(key, v);
+      return v;
     }
     throw new Error("Expected a number");
   }

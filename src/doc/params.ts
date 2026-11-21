@@ -2,7 +2,7 @@
 // re-solve sketch constraints, so the document's numbers are always consistent.
 
 import { solveFine } from "../sketch/constraints";
-import { evaluate, setVariables } from "../units";
+import { evaluate, setUnits, setVariables } from "../units";
 import type { Feature, ProjectDoc } from "./types";
 
 /** Kind of value stored at a path (for units: lengths are mm, angles degrees). */
@@ -34,6 +34,9 @@ export function setPath(obj: unknown, path: string, value: unknown): void {
 /** Recompute every expression-driven value and re-solve constrained sketches (in place). */
 export function resolveDoc(doc: ProjectDoc): string[] {
   const problems: string[] = [];
+  // (Its own unit, before anything is read: the app set it after this ran, so a project whose unit had just changed
+  // was worked out once more in the old one.)
+  if (doc.units) setUnits(doc.units);
   setVariables(doc.variables ?? []);
   for (const f of doc.features as Feature[]) {
     for (const [path, expr] of Object.entries(f.exprs ?? {})) {

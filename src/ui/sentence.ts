@@ -24,12 +24,12 @@
 import { settings } from "../settings";
 import type { Vec3 } from "../doc/types";
 import type { Sel } from "../tools/tool";
-import { evaluate, toDisplay, UNIT_LABEL, units } from "../units";
+import { evaluate, RESERVED, toDisplay, UNIT_LABEL, units } from "../units";
 import type { Viewport } from "../view/viewport";
 import { iconNameFor, icons, type IconName } from "./icons";
 import { numpadInput, openNumpad } from "./numpad";
 import { selectAll } from "./textField";
-import { el, usable, type ToolItem, type UI } from "./ui";
+import { el, isExpression, usable, type ToolItem, type UI } from "./ui";
 import { ALIAS, GROUP_OF, RANK } from "./toolGroups";
 
 export interface SentenceHost {
@@ -85,7 +85,19 @@ interface Word {
   /** What it opens: a tool's kinds, a choice's other options. */
   kids?: Word[];
   /** A number: typed, or dragged sideways. */
-  value?: { now: number; text: string; kind: "length" | "angle" | "number" | "int"; put(v: number): void; min?: number; max?: number; step?: number };
+  value?: {
+    now: number;
+    text: string;
+    kind: "length" | "angle" | "number" | "int";
+    put(v: number): void;
+    min?: number;
+    max?: number;
+    step?: number;
+    /** The formula it follows ("od / 2"), if it follows one. */
+    expr?: string;
+    /** It may follow a formula: called with the one typed, or null for a plain number, before `put`. */
+    putExpr?(expr: string | null): void;
+  };
   /** Takes the subject away (the pick let go). */
   lets?: boolean;
   /** In its place, with nothing for what is picked now: dimmed, and a tap says this. */
@@ -624,7 +636,12 @@ export class Sentence {
           ui.syncPanelValue(it, v);
           this.changed();
         };
-        out.push({ key, kind: "value", cap: it.label, label: text, value: { now: it.value, text, kind, put, min: it.type === "slider" ? it.min : it.min, max: it.type === "slider" ? it.max : undefined, step: it.type === "slider" ? it.step : undefined } });
+        // A size that follows a variable says so: the formula, then what it comes to ("od / 2 = 60 mm").
+        const expr = it.type === "number" ? it.expr : undefined;
+        // (Kept on the part too: a tool that does not draw its window again still shows what the size follows now.)
+        const putExpr = it.type === "number" && it.onExpr ? (e: string | null) => (it.onExpr!(e), (it.expr = e ?? undefined)) : undefined;
+        const says = expr ? `${expr.length > 16 ? `${expr.slice(0, 15)}…` : expr} = ${text}` : text;
+        out.push({ key, kind: "value", cap: it.label, label: says, value: { now: it.value, text, kind, put, min: it.type === "slider" ? it.min : it.min, max: it.type === "slider" ? it.max : undefined, step: it.type === "slider" ? it.step : undefined, expr, putExpr } });
       } else if (it.type === "button") out.push({ key, kind: "button", label: it.label, icon: it.icon ?? iconNameFor(it.label), pulse: it.primary, run: () => it.onClick() });
       else if (it.type === "chips") {
         if (!it.chips.length) continue;
@@ -816,7 +833,8 @@ export class Sentence {
       const now = word();
       if (!down || e.pointerId !== down.id) return;
       const dx = e.clientX - down.x;
-      if (!down.scrub && now.value && Math.abs(dx) > 9 && Math.abs(dx) > Math.abs(e.clientY - down.y) * 1.5) {
+      // (Not one that follows a variable: a finger sliding off it would cut it loose. Tapped, it is typed.)
+      if (!down.scrub && now.value && !now.value.expr && Math.abs(dx) > 9 && Math.abs(dx) > Math.abs(e.clientY - down.y) * 1.5) {
         down.scrub = true;
         clearTimeout(held);
         d.setPointerCapture(e.pointerId);
@@ -1088,7 +1106,9 @@ export class Sentence {
     input.inputMode = "decimal";
     input.autocomplete = "off";
     input.spellcheck = false;
-    input.value = v.kind === "length" ? String(+toDisplay(v.now).toFixed(4)) : String(+v.now.toFixed(4));
+    // (What it follows, if it follows a variable: shown as its number, Enter made it that number and the link was gone.)
+    const was = v.expr ?? (v.kind === "length" ? String(+toDisplay(v.now).toFixed(4)) : String(+v.now.toFixed(4)));
+    input.value = was;
     input.dataset.kind = v.kind;
     if (v.min !== undefined) input.dataset.min = String(v.min);
     if (v.max !== undefined) input.dataset.max = String(v.max);
@@ -1096,15 +1116,52 @@ export class Sentence {
     box.append(input);
     const unit = v.kind === "length" ? UNIT_LABEL[units()] : v.kind === "angle" ? "°" : "";
     if (unit) box.append(el("span", "sn-type-unit", unit));
+    // A size that can follow a variable: ƒx beside the box - one of the project's variables, or a new one made from
+    // what is typed. (A phone's number keys have no letters to type a name with.)
+    let picking = false;
+    const ui = this.host.ui;
+    if (v.putExpr && ui.variableFactory) {
+      const fx = el("button", "fx-btn", "ƒx");
+      fx.title = "Variables: use one here, or make a new one from this value";
+      fx.addEventListener("pointerdown", () => (picking = true));
+      fx.addEventListener("click", async (e) => {
+        e.preventDefault();
+        picking = true;
+        const names = ui.variableNames();
+        let name: string | null = null;
+        if (names.length) {
+          const pick = await ui.ask("Variables", "Use a variable for this value, or make a new one from it.", [...names.slice(0, 8).map((n) => ({ id: `v:${n}`, label: n })), { id: "new", label: "New variable", primary: true }]);
+          name = !pick ? null : pick === "new" ? await ui.variableFactory!(input.value) : pick.slice(2);
+        } else name = await ui.variableFactory!(input.value);
+        picking = false;
+        if (!name) return input.focus();
+        input.value = name;
+        end(true);
+      });
+      box.append(fx);
+    }
     this.sheet.replaceChildren(box);
     let over = false;
     const end = (keep: boolean) => {
       if (over) return;
       over = true;
       this.typing = null;
-      if (keep) {
-        const n = evaluate(input.value, v.kind === "int" ? "number" : v.kind);
-        if (n !== null) v.put(Math.min(v.max ?? Infinity, Math.max(v.min ?? -Infinity, v.kind === "int" ? Math.round(n) : n)));
+      const text = input.value.trim();
+      // (Left as it was: nothing to do - a size that follows a variable is not made a plain number by looking at it.)
+      if (keep && text !== was) {
+        const n = evaluate(text, v.kind === "int" ? "number" : v.kind);
+        if (n === null) {
+          // Said as it is: a name no variable has, else what was typed.
+          const names = new Set(this.host.ui.variableNames());
+          const unknown = [...text.matchAll(/[a-z_][a-z0-9_]*/gi)].map((m) => m[0]).filter((x) => !names.has(x) && !RESERVED.test(x));
+          this.host.ui.toast(unknown.length ? `${[...new Set(unknown)].join(", ")}: no variable has that name` : `"${text}" isn't a value that can be worked out`, "error");
+        }
+        else {
+          // A variable's name in it: the size follows it from now on (it was made the number it came to, and the
+          // link never kept); a plain number: it follows none.
+          v.putExpr?.(isExpression(text) ? text : null);
+          v.put(Math.min(v.max ?? Infinity, Math.max(v.min ?? -Infinity, v.kind === "int" ? Math.round(n) : n)));
+        }
       }
       if (this.open?.kind === "type") this.open = null;
       this.sheet.hidden = true;
@@ -1117,7 +1174,7 @@ export class Sentence {
       else if (e.key === "Escape") (e.preventDefault(), end(false));
       e.stopPropagation();
     });
-    input.addEventListener("blur", () => setTimeout(() => document.activeElement !== input && end(true), 150));
+    input.addEventListener("blur", () => setTimeout(() => document.activeElement !== input && !picking && end(true), 150));
     input.focus();
     selectAll(input);
     openNumpad(input);
