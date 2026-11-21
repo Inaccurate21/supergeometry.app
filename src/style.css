@@ -438,7 +438,8 @@ body.update-pending #more-btn::after,
 .dock-btn:disabled {
   opacity: 0.35;
 }
-body.items-open #undo-dock {
+body.items-open #undo-dock,
+body.items-open #left-col {
   left: calc(274px + var(--safe-l));
 }
 .menu hr {
@@ -2635,7 +2636,8 @@ form.dialog {
   body.items-open #bottom-left {
     left: calc(128px + var(--safe-l));
   }
-  body.items-open #undo-dock {
+  body.items-open #undo-dock,
+body.items-open #left-col {
     left: calc(8px + var(--safe-l));
   }
   .measure-card {
@@ -2918,7 +2920,8 @@ form.dialog {
   body.items-open #bottom-left {
     left: calc(120px + var(--safe-l));
   }
-  body.items-open #undo-dock {
+  body.items-open #undo-dock,
+body.items-open #left-col {
     left: calc(8px + var(--safe-l));
   }
   /* The value panel sits right of the bottom row. */
@@ -6983,4 +6986,56 @@ html[data-screen="phone"] .bim-dtools:has(.bim-dtool.sub) .bim-dtool.sub {
 }
 .sn-sheet.sn-kids {
   box-sizing: border-box;
+}
+
+/* Isolate, Measure, Section: a column at the middle of the left edge, the twin of the one at the right. It moves
+   over with undo / redo when Items is open. */
+#left-col {
+  position: fixed;
+  left: calc(8px + var(--safe-l));
+  top: 50%;
+  transform: translateY(-50%);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  background: var(--chrome);
+  border-radius: var(--radius);
+  padding: 4px;
+  z-index: 10;
+}
+#left-col:empty {
+  display: none;
+}
+#left-col .right-btn {
+  width: 48px;
+  min-height: 42px;
+}
+body.headset #left-col,
+body.drawing-open #left-col {
+  display: none;
+}
+/* A phone on its side: little height - the three smaller, as the right column's are. */
+@media (max-height: 480px) {
+  #left-col .right-btn {
+    min-height: 31px;
+  }
+}
+
+/* A short screen (a phone on its side): Items is a card at the top left that reaches the middle - the three stand
+   beside it while it is open. */
+@media (max-height: 560px) {
+  body.items-open #left-col {
+    left: calc(246px + var(--safe-l)) !important;
+  }
+}
+
+/* (A list open from the line on a short screen comes up over the middle: the three step aside while it is up, as
+   the right column does when there is no room for both.) */
+body.sn-crowd #left-col {
+  visibility: hidden;
+}
+@media (max-height: 560px) {
+  body.sn-open #left-col {
+    visibility: hidden;
+  }
 }

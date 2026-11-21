@@ -332,12 +332,49 @@ export class UI {
     this.bottomItems = items;
     renderTools(this.bottomLeft, items, (item, btn) => this.runAndOpen(item, btn, this.bottomLeft, () => this.bottomItems));
     this.fitToolbar();
+    this.showLeft();
     this.onTools?.();
   }
 
-  /** What the column and the bottom bar hold now (the tool wheel shows the same). */
+  /**
+   * Isolate, Measure and Section, always on screen at the middle of the left edge - as Fit, Display and Settings
+   * are at the right (asked for: "I want isolate, measure and section buttons to always be on screen ... I find
+   * myself clicking More way too much ... put them on middle left"). Each lit while it is on; Isolate with nothing
+   * picked says what to pick.
+   */
+  private leftSig = "";
+  private showLeft(): void {
+    const host = document.getElementById("left-col");
+    if (!host) return;
+    const items = LEFT.map((id) => this.bottomItems.find((it) => it.id === id)).filter((it): it is ToolItem => !!it);
+    // (A tool with a strip of its own: the three stay as they were.)
+    if (!items.length) return;
+    this.leftItems = items;
+    const sig = items.map((it) => `${it.id}|${it.active ? 1 : 0}|${it.disabled ? 1 : 0}|${it.pulse ? 1 : 0}`).join();
+    if (sig === this.leftSig) return;
+    this.leftSig = sig;
+    host.replaceChildren(
+      ...items.map((it, i) => {
+        const b = el("button", `right-btn left-btn${it.active ? " on" : ""}${it.pulse ? " pulse" : ""}`);
+        b.dataset.left = it.id;
+        b.title = it.disabled && it.why ? `${it.label}: ${it.why}` : it.label + (it.active ? " (on - tap to switch off)" : "");
+        b.innerHTML = icons[it.icon as IconName] ?? "";
+        b.append(el("span", "right-label", it.label.replace(" View", "")));
+        b.addEventListener("click", () => {
+          const now = this.leftItems[i];
+          if (!now) return;
+          if (now.disabled) return this.toast(now.why ?? `${now.label} can't be used now`);
+          now.run?.();
+        });
+        return b;
+      }),
+    );
+  }
+  private leftItems: ToolItem[] = [];
+
+  /** What the column and the bottom bar hold now (the tool wheel shows the same). The three at the left edge are not said twice. */
   shown(): { column: ToolItem[]; bar: ToolItem[] } {
-    return { column: this.toolItems, bar: this.bottomItems };
+    return { column: this.toolItems, bar: this.bottomItems.filter((it) => !LEFT.includes(it.id)) };
   }
   /** Called when the column or the bottom bar is given new tools. */
   onTools: (() => void) | null = null;
@@ -1738,6 +1775,9 @@ export class UI {
     return li;
   }
 }
+
+/** The tools kept on screen at the left edge, top to bottom. */
+const LEFT = ["isolate", "measure", "section"];
 
 /** Does the text use a variable (a name that isn't a unit suffix)? */
 export function isExpression(text: string): boolean {
