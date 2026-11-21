@@ -1266,6 +1266,21 @@ async function apply(f: Feature, ctx: Ctx): Promise<void> {
       // the mitres - a chamfer round its inside edge "didn't fit", a round
       // round its outside took more than it should at the corners. One face each.
       if (corner === "right") parts = parts.map((part) => unify(part));
+      // A curve of the path that bends tighter than the profile is wide: the body folds over itself on the inside of
+      // the bend and comes out lumpy there - said, with both sizes (it is no fault of the build; it looked like one).
+      if (!parallel) {
+        const bend = tightestBend(spine);
+        const reach = Math.max(0, ...sourceFaces(f.source, ctx).map(({ face }) => {
+          const c = face.center.toTuple() as Vec3;
+          let far = 0;
+          for (const e of face.edges) for (let i = 0; i <= 8; i++) far = Math.max(far, dist(e.pointAt(i / 8).toTuple() as Vec3, c));
+          return far;
+        })) * Math.max(1, k);
+        if (bend < reach * 0.98) {
+          const mm = (v: number) => String(Math.round(v * 10) / 10);
+          editNotes.push(`The path bends tighter (a radius of about ${mm(bend)} mm) than the profile reaches from its middle (${mm(reach)} mm): the body folds over itself inside that bend. A gentler bend, or a smaller profile, keeps it even.`);
+        }
+      }
       combine(f.id, f.mode, f.target, fuseAll(parts), false, ctx);
       ctx.sweeps.set(f.id, spine);
       return;
@@ -3445,6 +3460,26 @@ function pathWire(path: PathRef, ctx: Ctx): Wire {
   }
   const edges: Edge[] = path.edges.map((r) => resolveEdge(need(ctx.bodies, r.body), r));
   return pathOf(edges);
+}
+
+/** The smallest radius any curve of the wire bends with (its corners between curves don't count; a straight wire: Infinity). */
+function tightestBend(w: Wire): number {
+  let least = Infinity;
+  for (const e of w.edges) {
+    if (e.geomType === "LINE") continue;
+    const n = 240;
+    const p: Vec3[] = [];
+    for (let i = 0; i <= n; i++) p.push(e.pointAt(i / n).toTuple() as Vec3);
+    for (let i = 1; i < n; i++) {
+      const ab = dist(p[i - 1], p[i]);
+      const bc = dist(p[i], p[i + 1]);
+      const ac = dist(p[i - 1], p[i + 1]);
+      const s = (ab + bc + ac) / 2;
+      const area = Math.sqrt(Math.max(0, s * (s - ab) * (s - bc) * (s - ac)));
+      if (area > 1e-14 * ab * bc) least = Math.min(least, (ab * bc * ac) / (4 * area));
+    }
+  }
+  return least;
 }
 
 /** A wire's points in order along it, close together (curves sampled finely). */

@@ -4,7 +4,7 @@
 import type { Shape3D } from "replicad";
 import { after, bodies, check, circle, done, health, near, profile, sketch, volume, XY, YZ } from "./kit";
 import type { Feature, SketchEntity } from "../src/doc/types";
-import { entityPolylines, splineHeightSamples, splineHeights } from "../src/sketch/curves";
+import { entityPolylines, entityWorldPolylines, splineHeightSamples, splineHeights } from "../src/sketch/curves";
 import { transformEntity } from "../src/sketch/edit";
 import { solve } from "../src/sketch/constraints";
 
@@ -49,4 +49,52 @@ check("it rises off the plane: to about 30 + its radius", hi[2] > 31 && hi[2] < 
 let run = 0;
 for (let i = 1; i < poly.length; i++) run += Math.hypot(poly[i][0] - poly[i - 1][0], poly[i][1] - poly[i - 1][1], hs[i] - hs[i - 1]);
 check("as long as the curve through space", run > 125 && near(vHigh, Math.PI * 9 * run, Math.PI * 9 * run * 0.01), `${vHigh.toFixed(1)} / ${(Math.PI * 9 * run).toFixed(1)} (${run.toFixed(2)} long)`);
+
+// A path drawn by hand in the app (five points, each up or down off a plane that stands upright), and a round
+// profile on a plane put on the curve's end - where the curve is in space, square to it there. The tube is then
+// as thick all the way along: its volume is its section times the curve's length. (The plane was put on the curve's
+// shadow: the profile sat 25 off the curve and 22 degrees askew to it, and the tube came out lumpy and 1.4 % short.)
+{
+  const plane = { origin: [0, 0, 0], xDir: [1, 0, 0], normal: [0, -1, 0] } as const;
+  const path: SketchEntity = { id: "w", kind: "spline", points: [[163, 0], [145, 25], [171, 55], [174, 90], [135, 135]], closed: false, mode: "fit", z: [31, -22, 22, 0, -25] } as SketchEntity;
+  const pts = entityWorldPolylines(path, plane as any)[0];
+  let len = 0;
+  for (let i = 1; i < pts.length; i++) len += Math.hypot(pts[i][0] - pts[i - 1][0], pts[i][1] - pts[i - 1][1], pts[i][2] - pts[i - 1][2]);
+  const end = pts[pts.length - 1];
+  const before = pts[pts.length - 2];
+  const tl = Math.hypot(end[0] - before[0], end[1] - before[1], end[2] - before[2]);
+  const tan = [(end[0] - before[0]) / tl, (end[1] - before[1]) / tl, (end[2] - before[2]) / tl] as [number, number, number];
+  check("in space: its end is 25 off the plane, and the curve leaves the plane's direction there", near(end[1], 25, 1e-6) && Math.abs(tan[1]) > 0.3, `${end.map((v) => v.toFixed(2))} tangent ${tan.map((v) => v.toFixed(3))}`);
+  // Any direction square to the tangent for the plane's x.
+  const xl = Math.hypot(tan[2], tan[0]);
+  const onCurve = { origin: end, normal: tan, xDir: [tan[2] / xl, 0, -tan[0] / xl] as [number, number, number] };
+  const tube = (prof: typeof onCurve, at: [number, number]): Feature[] => [
+    sketch("path", plane as any, [path]),
+    sketch("prof", prof as any, [circle("c", at[0], at[1], 10)]),
+    { id: "S", name: "Sweep", type: "sweep", source: profile("prof", [circle("c", at[0], at[1], 10)]), path: { kind: "sketch", sketch: "path", entities: ["w"] }, mode: "new" } as Feature,
+  ];
+  let t = await after(tube(onCurve, [0, 0]), "S");
+  const said = t.r.notes.map((n) => n.message).join(" ");
+  check("this path bends tighter than the tube is thick (3.3 against 10): the sweep is made, and says so", !t.err && !!t.body && /bends tighter \(a radius of about 3(\.\d)? mm\).*\(10 mm\)/.test(said), said || t.err || "no note");
+  // The same path with gentler rises (a fifth of them) and a thinner rod: as thick all the way - its volume is
+  // its section times the curve's length - and nothing to say.
+  (path as any).z = [6, -4, 4, 0, -5];
+  const soft = entityWorldPolylines(path, plane as any)[0];
+  let run2 = 0;
+  for (let i = 1; i < soft.length; i++) run2 += Math.hypot(soft[i][0] - soft[i - 1][0], soft[i][1] - soft[i - 1][1], soft[i][2] - soft[i - 1][2]);
+  const e2 = soft[soft.length - 1];
+  const b2 = soft[soft.length - 2];
+  const l2 = Math.hypot(e2[0] - b2[0], e2[1] - b2[1], e2[2] - b2[2]);
+  const t2 = [(e2[0] - b2[0]) / l2, (e2[1] - b2[1]) / l2, (e2[2] - b2[2]) / l2] as [number, number, number];
+  const x2 = Math.hypot(t2[2], t2[0]);
+  const square = { origin: e2, normal: t2, xDir: [t2[2] / x2, 0, -t2[0] / x2] as [number, number, number] };
+  const thin = (prof: typeof square, at: [number, number]): Feature[] => [
+    sketch("path", plane as any, [path]),
+    sketch("prof", prof as any, [circle("c", at[0], at[1], 3)]),
+    { id: "S", name: "Sweep", type: "sweep", source: profile("prof", [circle("c", at[0], at[1], 3)]), path: { kind: "sketch", sketch: "path", entities: ["w"] }, mode: "new" } as Feature,
+  ];
+  t = await after(thin(square, [0, 0]), "S");
+  const good = volume(t.body);
+  check("a profile on the curve, square to it: a rod as thick all the way, nothing to say", !t.err && !!t.body && health(t.body!).healthy && near(good, Math.PI * 9 * run2, Math.PI * 9 * run2 * 0.004) && !t.r.notes.length, `${good.toFixed(0)} / ${(Math.PI * 9 * run2).toFixed(0)} (${run2.toFixed(2)} long) ${t.err ?? ""} ${t.r.notes.map((n) => n.message).join(" ")}`);
+}
 done();

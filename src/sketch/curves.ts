@@ -2,7 +2,8 @@
 // Every sketch entity is broken into primitives (line / circular arc /
 // elliptical arc / spline) that can be evaluated at a parameter t ∈ [0, 1].
 
-import type { SketchEntity, Vec2 } from "../doc/types";
+import type { PlaneDef, SketchEntity, Vec2, Vec3 } from "../doc/types";
+import { toWorld } from "../geom";
 
 export type Prim =
   | { t: "line"; a: Vec2; b: Vec2; src: string }
@@ -134,6 +135,23 @@ export function splineHeightSamples(e: SketchEntity): number[] | null {
   const z = splineHeights(e);
   if (!z || e.kind !== "spline") return null;
   return splinePoints(z.map((v): Vec2 => [v, 0]), e.closed && e.points.length > 2, e.mode).map((p) => p[0]);
+}
+
+/**
+ * An entity's drawn polylines where they are in space: on the sketch's plane - and a spline with points off the
+ * plane up where it runs. (What picks a place on a curve - a plane on it, a preview along it - goes by this, not by
+ * the curve's shadow on the plane.)
+ */
+export function entityWorldPolylines(e: SketchEntity, plane: PlaneDef): Vec3[][] {
+  const high = splineHeightSamples(e);
+  const n = plane.normal;
+  return entityPolylines(e).map((poly) =>
+    poly.map((q, i) => {
+      const at = toWorld(plane, q);
+      const h = high ? (high[Math.min(i, high.length - 1)] ?? 0) : 0;
+      return h ? ([at[0] + n[0] * h, at[1] + n[1] * h, at[2] + n[2] * h] as Vec3) : at;
+    }),
+  );
 }
 
 /** Dense polyline for drawing an entity. */

@@ -32,8 +32,8 @@ import { ItemsPanel } from "./ui/items";
 import { OffsetEdgeOp } from "./tools/offsetEdge";
 import { faceFreeformTool } from "./tools/faceFreeform";
 import { bodyCenter, AxisOp, ConnectOp, EdgeOp, ExtrudeOp, FillOp, FillToPlaneOp, ThreadOp, ImageOp, LoftOp, MidplaneOp, MoveFaceOp, PlaneOp, ReplaceFaceOp, ScaleFaceOp, ScaleOp, ScaleRefOp, RevolveOp, ShellOp, SplitOp, SweepOp, TransformOp } from "./tools/ops";
-import { add, dist, scale, toWorld, xDirFor } from "./geom";
-import { entityPolylines } from "./sketch/curves";
+import { add, dist, scale, xDirFor } from "./geom";
+import { entityWorldPolylines } from "./sketch/curves";
 import { FreeformTool } from "./tools/freeform";
 import { sectionPlane, SectionTool, type SectionState } from "./tools/section";
 import { SelectTool } from "./tools/select";
@@ -1004,7 +1004,7 @@ export class App implements AppContext {
       const plane = this.sketchPlane(sid);
       const sk = this.store.find<SketchFeature>(sid);
       if (!plane || !sk) continue;
-      for (const e of sk.entities) for (const pl of entityPolylines(e)) lines.push(pl.map((uv) => toWorld(plane, uv)));
+      for (const e of sk.entities) lines.push(...entityWorldPolylines(e, plane));
     }
     return { bodies: [...bodies].filter((b) => have.has(b)), lines };
   }

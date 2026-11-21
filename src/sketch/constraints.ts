@@ -604,7 +604,7 @@ function solveGroup(entities: SketchEntity[], live: SketchConstraint[], opts: So
       // (The pull pass only has to get near: once a step gains next to nothing
       // it stops - it used to run all 30 steps every frame, as the pull never
       // reaches zero; the exact pass stops once the constraints are met.)
-      xs = lm(xs, 3e-5, true, t, Math.min(30, it), 1e-6, false, 1e-7);
+      xs = lm(xs, 1e-7, true, t, Math.min(30, it), 1e-6, false, 1e-7);
       xs = lm(xs, 1e-8, false, t, it, 1e-10, true, 1e-9);
     } else {
       // A noticeable pull first (smallest change), then almost none (exact constraints).

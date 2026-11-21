@@ -9,8 +9,7 @@
 import { Vector3 } from "three";
 import type { PlaneDef, PlaneFeature, PlaneKind, Vec3 } from "../doc/types";
 import { add, cross, dot, len, norm, scale, sub, xDirFor } from "../geom";
-import { entityPolylines } from "../sketch/curves";
-import { sketchToWorld } from "../view/viewport";
+import { entityWorldPolylines } from "../sketch/curves";
 import type { PanelItem } from "../ui/ui";
 import type { PickHit } from "../view/viewport";
 import { FeatureOp, type Slot } from "./featureOp";
@@ -80,8 +79,9 @@ function curvePick(app: AppContext, hit: PickHit): CurvePick | null {
     const plane = app.sketchPlane(hit.sketch);
     const e = app.sketchCurves(hit.sketch).find((x) => x.id === hit.entity);
     if (!plane || !e) return null;
-    for (const poly of entityPolylines(e)) {
-      const pts = poly.map((q) => sketchToWorld(plane, q).toArray() as Vec3);
+    // (Where the curve is in space: a spline with points off its plane is picked up there, and the plane put on it
+    // is square to it there - it was put on the curve's shadow, off the curve and askew to it.)
+    for (const pts of entityWorldPolylines(e, plane)) {
       const near = nearestOnPolyline(pts, hit.point);
       if (near) return { ...near, line: e.kind === "line" ? [pts[0], pts[pts.length - 1]] : undefined, sel: { kind: "curve", sketch: hit.sketch, entity: hit.entity } };
     }
