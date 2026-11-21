@@ -55,7 +55,8 @@ import { DragTyping } from "./dragTyping";
 import { DimWidget } from "./annotate";
 import { PatternBox } from "./patternBox";
 import { axisDrag, Handle } from "./handles";
-import { ExtrudeOp } from "./ops";
+import { ExtrudeOp, LoftOp, RevolveOp, SweepOp } from "./ops";
+import { splitRegions } from "./select";
 import { CopyToggle, copyMode } from "./copyToggle";
 import type { PanelItem, ToolItem } from "../ui/ui";
 import { evaluate, fmtLen, trim as trimNum } from "../units";
@@ -596,6 +597,8 @@ export class SketchTool implements Tool {
     this.dropOffsetGrip();
     this.regionArrow?.handle.dispose();
     this.regionArrow = null;
+    this.regionQuick?.dispose();
+    this.regionQuick = null;
     // A fillet being sized is kept (before the constraint UI goes away).
     this.finishFillet();
     this.clearOverlays();
@@ -4425,10 +4428,35 @@ export class SketchTool implements Tool {
     handle.set(fr.base, fr.normal);
     this.regionArrow = { sel, handle };
     this.app.setSelection(sel);
-    this.setHint("Drag the arrow to pull the shape into 3D.");
+    // What the shape can be made into, beside it (asked for: "I click on that blue surface, I want the options to
+    // appear (like extrude, revolve etc.)"). Each leaves the sketch and starts on the shapes picked.
+    const app = this.app;
+    const start = (make: () => Tool) => () => {
+      this.hideRegionArrow();
+      app.setTool(make());
+      app.setSelection(sel);
+    };
+    this.regionQuick?.dispose();
+    this.regionQuick = QuickActions.of(
+      app.view,
+      [
+        { id: "extrude", label: "Extrude", icon: "extrude", run: start(() => new ExtrudeOp(app, src, undefined, "auto", { distance: 0 })) },
+        { id: "revolve", label: "Revolve", icon: "revolve", run: start(() => new RevolveOp(app, src)) },
+        { id: "sweep", label: "Sweep", icon: "sweep", run: start(() => new SweepOp(app, src)) },
+        { id: "loft", label: "Loft", icon: "loft", run: start(() => new LoftOp(app, sourcesOf(app, sel).flatMap(splitRegions), sel)) },
+      ],
+      fr.base,
+      { facing: fr.normal, gap: 70 },
+    );
+    this.setHint("Drag the arrow to pull the shape into 3D, or pick what to make of it.");
   }
 
+  /** The tools for the shape tapped in the sketch (Extrude, Revolve, Sweep, Loft), beside it. */
+  private regionQuick: QuickActions | null = null;
+
   private hideRegionArrow(): void {
+    this.regionQuick?.dispose();
+    this.regionQuick = null;
     if (!this.regionArrow) return;
     this.regionArrow.handle.dispose();
     this.regionArrow = null;

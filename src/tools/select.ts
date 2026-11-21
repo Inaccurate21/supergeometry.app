@@ -1492,7 +1492,7 @@ export class SelectTool implements Tool {
 }
 
 /** Loft wants one profile per section. */
-function splitRegions(s: ExtrudeSource): ExtrudeSource[] {
+export function splitRegions(s: ExtrudeSource): ExtrudeSource[] {
   return s.kind === "profile" ? s.regions.map((r) => ({ ...s, regions: [r] })) : [s];
 }
 

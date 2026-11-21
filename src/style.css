@@ -6083,11 +6083,8 @@ body.sentence-ui #panel:not(:has(.text-input)) {
   color: #cfe2ff;
   box-shadow: inset 0 0 0 1px rgba(61, 139, 255, 0.55);
 }
-.sn-word.sn-toggle:not(.on) .sn-text {
-  opacity: 0.55;
-  text-decoration: line-through;
-  text-decoration-color: rgba(255, 255, 255, 0.35);
-}
+/* (A switch that is off is a plain button, as clear to read as the rest: on, it is lit. It was dimmed and struck
+   through, and read as something that could not be used.) */
 /* A number: typed, or dragged sideways. */
 .sn-word.sn-value .sn-text {
   font-variant-numeric: tabular-nums;
