@@ -1094,6 +1094,13 @@ export class Sentence {
         // drawn - the stylesheet's guess at it left a wide list off to one side. A phone held upright: the stylesheet's.)
         const w = this.sheet.offsetWidth;
         this.sheet.style.marginLeft = getComputedStyle(this.sheet).alignSelf === "stretch" ? "" : `${Math.round(Math.max(0, Math.min(lr.width - w, r.left + r.width / 2 - lr.left - w / 2)))}px`;
+      } else {
+        // A list opened from inside another (Construct > Axis): it has no word on the line to stand over - where
+        // the one before it stood, as far as its own width allows. (It kept that one's place whatever its width: a
+        // wider list then ran off the edge of the screen, its last buttons with it.)
+        const w = this.sheet.offsetWidth;
+        const was = parseFloat(this.sheet.style.marginLeft) || 0;
+        this.sheet.style.marginLeft = `${Math.round(Math.max(0, Math.min(lr.width - w, was)))}px`;
       }
     }
     this.lift();
@@ -1137,8 +1144,10 @@ export class Sentence {
     const gcd = (a: number, b: number): number => (b ? gcd(b, a % b) : a);
     for (const g of groups) {
       const kids = Array.from(g.children) as HTMLElement[];
-      const left = kids.length % cols;
-      // (A short last row: its buttons share the row between them.)
+      // (A short last row: its buttons share the row between them - but one button alone keeps its own width, at
+      // the row's start: stretched right across, it was a bar, not a button.)
+      const over = kids.length % cols;
+      const left = over === 1 && cols > 1 ? 0 : over;
       const tracks = left ? (cols * left) / gcd(cols, left) : cols;
       g.style.display = "grid";
       g.style.flexWrap = "";
@@ -1147,9 +1156,11 @@ export class Sentence {
     }
     const width = cols * cell + (cols - 1) * gap + frame;
     sheet.style.maxWidth = "100%";
-    // (All but as wide as the line: the line's whole width, as a phone's lists are.)
-    if (width > room + frame - cell * 0.4) return void (sheet.style.alignSelf = "stretch");
-    sheet.style.width = `${Math.ceil(width)}px`;
+    // Never wider than the line itself. (All but as wide as it, it was left to stretch - and what it stretched to was
+    // the box the line sits in, which on a tablet runs under the panels at the sides: one wide window, its buttons
+    // off the edge of the workspace.)
+    const full = room + frame;
+    sheet.style.width = `${Math.floor(width > full - cell * 0.4 ? full : Math.min(full, Math.ceil(width)))}px`;
     sheet.style.alignSelf = "flex-start";
   }
 

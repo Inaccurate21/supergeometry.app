@@ -6832,10 +6832,7 @@ html[data-screen="phone"] .sn-sheet .sn-group-cap {
   padding-top: 10px;
   border-top: 1px solid rgba(255, 255, 255, 0.08);
 }
-.sn-sheet.sn-kids .sn-group + .sn-group .sn-word {
-  background: rgba(255, 255, 255, 0.03);
-  color: #c3c7cf;
-}
+/* (Its buttons are as clear as the ones above: they can be used. They were drawn darker, and read as switched off.) */
 /* A phone: a passing note comes up under the top bar - along the bottom it lay on the guide text. */
 html[data-screen="phone"] body.sentence-ui #toast {
   bottom: auto;
@@ -7038,4 +7035,35 @@ body.sn-crowd #left-col {
     gap: 1px;
     padding: 3px;
   }
+}
+
+/* Nothing on the line that can be used is greyed (asked for: "verify why some tool modes/options in the bottom bar
+   are greyed out. I don't want that. If something is available to use, make it clear"). What was: the tag over the
+   line that names the pick and the tool (a label, drawn at a third of its strength as a "disabled button"); the
+   small names over a tool's options (Type, Blend, Size); the little arrow that says a word opens a list; and the
+   second part of a list. Only what can't be used now stays dim (undo with nothing to undo; a group with nothing
+   for this pick, which says why when tapped). */
+.sn-word.sn-subject.quiet,
+.sn-word.sn-subject.quiet:disabled {
+  opacity: 1;
+  color: #cdd2dc;
+}
+.sn-word.sn-subject.quiet.on,
+.sn-word.sn-subject.quiet.on:disabled {
+  color: #a9cbff;
+}
+.sn-cap {
+  color: #b3b9c5;
+}
+.sn-more {
+  opacity: 0.9;
+}
+.sn-group-cap {
+  color: #b3b9c5;
+}
+
+/* A phone: the three at the left edge step aside while a list from the line is up (upright, undo and redo rise over
+   the list to where they stand). */
+html[data-screen="phone"] body.sn-open #left-col {
+  visibility: hidden;
 }
