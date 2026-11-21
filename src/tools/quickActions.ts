@@ -76,7 +76,9 @@ export class QuickActions {
     const del = [byId.get("delete"), byId.get("deleteBody")].find(usable);
     const row = del && !picked.includes(del) ? [...picked, del] : picked;
     const rest: ToolItem[] = [];
-    const skip = new Set(["deselect", "reveal", "color", "opacity", "material", "wholePattern"]);
+    // (Beside a corner, not Move/Rotate Body: it moves the whole body, which is not what a corner was picked for -
+    // asked for: "it doesn't make sense to be there". It is still under Transform on the line.)
+    const skip = new Set(["deselect", "reveal", "color", "opacity", "material", "wholePattern", ...(kind === "vertex" ? ["move"] : [])]);
     const gather = (its: ToolItem[]) => {
       for (const it of its) {
         if (!it.label || it.id.startsWith("---") || skip.has(it.id) || it.disabled) continue;
