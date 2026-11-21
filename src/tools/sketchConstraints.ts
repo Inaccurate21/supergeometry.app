@@ -40,12 +40,21 @@ const GLYPH: Partial<Record<ConstraintType, string>> = {
 };
 
 /** Constraints for a button press, from the current selection (empty if it doesn't fit). */
-export function buildConstraints(type: ConstraintType | "hv", pts: PointRef[], curves: SketchEntity[]): SketchConstraint[] {
+export function buildConstraints(type: ConstraintType | "hv", pts: PointRef[], curves: SketchEntity[], all?: SketchEntity[]): SketchConstraint[] {
   if (type === "hv") {
     if (curves.length === 1 && curves[0].kind === "line" && !pts.length) {
       const l = curves[0];
       const horiz = Math.abs(l.b[0] - l.a[0]) >= Math.abs(l.b[1] - l.a[1]);
       return [{ id: uid(), type: horiz ? "horizontal" : "vertical", curves: [l.id] }];
+    }
+    // Two points (a circle's centre and a corner, two ends): level with each other, or one above the other -
+    // whichever they are nearer to. (The solver had it; no button gave it.)
+    if (pts.length === 2 && !curves.length && all) {
+      const [a, b] = pts.map((r) => {
+        const e = all.find((x) => x.id === r.e);
+        return e ? pointOf(e, r.p) : null;
+      });
+      if (a && b && Math.hypot(a[0] - b[0], a[1] - b[1]) > 1e-9) return [{ id: uid(), type: Math.abs(b[0] - a[0]) >= Math.abs(b[1] - a[1]) ? "horizontal" : "vertical", pts }];
     }
     return [];
   }
@@ -64,7 +73,7 @@ export function buildConstraints(type: ConstraintType | "hv", pts: PointRef[], c
     case "fix": {
       // Locking a curve holds all of its points (and a circle's size).
       const all = [...pts, ...curves.flatMap((e) => pointsOf(e).map((q) => ({ e: e.id, p: q.p })))];
-      const sizes = curves.flatMap((e): SketchConstraint[] => (e.kind === "circle" ? [{ id: uid(), type: "dim", curves: [e.id], prop: "diameter", value: 2 * e.radius }] : []));
+      const sizes = curves.flatMap((e): SketchConstraint[] => (e.kind === "circle" ? [{ id: uid(), type: "dim", curves: [e.id], prop: "diameter", value: 2 * e.radius, held: true }] : []));
       return [...all.map((p) => ({ id: uid(), type, pts: [p] })), ...sizes];
     }
     default:
@@ -103,6 +112,8 @@ export function existingConstraints(type: ConstraintType | "hv", constraints: Sk
   // A point counts as selected when it is, or when its curve is.
   const ptIn = (p: PointRef) => ptKeys.has(`${p.e}:${p.p}`) || ids.has(p.e);
   return constraints.filter((c) => {
+    // (The size Lock put on a circle goes with its lock; it was left behind, and the circle unlocked kept its size.)
+    if (type === "fix" && c.type === "dim" && c.held && c.curves?.length === 1 && ids.has(c.curves[0])) return true;
     if (!types.includes(c.type)) return false;
     const cv = c.curves ?? [];
     const cp = c.pts ?? [];

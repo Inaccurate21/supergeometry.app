@@ -272,6 +272,9 @@ interface DragRef {
   at: Vec2;
 }
 
+/** A name as a title: "distance dimension" is "Distance dimension". */
+const titled = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
+
 const refKey = (r: PointRef) => `${r.e}:${r.p}`;
 
 /**
@@ -794,7 +797,7 @@ export class SketchTool implements Tool {
         continue;
       }
       const have = existingConstraints(b.type, this.constraints, this.selPts, curves);
-      const built = have.length ? [] : buildConstraints(b.type, this.selPts, curves);
+      const built = have.length ? [] : buildConstraints(b.type, this.selPts, curves, this.entities);
       if (!have.length && !built.length) continue;
       // H/V says which one it is (the line's nearer to one or the other).
       const t = b.type === "hv" ? (have[0] ?? built[0]).type : b.type;
@@ -977,7 +980,7 @@ export class SketchTool implements Tool {
       return this.selectionChanged();
     }
     const curves = this.pickedCurves();
-    let cs = buildConstraints(type, this.selPts, curves);
+    let cs = buildConstraints(type, this.selPts, curves, this.entities);
     // Lock holds points where they are now.
     if (type === "fix") cs = cs.map((c) => (c.type === "fix" ? { ...c, at: pointOf(this.entities.find((e) => e.id === c.pts![0].e)!, c.pts![0].p) ?? [0, 0] } : c));
     if (!cs.length) return this.app.ui.toast("That constraint doesn't fit the selection");
@@ -988,7 +991,8 @@ export class SketchTool implements Tool {
     const kept = type === "equal" ? this.constraints.filter((c) => !(c.type === "dim" && c.curves?.length === 1 && others.has(c.curves[0]) && ["length", "radius", "diameter"].includes(c.prop ?? ""))) : this.constraints;
     // It goes in: the existing constraints in its way (an angle, a parallel...) give way and are named.
     const res = addForUser(this.entities, kept, cs, first);
-    if (!res.ok) return this.app.ui.toast("Locked points stop that - unlock them first (select, then Unlock)", "error");
+    // (Said as it is: locks in the way, or - with none - the shape itself.)
+    if (!res.ok) return this.app.ui.toast(this.constraints.some((c) => c.type === "fix") ? "Locked points stop that - unlock them first (select, then Unlock)" : "That can't be done with the shape as it is constrained - take a constraint off it first", "error");
     this.commit(res.result.entities, res.constraints);
     if (this.app.store.problems.length) this.app.ui.toast(this.app.store.problems[0], "error");
     else if (res.removed.length) this.app.ui.toast(`Replaced ${[...new Set(res.removed.map(constraintName))].join(", ")}`);
@@ -1009,7 +1013,7 @@ export class SketchTool implements Tool {
     if (c.type === "dim" || c.type === "distance") {
       const kind = c.prop === "angle" ? "angle" : "length";
       this.app.ui.showPanel({
-        title: `${c.prop ?? "distance"} dimension`,
+        title: titled(`${c.prop ?? "distance"} dimension`),
         items: [
           {
             type: "number",
@@ -1026,7 +1030,7 @@ export class SketchTool implements Tool {
       });
       this.app.ui.focusPanel();
     } else {
-      this.app.ui.showPanel({ title: `${c.type} constraint`, items: [], actions: [del], onDone: () => this.deselectConstraint() });
+      this.app.ui.showPanel({ title: titled(c.type === "fix" ? "lock" : c.type === "symmetric" ? "symmetry" : `${c.type} constraint`), items: [], actions: [del], onDone: () => this.deselectConstraint() });
     }
   }
 

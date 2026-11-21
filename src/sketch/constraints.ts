@@ -4,7 +4,7 @@
 // from wandering (so the result is the smallest change that satisfies them).
 
 import type { ConstraintType, PointRef, SketchConstraint, SketchEntity, Vec2 } from "../doc/types";
-import { arcFrom3, entityCorners } from "./curves";
+import { arcFrom3, entityCorners, entityPolylines } from "./curves";
 
 // ------------------------------------------------------------- parameters
 
@@ -36,18 +36,28 @@ function params(e: SketchEntity): number[] {
   }
 }
 
-/** Length per unit of each parameter (1 for coordinates, the radius for angles). */
-function pullScale(e: SketchEntity, p: number[]): number[] {
+/**
+ * A shape with a size of its own (a rectangle, an ellipse, a polygon) keeps it sooner than its place: asked to bring
+ * a corner somewhere, it goes there - it is not squashed towards it. (Each counted the same, a rectangle whose corner
+ * was put on a point 60 away came out 0.00001 tall, and an ellipse flat.)
+ */
+const STIFF = 4;
+
+/**
+ * Length per unit of each parameter (1 for coordinates, the radius for angles). `stiff`: how much sooner a shape
+ * keeps its size and its way round than its place (1 while it is dragged: a corner pulled is the shape pulled about).
+ */
+function pullScale(e: SketchEntity, p: number[], stiff: number): number[] {
   const r = (v: number) => Math.max(Math.abs(v), 1e-9);
   switch (e.kind) {
     case "arc":
-      return p.length === 5 ? [1, 1, 1, r(p[2]), r(p[2])] : p.map(() => 1);
+      return p.length === 5 ? [1, 1, stiff, stiff * r(p[2]), stiff * r(p[2])] : p.map(() => 1);
     case "ellipse":
-      return [1, 1, 1, 1, r(Math.max(e.rx, e.ry))];
+      return [1, 1, stiff, stiff, r(Math.max(e.rx, e.ry))];
     case "rect":
-      return [1, 1, 1, 1, r(Math.hypot(e.w, e.h) / 2)];
+      return [1, 1, stiff, stiff, r(Math.hypot(e.w, e.h) / 2)];
     case "polygon":
-      return [1, 1, 1, r(e.radius)];
+      return [1, 1, stiff, r(e.radius)];
     default:
       return p.map(() => 1);
   }
@@ -185,7 +195,7 @@ function residuals(c: SketchConstraint, get: Lookup): number[] {
       if (a && b) return [a[0] - b[0], a[1] - b[1]];
       // Point on a curve.
       const e = E(0);
-      if (a && e) return [distToEntity(a, e)];
+      if (a && e) return distToEntity(a, e);
       return [];
     }
     case "horizontal":
@@ -223,8 +233,21 @@ function residuals(c: SketchConstraint, get: Lookup): number[] {
       if (line && round) return [distPointLine(round.c, line.a, line.b) - round.r];
       if (r1 && r2) {
         const d = Math.hypot(r1.c[0] - r2.c[0], r1.c[1] - r2.c[1]);
-        // External tangency unless one contains the other.
-        return [Math.min(Math.abs(d - (r1.r + r2.r)), Math.abs(d - Math.abs(r1.r - r2.r)))];
+        // Touching from outside, or one inside the other: whichever is nearer. (With its sign: the smaller of the two
+        // sizes has a kink right at the answer, and the last of the way there was crept.)
+        const out = d - (r1.r + r2.r);
+        const ins = d - Math.abs(r1.r - r2.r);
+        return [Math.abs(out) < Math.abs(ins) ? out : ins];
+      }
+      // A line and an ellipse: the line is as far from the centre as the ellipse reaches that way.
+      const ell = e1.kind === "ellipse" ? e1 : e2.kind === "ellipse" ? e2 : null;
+      if (line && ell) {
+        const l = Math.hypot(line.b[0] - line.a[0], line.b[1] - line.a[1]) || 1;
+        const n: Vec2 = [(line.b[1] - line.a[1]) / l, -(line.b[0] - line.a[0]) / l];
+        const cs = Math.cos(ell.rotation);
+        const sn = Math.sin(ell.rotation);
+        const reach = Math.hypot(ell.rx * (n[0] * cs + n[1] * sn), ell.ry * (-n[0] * sn + n[1] * cs));
+        return [distPointLine(ell.center, line.a, line.b) - reach];
       }
       return [];
     }
@@ -322,11 +345,48 @@ function distPointLineSigned(p: Vec2, a: Vec2, b: Vec2): number {
   return ((p[0] - a[0]) * dy - (p[1] - a[1]) * dx) / l;
 }
 
-function distToEntity(p: Vec2, e: SketchEntity): number {
-  if (e.kind === "line") return distPointLineSigned(p, e.a, e.b);
+function distToEntity(p: Vec2, e: SketchEntity): number[] {
+  if (e.kind === "line") return [distPointLineSigned(p, e.a, e.b)];
   const r = roundOf(e);
-  if (r) return Math.hypot(p[0] - r.c[0], p[1] - r.c[1]) - r.r;
-  return 0;
+  if (r) return [Math.hypot(p[0] - r.c[0], p[1] - r.c[1]) - r.r];
+  if (e.kind === "ellipse") {
+    // In the ellipse's own frame, how far out the point is as a share of the way to it (1: on it).
+    const dx = p[0] - e.center[0];
+    const dy = p[1] - e.center[1];
+    const cs = Math.cos(e.rotation);
+    const sn = Math.sin(e.rotation);
+    const k = Math.hypot((dx * cs + dy * sn) / Math.max(e.rx, 1e-12), (-dx * sn + dy * cs) / Math.max(e.ry, 1e-12));
+    return [(k - 1) * Math.min(e.rx, e.ry)];
+  }
+  // A rectangle, a polygon, a polyline, a spline: from the nearest place on it (a spline: as it is drawn) to the
+  // point, across and up. Two numbers that change evenly as the point goes round a corner, so it gets there from
+  // anywhere and the last of the way is not crept. (It was 0 for all of these: a point "put on" a rectangle's edge
+  // was taken and stayed where it was.)
+  const runs: Vec2[][] = e.kind === "rect" || e.kind === "polygon" ? [closedRun(entityCorners(e))] : e.kind === "polyline" ? [e.closed ? closedRun(e.points) : e.points] : entityPolylines(e);
+  let best = Infinity;
+  let out = [0, 0];
+  for (const run of runs)
+    for (let i = 0; i + 1 < run.length; i++) {
+      const a = run[i];
+      const b = run[i + 1];
+      const ux = b[0] - a[0];
+      const uy = b[1] - a[1];
+      const l2 = ux * ux + uy * uy;
+      if (l2 < 1e-24) continue;
+      const s = ((p[0] - a[0]) * ux + (p[1] - a[1]) * uy) / l2;
+      const c = Math.max(0, Math.min(1, s));
+      const vx = p[0] - a[0] - c * ux;
+      const vy = p[1] - a[1] - c * uy;
+      const d = Math.hypot(vx, vy);
+      if (d >= best) continue;
+      best = d;
+      out = [vx, vy];
+    }
+  return out;
+}
+
+function closedRun(pts: Vec2[]): Vec2[] {
+  return pts.length ? [...pts, pts[0]] : pts;
 }
 
 // ------------------------------------------------------------------ solver
@@ -430,8 +490,43 @@ function solveGroup(entities: SketchEntity[], live: SketchConstraint[], opts: So
     const p = params(e);
     offsets.push(x0.length);
     counts.push(p.length);
-    per.push(...pullScale(e, p));
+    per.push(...pullScale(e, p, opts.drag?.length ? 1 : STIFF));
     x0.push(...p);
+  }
+  // A line asked to lie a way it is far from (Vertical on one nearly level; an angle 130 degrees off): turned there
+  // about its middle first, its length kept. Left to the steps alone it got there by shrinking - shorter is the
+  // shortest way to "upright" - and a line given a far angle ended a speck.
+  if (!opts.drag?.length) {
+    const at = new Map(movers.map((e, i) => [e.id, i]));
+    for (const c of live) {
+      const pair = (c.type === "parallel" || c.type === "perpendicular") && c.curves?.length === 2;
+      // (Parallel, Perpendicular: the second line is the one turned - the first if only that one may move.)
+      const which = pair ? (at.has(c.curves![1]) ? 1 : 0) : 0;
+      const i = (pair || c.curves?.length === 1) && !c.pts?.length ? at.get(c.curves![which]) : undefined;
+      const e = i === undefined ? undefined : movers[i];
+      if (i === undefined || e?.kind !== "line") continue;
+      const now = Math.atan2(e.b[1] - e.a[1], e.b[0] - e.a[0]);
+      let want: number | null = null;
+      if (pair) {
+        const o = entities.find((x) => x.id === c.curves![1 - which]);
+        if (o?.kind !== "line") continue;
+        const base = Math.atan2(o.b[1] - o.a[1], o.b[0] - o.a[0]) + (c.type === "perpendicular" ? Math.PI / 2 : 0);
+        // (Either way along it will do: the nearer.)
+        want = Math.abs(wrap(base - now)) <= Math.PI / 2 ? base : base + Math.PI;
+      }
+      if (c.type === "dim" && c.prop === "angle" && c.value !== undefined) want = (c.value * Math.PI) / 180;
+      else if (c.type === "horizontal") want = Math.abs(wrap(now)) < Math.PI / 2 ? 0 : Math.PI;
+      else if (c.type === "vertical") want = wrap(now) > 0 ? Math.PI / 2 : -Math.PI / 2;
+      if (want === null || Math.abs(wrap(want - now)) < Math.PI / 6) continue;
+      const o = offsets[i];
+      const mx = (e.a[0] + e.b[0]) / 2;
+      const my = (e.a[1] + e.b[1]) / 2;
+      const h = Math.hypot(e.b[0] - e.a[0], e.b[1] - e.a[1]) / 2;
+      x0[o] = mx - h * Math.cos(want);
+      x0[o + 1] = my - h * Math.sin(want);
+      x0[o + 2] = mx + h * Math.cos(want);
+      x0[o + 3] = my + h * Math.sin(want);
+    }
   }
   const byId = new Map(entities.map((e) => [e.id, e]));
   const build = (x: number[]) => {
@@ -509,7 +604,7 @@ function solveGroup(entities: SketchEntity[], live: SketchConstraint[], opts: So
       // (The pull pass only has to get near: once a step gains next to nothing
       // it stops - it used to run all 30 steps every frame, as the pull never
       // reaches zero; the exact pass stops once the constraints are met.)
-      xs = lm(xs, 1e-3, true, t, Math.min(30, it), 1e-6, false, 1e-7);
+      xs = lm(xs, 3e-4, true, t, Math.min(30, it), 1e-6, false, 1e-7);
       xs = lm(xs, 1e-8, false, t, it, 1e-10, true, 1e-9);
     } else {
       // A noticeable pull first (smallest change), then almost none (exact constraints).
@@ -665,8 +760,15 @@ function solveGroup(entities: SketchEntity[], live: SketchConstraint[], opts: So
       for (let a = 0; a < n; a++) for (let b = a + 1; b < n; b++) A[b][a] = A[a][b];
       let improved = false;
       let gain = 0;
+      // Damped the same in every direction (each parameter in its own length): the step is then the shortest one
+      // that does it. Damped by each parameter's own share (Marquardt's way), a sketch with room to spare - most
+      // are - stepped furthest in the direction that helped least: a line given a length drew its ends together
+      // sideways until it stood upright, and stopped there, the length not met.
+      let mean = 0;
+      for (let i = 0; i < n; i++) mean += A[i][i] / (per[i] * per[i]);
+      mean = mean / Math.max(1, n) || 1;
       for (let tries = 0; tries < 8; tries++) {
-        const diag = A.map((rowA, i) => rowA[i] * (1 + lambda) + 1e-12);
+        const diag = A.map((rowA, i) => rowA[i] + lambda * mean * per[i] * per[i] + 1e-12);
         let dx = solveSPD(A, diag, g);
         if (!dx) {
           const M = A.map((rowA, i) => rowA.map((v, j) => (i === j ? diag[i] : v)));
@@ -954,7 +1056,9 @@ export function applicable(type: ConstraintType, pts: PointRef[], curves: Sketch
     case "equal":
       return curves.length === 2 && (lines.length === 2 || rounds.length === 2);
     case "tangent":
-      return curves.length === 2 && rounds.length >= 1;
+      // A circle or an arc with a line or another of them; a line with an ellipse. (It was offered for a circle with
+      // anything - a rectangle, a spline, an ellipse - and taken, and did nothing.)
+      return curves.length === 2 && (rounds.length === 2 || (rounds.length === 1 && lines.length === 1) || (lines.length === 1 && curves.some((e) => e.kind === "ellipse")));
     case "concentric":
       return curves.length === 2 && curves.every((e) => e.kind !== "line" && e.kind !== "spline" && e.kind !== "polyline");
     case "midpoint":

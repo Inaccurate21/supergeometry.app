@@ -145,6 +145,8 @@ export interface SketchConstraint {
   atExpr?: (string | null)[];
   /** pattern: "turn" - the copy is the original turned `value` degrees round `at`; else moved by `at`. */
   turn?: boolean;
+  /** dim: put on by Lock (a locked circle keeps its size) - Unlock takes it off with the lock. */
+  held?: boolean;
 }
 
 export interface SketchFeature extends FeatureBase {
