@@ -2736,12 +2736,16 @@ function threadTarget(body: Shape3D, f: Extract<Feature, { type: "thread" }>): F
  * a ridge) is the reliable way: a ridge only just overlapping its core can
  * come out of OpenCascade wrong without a word.
  */
-export function threadFace(body: Shape3D, face: Face, pitch: number, left = false, like?: { t0: number; t1: number; phase?: number; shallow?: number }, used?: { phase?: number }): Shape3D {
+export function threadFace(body: Shape3D, face: Face, pitch: number, left = false, like?: { t0: number; t1: number; anchor?: number; phase?: number; shallow?: number; c?: Vec3; a?: Vec3 }, used?: { phase?: number }): Shape3D {
   if (face.geomType !== "CYLINDRE") throw new Error("Threads go on round faces (a shank or a hole)");
   if (!(pitch > 0)) throw new Error("The pitch must be more than 0");
   // (Finer than any standard thread: it failed with "try a slightly different pitch".)
   if (pitch < 0.2 - 1e-9) throw new Error("That pitch is too fine - the finest is 0.2 mm");
-  const cy = cylinderOf(face);
+  const cy0 = cylinderOf(face);
+  // (`like.c`, `like.a`: measured from the same point along the same axis as another thread. A face's own centre
+  // and the way its axis points are the kernel's choice, and differ from one body to the same body grown - the
+  // turns then started somewhere else, and ran into the first thread's.)
+  const cy = cy0 && like?.c && like.a ? { ...cy0, c: like.c, a: like.a } : cy0;
   if (!cy) throw new Error("Threads go on round faces (a shank or a hole)");
   const inside = cy.s < 0;
   // (`like.shallow`: a groove that much less deep, and so that much narrower - the thread of a body grown by a
@@ -2788,7 +2792,7 @@ export function threadFace(body: Shape3D, face: Face, pitch: number, left = fals
       return false;
     }
   };
-  const res = threadCut(body, face, cy, a, pitch, left, inside, depth, tip, mouth, hm, t0, t1, like?.phase, used);
+  const res = threadCut(body, face, cy, a, pitch, left, inside, depth, tip, mouth, hm, t0, t1, like?.phase, used, like?.anchor);
   if (res) {
     let r = res;
     for (const [t, way] of [[t0, -1], [t1, 1]] as const) if (freeAt(t, way)) r = threadEndChamfer(r, cy.c, a, side, cy.r, tip, out, t, way, pitch) ?? r;
@@ -2842,6 +2846,7 @@ function threadCut(
   t1: number,
   only?: number,
   used?: { phase?: number },
+  anchor?: number,
 ): Shape3D | null {
   const lo = t0 + 0.05 * pitch;
   const hi = t1 - 0.05 * pitch;
@@ -2876,7 +2881,8 @@ function threadCut(
   // trips on one start (a groove lining up with the face's seams), another
   // is tried.
   for (const phase of only !== undefined ? [only] : [0, 0.37, 0.71]) {
-    const start = lo - pitch * (1 + phase);
+    // (`anchor`: where another thread's stretch began - the turns start from there, whatever stretch this one has.)
+    const start = (anchor !== undefined ? anchor + 0.05 * pitch : lo) - pitch * (1 + phase);
     const turns = Math.ceil((hi - start) / pitch) + 1;
     // An exact helix (a line wound on a cylinder, not a fitted spline: those
     // drift over many turns and the sweep fails), through the groove's middle.
@@ -3259,12 +3265,15 @@ function grownThreaded(s: Shape3D, by: number, bodyId: string): Shape3D[] | null
     let plain = s;
     const v0 = Math.abs(measureVolume(s));
     for (const t of cut) {
+      // The whole band the thread is in - from under its roots to its round face - taken out and put back as one
+      // clean ring. (A cylinder simply added over the grooves left their edges in the body: grown, that body broke
+      // the engine.)
       const depth = threadDepth(t.pitch, t.inside) * 1.05 + 0.25 * t.pitch;
       const from = add(t.c, scale(t.a, t.t0));
-      const fill = t.inside
-        ? ((makeCylinder(t.r + depth, t.t1 - t.t0, from, t.a) as Shape3D).cut(makeCylinder(t.r, t.t1 - t.t0, from, t.a) as Shape3D) as Shape3D)
-        : (makeCylinder(t.r, t.t1 - t.t0, from, t.a) as Shape3D);
-      plain = unify(plain.fuse(fill) as Shape3D);
+      const h = t.t1 - t.t0;
+      const [inner, outer] = t.inside ? [t.r, t.r + depth] : [Math.max(t.r - depth, t.r * 0.05), t.r];
+      const ring = (makeCylinder(outer, h, from, t.a) as Shape3D).cut(makeCylinder(inner, h, from, t.a) as Shape3D) as Shape3D;
+      plain = unify((plain.cut(ring.clone()) as Shape3D).fuse(ring) as Shape3D);
     }
     // (Nothing filled: there is no thread on it now - something else was done to it since.)
     if (!(Math.abs(measureVolume(plain)) > v0 * (1 + 1e-9))) return null;
@@ -3284,7 +3293,14 @@ function grownThreaded(s: Shape3D, by: number, bodyId: string): Shape3D[] | null
         return len(sub(d, scale(t.a, dot(d, t.a)))) < 1e-4 * Math.max(1, want);
       });
       if (!face) return null;
-      out = threadFace(out, face, t.pitch, t.left, { t0: t.t0, t1: t.t1, phase: t.phase, shallow: by });
+      // Along the first thread's own stretch - but not into what has grown towards it: an end that stops at a
+      // shoulder (under a bolt's head) stops the clearance short of where it did, the shoulder having come that
+      // much nearer. (Run on to the old end, the groove cut into the grown head, and the hole had a ridge there.)
+      const along: number[] = [];
+      for (const e of face.edges) for (const k of [0, 0.25, 0.5, 0.75, 1]) along.push(dot(sub(e.pointAt(k).toTuple() as Vec3, t.c), t.a));
+      const g0 = Math.min(...along);
+      const g1 = Math.max(...along);
+      out = threadFace(out, face, t.pitch, t.left, { t0: Math.max(t.t0, g0), t1: Math.min(t.t1, g1), anchor: t.t0, phase: t.phase, shallow: by, c: t.c, a: t.a });
     }
     return Math.abs(measureVolume(out)) > 0 ? [out] : null;
   } catch (err) {

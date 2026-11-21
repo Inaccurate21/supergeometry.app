@@ -54,6 +54,42 @@ export function partsList(app: AppContext, props: Map<string, BodyProps>): PartR
 
 const len = (mm: number) => trim(mm / UNIT_MM[units()], 2);
 
+let afterPrint: (() => void) | null = null;
+/**
+ * The print window, with `cls` on the page while it is up (the styles for printing go by it) and `extra` (a style,
+ * the sheets to print) in the page that long. Put right when printing is over, not when print() returns: on a phone
+ * print() returns at once, before the preview has drawn the page - what it then drew was the page put back already
+ * (a blank sheet, or the app itself).
+ */
+export function printPage(cls: string, ...extra: HTMLElement[]): void {
+  afterPrint?.();
+  let over = false;
+  const tidy = () => {
+    if (over) return;
+    over = true;
+    afterPrint = null;
+    removeEventListener("afterprint", tidy);
+    removeEventListener("focus", late);
+    document.body.classList.remove(cls);
+    for (const e of extra) e.remove();
+  };
+  // (A browser that never says printing is over: tidied when the app is come back to, a moment after.)
+  const late = () => setTimeout(() => !matchMedia("print").matches && tidy(), 1500);
+  afterPrint = tidy;
+  document.body.classList.add(cls);
+  addEventListener("afterprint", tidy);
+  const t0 = performance.now();
+  try {
+    window.print();
+  } catch {
+    tidy();
+    return;
+  }
+  // (print() that waited for the window to close - a computer's browser: over now, whether or not it said so.)
+  if (performance.now() - t0 > 400) tidy();
+  else addEventListener("focus", late);
+}
+
 export async function openSheet(app: AppContext): Promise<void> {
   document.querySelector(".bim-sheet")?.remove();
   const back = el("div", "bim-sheet");
@@ -75,11 +111,7 @@ export async function openSheet(app: AppContext): Promise<void> {
   };
   window.addEventListener("keydown", onKey, true);
   close.addEventListener("click", shut);
-  print.addEventListener("click", () => {
-    document.body.classList.add("printing-sheet");
-    window.print();
-    document.body.classList.remove("printing-sheet");
-  });
+  print.addEventListener("click", () => printPage("printing-sheet"));
 
   let rows: PartRow[] = [];
   try {

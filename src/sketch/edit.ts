@@ -6,7 +6,7 @@ import { roundSig, toPlane, toWorld } from "../geom";
 import type { Arrangement, Region } from "./regions";
 import { constraintError, pointOf, pointsOf, refsOf, solve } from "./constraints";
 import { fitSpline } from "./freehand";
-import { arcFrom3, closestOnPrim, entityCorners, entityPrims, evalPrim, isClosedPrim, primSegments, samplePrim, type Prim } from "./curves";
+import { arcFrom3, closestOnPrim, entityCorners, entityPrims, evalPrim, isClosedPrim, primSegments, samplePrim, splineHeights, splineHeightSamples, type Prim } from "./curves";
 
 export function uid(): string {
   return Math.random().toString(36).slice(2, 10);
@@ -454,6 +454,7 @@ function moveEnd(e: SketchEntity, end: "a" | "b", to: Vec2): SketchEntity {
     // The end fit point moves there.
     const pts = [...e.points];
     pts[end === "a" ? 0 : pts.length - 1] = to;
+    // (Its heights stay with its points: the spread above keeps them.)
     return { ...e, points: pts };
   }
   if (e.kind !== "arc") return e;
@@ -671,15 +672,21 @@ export function splitAny(entities: SketchEntity[], id: string, at: Vec2, step: n
     const T = closestOnPrim(prim, P).t;
     const spans = closed ? pts.length : pts.length - 1;
     const s = Math.max(0, Math.min(spans - 1, Math.floor(T * spans + 1e-9)));
+    // A spline with points off the plane: each piece keeps its points' heights, and the new end is as high as the
+    // curve is there. (The pieces came out flat on the plane.)
+    const z = splineHeights(e);
+    const high = z ? splineHeightSamples(e) : null;
+    const zP = high ? (high[Math.max(0, Math.min(high.length - 1, Math.round(T * (high.length - 1))))] ?? 0) : 0;
+    const up = (list: number[]) => (z ? { z: list } : {});
     if (closed) {
       // A closed loop opens up at that point (one piece, both ends there).
       const ring = [...pts.slice(s + 1), ...pts.slice(0, s + 1)];
-      const open: SketchEntity = { id, kind: "spline", points: [P, ...ring, P], closed: false, mode, construction: e.construction };
+      const open: SketchEntity = { id, kind: "spline", points: [P, ...ring, P], closed: false, mode, construction: e.construction, ...up(z ? [zP, ...z.slice(s + 1), ...z.slice(0, s + 1), zP] : []) };
       return { entities: entities.map((x) => (x.id === id ? open : x)), parts: [id], exploded: true };
     }
     const n = newId();
-    const first: SketchEntity = { id, kind: "spline", points: [...pts.slice(0, s + 1), P], closed: false, mode, construction: e.construction };
-    const second: SketchEntity = { id: n, kind: "spline", points: [P, ...pts.slice(s + 1)], closed: false, mode, construction: e.construction };
+    const first: SketchEntity = { id, kind: "spline", points: [...pts.slice(0, s + 1), P], closed: false, mode, construction: e.construction, ...up(z ? [...z.slice(0, s + 1), zP] : []) };
+    const second: SketchEntity = { id: n, kind: "spline", points: [P, ...pts.slice(s + 1)], closed: false, mode, construction: e.construction, ...up(z ? [zP, ...z.slice(s + 1)] : []) };
     return { entities: entities.flatMap((x) => (x.id === id ? [first, second] : [x])), parts: [id, n], exploded: false };
   }
   return null;

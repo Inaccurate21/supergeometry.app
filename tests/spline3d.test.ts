@@ -5,7 +5,7 @@ import type { Shape3D } from "replicad";
 import { after, bodies, check, circle, done, health, near, profile, sketch, volume, XY, YZ } from "./kit";
 import type { Feature, SketchEntity } from "../src/doc/types";
 import { entityPolylines, entityWorldPolylines, splineHeightSamples, splineHeights } from "../src/sketch/curves";
-import { transformEntity } from "../src/sketch/edit";
+import { splitAny, transformEntity } from "../src/sketch/edit";
 import { solve } from "../src/sketch/constraints";
 
 const flat: SketchEntity = { id: "p", kind: "spline", points: [[0, 0], [40, 0], [80, 0], [120, 0]], closed: false, mode: "fit" };
@@ -96,5 +96,38 @@ check("as long as the curve through space", run > 125 && near(vHigh, Math.PI * 9
   t = await after(thin(square, [0, 0]), "S");
   const good = volume(t.body);
   check("a profile on the curve, square to it: a rod as thick all the way, nothing to say", !t.err && !!t.body && health(t.body!).healthy && near(good, Math.PI * 9 * run2, Math.PI * 9 * run2 * 0.004) && !t.r.notes.length, `${good.toFixed(0)} / ${(Math.PI * 9 * run2).toFixed(0)} (${run2.toFixed(2)} long) ${t.err ?? ""} ${t.r.notes.map((n) => n.message).join(" ")}`);
+}
+
+// Split in two: each piece keeps its points' heights, and where they part the two are as high as the curve was.
+{
+  const whole: SketchEntity = { id: "w", kind: "spline", points: [[0, 0], [40, 0], [80, 0], [120, 0]], closed: false, mode: "fit", z: [0, 30, 30, 0] } as SketchEntity;
+  let n = 0;
+  const out = splitAny([whole], "w", [60, 0], 1, true, () => `n${++n}`)!;
+  const [a, b] = out.entities as any[];
+  const at = (e: any, i: number) => [e.points[i][0], e.z?.[i]];
+  check("split: two pieces, both with heights for each of their points", out.entities.length === 2 && a.z?.length === a.points.length && b.z?.length === b.points.length, JSON.stringify(out.entities.map((e: any) => [e.points.length, e.z])));
+  const hA = splineHeightSamples(a)!;
+  const hB = splineHeightSamples(b)!;
+  check("split: they meet at the same height, the curve's own there (30 at its top)", near(hA[hA.length - 1], hB[0], 1e-9) && hA[hA.length - 1] > 29 && hA[hA.length - 1] < 34, `${hA[hA.length - 1]} / ${hB[0]}`);
+  check("split: the far ends are as they were (on the plane)", near(at(a, 0)[1], 0) && near(at(b, b.points.length - 1)[1], 0));
+  // A flat one split stays flat (no heights made up).
+  const flat2 = splitAny([{ ...whole, z: undefined } as SketchEntity], "w", [60, 0], 1, true, () => `m${++n}`)!;
+  check("split of a flat spline: flat pieces", (flat2.entities as any[]).every((e) => e.z === undefined));
+}
+
+// A loft's guide through space: a small circle to a bigger one 30 up, along a curve that bows 12 out of its plane.
+{
+  const lo = sketch("a", XY(), [circle("ca", 0, 0, 3)]);
+  const hi = sketch("b", XY(30), [circle("cb", 0, 0, 3)]);
+  const sec = (s: Feature, id: string) => ({ kind: "profile", sketch: s.id, regions: (profile(s.id, [circle(id, 0, 0, 3)]) as any).regions });
+  const guide = (z?: number[]): Feature => ({ id: "g", name: "g", type: "sketch", plane: { origin: [0, 0, 0], xDir: [1, 0, 0], normal: [0, -1, 0] }, entities: [{ id: "s", kind: "spline", points: [[0, 0], [0, 10], [0, 20], [0, 30]], closed: false, mode: "fit", ...(z ? { z } : {}) }] }) as unknown as Feature;
+  const loft = { id: "L", name: "Loft", type: "loft", sections: [sec(lo, "ca"), sec(hi, "cb")], ruled: false, mode: "new", guide: { kind: "sketch", sketch: "g", entities: ["s"] } } as unknown as Feature;
+  let r = await after([lo, hi, guide(), loft], "L");
+  const straight = r.body ? r.body.boundingBox.bounds : null;
+  check("a loft along a flat guide: a straight rod", !r.err && !!straight && near(straight[0][1], -3, 0.05) && near(straight[1][1], 3, 0.05), r.err ?? JSON.stringify(straight));
+  r = await after([lo, hi, guide([0, 12, 12, 0]), loft], "L");
+  const bowed = r.body ? r.body.boundingBox.bounds : null;
+  // (The plane's normal is -Y: 12 off it is 12 towards -Y.)
+  check("along the same guide bowed 12 off its plane: the rod bows out with it, and is sound", !r.err && !!bowed && bowed[0][1] < -12 && bowed[0][1] > -17 && near(bowed[1][1], 3, 0.6) && health(r.body!).healthy, r.err ?? JSON.stringify(bowed));
 }
 done();

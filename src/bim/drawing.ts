@@ -16,7 +16,7 @@ import { measureBodies } from "./bimTool";
 import { SheetCamera } from "./sheetCamera";
 import { sheetToDXF } from "../io/sheetDxf";
 import { zip } from "../io/threemf";
-import { partsList, type PartRow } from "./sheet";
+import { partsList, printPage, type PartRow } from "./sheet";
 import {
   arrangeDims,
   drawingsOf,
@@ -1995,11 +1995,7 @@ export async function openDrawing(app: AppContext, which?: string): Promise<void
     const holder = el("div", "bim-drawing-print");
     holder.innerHTML = sheetOut();
     document.body.append(holder);
-    document.body.classList.add("printing-drawing");
-    window.print();
-    document.body.classList.remove("printing-drawing");
-    holder.remove();
-    page.remove();
+    printPage("printing-drawing", holder, page);
   });
   svgBtn.addEventListener("click", () => {
     const a = document.createElement("a");
@@ -2059,11 +2055,7 @@ export async function openDrawing(app: AppContext, which?: string): Promise<void
       holder.append(one);
     }
     document.body.append(holder);
-    document.body.classList.add("printing-drawing");
-    window.print();
-    document.body.classList.remove("printing-drawing");
-    holder.remove();
-    page.remove();
+    printPage("printing-drawing", holder, page);
   };
   const printAll = async () => {
     const sheets = await allSheets("Print");
