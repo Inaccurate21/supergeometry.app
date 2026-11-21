@@ -3187,7 +3187,8 @@ body.history-open #viewcube-host {
 /* Phones sideways: the column's buttons a little shorter but wider (easy to
    tap), so all of them (nine while sketching) fit its height without a scroll bar. */
 @media (orientation: landscape) and (max-height: 500px) {
-  #right-col {
+  #right-col,
+  #left-col {
     gap: 1px;
     padding: 3px;
   }
@@ -7006,19 +7007,10 @@ html[data-screen="phone"] .bim-dtools:has(.bim-dtool.sub) .bim-dtool.sub {
 #left-col:empty {
   display: none;
 }
-#left-col .right-btn {
-  width: 48px;
-  min-height: 42px;
-}
+/* (Its buttons are the right column's own: the same width and height at every size of screen.) */
 body.headset #left-col,
 body.drawing-open #left-col {
   display: none;
-}
-/* A phone on its side: little height - the three smaller, as the right column's are. */
-@media (max-height: 480px) {
-  #left-col .right-btn {
-    min-height: 31px;
-  }
 }
 
 /* A short screen (a phone on its side): Items is a card at the top left that reaches the middle - the three stand
