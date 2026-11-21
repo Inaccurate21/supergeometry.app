@@ -8,6 +8,7 @@
 
 import type { SketchEntity, Vec2 } from "../doc/types";
 import { uid } from "../sketch/edit";
+import { entityPrims, samplePrim, type Prim } from "../sketch/curves";
 
 /** 2D affine map [a b c d e f]: x' = a x + c y + e, y' = b x + d y + f (SVG's matrix order). */
 type M = [number, number, number, number, number, number];
@@ -405,4 +406,61 @@ function shift(e: SketchEntity, dx: number, dy: number): SketchEntity {
     default:
       return e;
   }
+}
+
+/**
+ * A sketch's curves as an SVG file's text: millimetres, the page just round the drawing, up as in the sketch (SVG's
+ * y runs down, so it is turned over). Lines, circles and arcs stay exact; ellipses and splines are fine polylines.
+ * Construction curves are in a group of their own, dashed.
+ */
+export function sketchToSVG(entities: SketchEntity[], title = "Sketch"): string {
+  const f = (v: number) => String(Math.round(v * 1e4) / 1e4 || 0);
+  const pt = (p: Vec2) => `${f(p[0])} ${f(-p[1])}`;
+  let lo: Vec2 = [Infinity, Infinity];
+  let hi: Vec2 = [-Infinity, -Infinity];
+  const see = (p: Vec2) => {
+    lo = [Math.min(lo[0], p[0]), Math.min(lo[1], -p[1])];
+    hi = [Math.max(hi[0], p[0]), Math.max(hi[1], -p[1])];
+  };
+  const TAU = Math.PI * 2;
+  const draw = (p: Prim): string => {
+    if (p.t === "line") {
+      see(p.a);
+      see(p.b);
+      return `<path d="M${pt(p.a)} L${pt(p.b)}"/>`;
+    }
+    if (p.t === "circle") {
+      const at = (t: number): Vec2 => [p.c[0] + p.r * Math.cos(t), p.c[1] + p.r * Math.sin(t)];
+      // (Its whole round counted for the page's size: an arc can bulge past its ends.)
+      for (const q of samplePrim(p, 0, 1, 32)) see(q);
+      if (Math.abs(Math.abs(p.sweep) - TAU) < 1e-9) return `<circle cx="${f(p.c[0])}" cy="${f(-p.c[1])}" r="${f(p.r)}"/>`;
+      // Turned over, anticlockwise in the sketch is clockwise on the page: sweep flag 0 for a positive sweep.
+      return `<path d="M${pt(at(p.a0))} A${f(p.r)} ${f(p.r)} 0 ${Math.abs(p.sweep) > Math.PI ? 1 : 0} ${p.sweep > 0 ? 0 : 1} ${pt(at(p.a0 + p.sweep))}"/>`;
+    }
+    const closed = p.t === "spline" ? p.closed : Math.abs(Math.abs(p.sweep) - TAU) < 1e-9;
+    let pts = samplePrim(p, 0, 1, p.t === "spline" ? Math.max(64, p.pts.length * 16) : 128);
+    if (closed && pts.length > 1) pts = pts.slice(0, -1);
+    pts.forEach(see);
+    return `<path d="M${pts.map(pt).join(" L")}${closed ? " Z" : ""}"/>`;
+  };
+  const solid: string[] = [];
+  const construction: string[] = [];
+  for (const e of entities) for (const p of entityPrims(e)) (e.construction ? construction : solid).push(draw(p));
+  if (!Number.isFinite(lo[0])) [lo, hi] = [[0, 0], [1, 1]];
+  const pad = Math.max(1, Math.max(hi[0] - lo[0], hi[1] - lo[1]) * 0.02);
+  const w = hi[0] - lo[0] + pad * 2;
+  const h = hi[1] - lo[1] + pad * 2;
+  const stroke = Math.max(0.05, Math.min(0.35, Math.max(w, h) / 600));
+  const safe = title.replace(/[<>&]/g, "");
+  return [
+    `<?xml version="1.0" encoding="UTF-8"?>`,
+    `<svg xmlns="http://www.w3.org/2000/svg" width="${f(w)}mm" height="${f(h)}mm" viewBox="${f(lo[0] - pad)} ${f(lo[1] - pad)} ${f(w)} ${f(h)}">`,
+    `<title>${safe}</title>`,
+    `<g fill="none" stroke="#000" stroke-width="${f(stroke)}" stroke-linecap="round" stroke-linejoin="round">`,
+    ...solid,
+    `</g>`,
+    ...(construction.length ? [`<g id="construction" fill="none" stroke="#888" stroke-width="${f(stroke)}" stroke-dasharray="${f(stroke * 6)} ${f(stroke * 4)}">`, ...construction, `</g>`] : []),
+    `</svg>`,
+    "",
+  ].join("\n");
 }

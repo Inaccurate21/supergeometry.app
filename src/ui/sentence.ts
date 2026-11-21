@@ -1037,6 +1037,7 @@ export class Sentence {
       if (!w?.value) return void this.close();
       this.sheet.hidden = false;
       this.sheet.className = "sn-sheet sn-typing";
+      this.sheet.style.width = this.sheet.style.maxWidth = this.sheet.style.alignSelf = "";
       this.sheet.style.marginLeft = "";
       return this.type(w);
     }
@@ -1068,6 +1069,7 @@ export class Sentence {
       this.fill(box.lastElementChild as HTMLElement, g.words, !same);
     });
     this.sheet.querySelector(".sn-others")?.remove();
+    this.fit();
     // A phone held upright (the list is as wide as the screen): no taller than leaves the buttons at the right edge
     // clear above it - it scrolls instead.
     this.sheet.style.maxHeight = "";
@@ -1094,6 +1096,60 @@ export class Sentence {
       }
     }
     this.lift();
+  }
+
+  /**
+   * The open list made the size of what is in it (asked for: "auto adjustable based on how many buttons are in that
+   * window. Right now it opens and it has empty space"). Its buttons in even rows - as many across as fit, the rows
+   * as near the same length as they come - each as wide as the widest, and a last row that is short has its buttons
+   * wider, so no row ends in a gap. The list is then just as wide as its rows. (It was one width for any number of
+   * buttons, each row ending where its words happened to.)
+   */
+  private fit(): void {
+    const sheet = this.sheet;
+    const groups = Array.from(sheet.querySelectorAll<HTMLElement>(".sn-group-words"));
+    if (!groups.length) return;
+    const phone = document.documentElement.dataset.screen === "phone";
+    // As they come, to see how wide the widest is.
+    sheet.style.width = sheet.style.maxWidth = sheet.style.alignSelf = "";
+    for (const g of groups) {
+      g.style.display = "flex";
+      g.style.flexWrap = "wrap";
+      g.style.gridTemplateColumns = "";
+      for (const k of Array.from(g.children) as HTMLElement[]) k.style.gridColumn = "";
+    }
+    let widest = 0;
+    let most = 0;
+    for (const g of groups) {
+      most = Math.max(most, g.children.length);
+      for (const k of Array.from(g.children) as HTMLElement[]) widest = Math.max(widest, k.offsetWidth);
+    }
+    const gap = parseFloat(getComputedStyle(groups[0]).columnGap) || 5;
+    const cs = getComputedStyle(sheet);
+    const frame = parseFloat(cs.paddingLeft) + parseFloat(cs.paddingRight) + parseFloat(cs.borderLeftWidth) + parseFloat(cs.borderRightWidth);
+    const room = this.line.getBoundingClientRect().width - frame;
+    const cell = Math.min(room, Math.max(widest, phone ? 92 : 84));
+    // (Up to five in one row; more than that, four across - a card, not a strip.)
+    const fits = Math.max(1, Math.min(most <= 5 ? 5 : 4, Math.floor((room + gap) / (cell + gap))));
+    const rows = Math.ceil(most / fits);
+    const cols = Math.max(1, Math.ceil(most / rows));
+    const gcd = (a: number, b: number): number => (b ? gcd(b, a % b) : a);
+    for (const g of groups) {
+      const kids = Array.from(g.children) as HTMLElement[];
+      const left = kids.length % cols;
+      // (A short last row: its buttons share the row between them.)
+      const tracks = left ? (cols * left) / gcd(cols, left) : cols;
+      g.style.display = "grid";
+      g.style.flexWrap = "";
+      g.style.gridTemplateColumns = `repeat(${tracks}, minmax(0, 1fr))`;
+      kids.forEach((k, i) => (k.style.gridColumn = `span ${i >= kids.length - left ? tracks / left : tracks / cols}`));
+    }
+    const width = cols * cell + (cols - 1) * gap + frame;
+    sheet.style.maxWidth = "100%";
+    // (All but as wide as the line: the line's whole width, as a phone's lists are.)
+    if (width > room + frame - cell * 0.4) return void (sheet.style.alignSelf = "stretch");
+    sheet.style.width = `${Math.ceil(width)}px`;
+    sheet.style.alignSelf = "flex-start";
   }
 
   /** A number typed right there: Enter (or a tap elsewhere) sets it, Esc leaves it as it was. */

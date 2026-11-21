@@ -3,10 +3,21 @@ import type { PlaneDef } from "../doc/types";
 import { planeY } from "../geom";
 
 /**
- * Infinite-looking grid that adapts its spacing to the zoom level (powers of
- * ten, 0.001 mm … 1 000 000 mm), or stays at a locked step. It lies on the
- * ground, or on the active sketch plane while sketching.
+ * Infinite-looking grid that adapts its spacing to the zoom level, or stays at a locked step. It lies on the ground,
+ * or on the active sketch plane while sketching.
+ *
+ * Its smallest squares are what a sketch snaps to: 1, 5 or 10 (times a power of ten), the smallest of them at least
+ * ten pixels wide. (They were powers of ten only, up to a hundred pixels wide, and the snap went to a
+ * finer lattice nothing showed: a line's end "did not snap to the grid" - it had, to one that was not drawn.)
  */
+
+/** The smallest of 1, 5, 10 (times a power of ten) that is at least `raw`. */
+export function squareFor(raw: number): number {
+  const p = Math.pow(10, Math.floor(Math.log10(raw)));
+  const m = raw / p;
+  return (m <= 1 + 1e-9 ? 1 : m <= 5 ? 5 : 10) * p;
+}
+
 export class AdaptiveGrid {
   readonly mesh: Mesh;
   /** Current minor step in mm (also used for grid snapping). */
@@ -23,6 +34,7 @@ export class AdaptiveGrid {
       side: DoubleSide,
       uniforms: {
         uStep: { value: 1 },
+        uMid: { value: 10 },
         uFade: { value: 0 },
         uCenter: { value: [0, 0] },
         uRadius: { value: 100 },
@@ -38,6 +50,7 @@ export class AdaptiveGrid {
         }`,
       fragmentShader: /* glsl */ `
         uniform float uStep;
+        uniform float uMid;
         uniform float uFade;
         uniform vec2 uCenter;
         uniform float uRadius;
@@ -49,9 +62,9 @@ export class AdaptiveGrid {
         void main() {
           vec2 p = vUv;
           float minor = lines(p, uStep) * (1.0 - uFade);
-          float mid = lines(p, uStep * 10.0);
-          float major = lines(p, uStep * 100.0);
-          float a = max(max(minor * 0.22, mid * 0.38), major * 0.55);
+          float mid = lines(p, uMid);
+          float major = lines(p, uMid * 10.0);
+          float a = max(max(minor * 0.2, mid * 0.38), major * 0.55);
           float d = length(p - uCenter) / uRadius;
           a *= 1.0 - smoothstep(0.55, 1.0, d);
           if (a < 0.01) discard;
@@ -74,13 +87,13 @@ export class AdaptiveGrid {
     if (this.locked) {
       this.step = this.lockedStep;
     } else {
-      // Minor lines at least ~10 px apart; fade them in as they get there.
-      const raw = worldPerPixel * 10;
-      const exp = Math.log10(raw);
-      this.step = Math.pow(10, Math.ceil(exp));
-      fade = 1 - (Math.ceil(exp) - exp);
-      fade = Math.max(0, Math.min(1, (fade - 0.6) / 0.4));
+      // The smallest squares at least 10 px wide; a little fainter while they are that small.
+      this.step = squareFor(worldPerPixel * 10);
+      fade = Math.max(0, Math.min(0.5, ((18 - this.step / worldPerPixel) / 8) * 0.5));
     }
+    // The stronger lines: every ten of them (every 10 where the squares are 5).
+    const decade = Math.pow(10, Math.round(Math.log10(this.step)));
+    const mid = Math.abs(decade - this.step) < this.step * 1e-6 ? this.step * 10 : Math.pow(10, Math.ceil(Math.log10(this.step)));
     const n = new Vector3(...this.plane.normal);
     const x = new Vector3(...this.plane.xDir);
     const y = new Vector3(...planeY(this.plane));
@@ -99,6 +112,7 @@ export class AdaptiveGrid {
     this.mesh.matrix.copy(m.multiply(local));
     this.mesh.matrixWorldNeedsUpdate = true;
     this.material.uniforms.uStep.value = this.step;
+    this.material.uniforms.uMid.value = mid;
     this.material.uniforms.uFade.value = fade;
     this.material.uniforms.uCenter.value = [cu, cv];
     this.material.uniforms.uRadius.value = size / 2;

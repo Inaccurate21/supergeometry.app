@@ -8,7 +8,7 @@
 import type { SavedView, Units, Vec3 } from "../doc/types";
 import type { DocStore } from "../doc/store";
 import { settings, type Settings } from "../settings";
-import { UNIT_LABEL, units } from "../units";
+import { fmtLen as lenText, UNIT_LABEL, units } from "../units";
 import type { Viewport } from "../view/viewport";
 import type { UI } from "./ui";
 import { el } from "./ui";
@@ -47,7 +47,15 @@ export function setupRightColumn(ui: UI, view: Viewport, store: DocStore, onUnit
       for (const [u, label] of list) host.append(choiceRow(label, units() === u, () => (onUnits(u), ui.refreshPopover())));
       host.append(heading("Grid"));
       const s = settings.value;
-      host.append(toggleRow(`Lock grid size (${s.gridStep} mm)`, s.gridLocked, (v) => settings.set("gridLocked", v)));
+      // Switched on, it keeps the squares as they are right now, at this zoom (asked for: "I want the lock grid size
+      // toggle to adjust to whatever the zoom level is so I can just click toggle on").
+      host.append(
+        toggleRow(s.gridLocked ? `Lock grid size (${fmtStep(s.gridStep)})` : `Lock grid size (now ${fmtStep(view.grid.step)})`, s.gridLocked, (v) => {
+          if (v) settings.set("gridStep", +view.grid.step.toPrecision(6));
+          settings.set("gridLocked", v);
+          ui.refreshPopover();
+        }),
+      );
       const stepRow = el("label", "pop-row");
       stepRow.append(el("span", "", "Locked size (mm)"));
       const input = textField("pop-input");
@@ -59,7 +67,7 @@ export function setupRightColumn(ui: UI, view: Viewport, store: DocStore, onUnit
       });
       stepRow.append(input);
       host.append(stepRow);
-      host.append(el("div", "pop-note", `Tip: the grid adapts to zoom (now ${fmtStep(view.grid.step)} per square).`));
+      host.append(el("div", "pop-note", s.gridLocked ? "The squares stay this size at any zoom, and a sketch snaps to them. Switch the lock off for a grid that follows the zoom." : `The grid follows the zoom (now ${fmtStep(view.grid.step)} a square), and a sketch snaps to the squares shown. Lock it to keep them as they are now.`));
       host.append(heading("Degree format"));
       host.append(choiceRow("Decimal (27.15°)", s.degrees === "decimal", () => (settings.set("degrees", "decimal"), ui.refreshPopover())), choiceRow("Fractional (27° 15′)", s.degrees === "fractional", () => (settings.set("degrees", "fractional"), ui.refreshPopover())));
     }),
@@ -253,5 +261,6 @@ function choiceRow(label: string, active: boolean, run: () => void): HTMLElement
 }
 
 function fmtStep(mm: number): string {
-  return mm >= 1000 ? `${mm / 1000} m` : mm >= 10 ? `${mm / 10} cm` : `${mm} mm`;
+  // (In the unit in use: 10 mm was said as "1 cm" in a project of millimetres.)
+  return lenText(mm, 4);
 }

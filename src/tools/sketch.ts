@@ -2928,10 +2928,9 @@ export class SketchTool implements Tool {
     }
     // Grid along a straight-across guide (and everywhere when there's none).
     if (s.grid && used.length < 2) {
-      // Finer than the drawn grid when zoomed in: its lines jump 1 → 10 mm, and
-      // at 10 mm apart (90 px on a phone) a tap at 152 still landed on 150.
-      // About what a fingertip can tell apart (8 px), rounded to 1 / 5 / 10.
-      const step = settings.value.gridLocked ? view.grid.step : Math.min(view.grid.step, niceStepOf(wpp * 8));
+      // The grid's own squares, as they are drawn (the smallest at least a fingertip's 8 px wide): what is seen is
+      // what is snapped to. (It went to a finer lattice than the lines shown.)
+      const step = view.grid.step;
       const g = (v: number) => Math.round(v / step) * step;
       const only = used[0]?.L;
       if (!only) out.uv = [g(out.uv[0]), g(out.uv[1])];

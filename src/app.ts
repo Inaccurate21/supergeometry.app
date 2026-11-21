@@ -62,6 +62,7 @@ import { Install } from "./ui/install";
 import { exportThreeMF, zip } from "./io/threemf";
 import { glb } from "./io/formats";
 import { sketchToDXF } from "./io/dxf";
+import { sketchToSVG } from "./io/svg";
 import { isHeadset, screenClass } from "./device";
 import { Viewport } from "./view/viewport";
 import { VRMode, vrSupported } from "./view/xr";
@@ -1653,6 +1654,7 @@ export class App implements AppContext {
       this.ui.menu(r.left, r.bottom + 4, [row("stl", "Each body as STL"), row("step", "Each body as STEP"), row("3mf", "Each body as 3MF"), row("glb", "Each body as GLB")]);
     });
     item("m-dxf", () => this.exportDXF());
+    item("m-svg", () => this.exportDXF("download", "svg"));
     // A share button at the right of each export (and Save): straight to the share sheet.
     // Only for the file types this browser will really share (Chrome on Android,
     // for one, refuses 3D and CAD files: a button there would only download).
@@ -1664,6 +1666,7 @@ export class App implements AppContext {
         ["m-3mf", "3mf", () => void this.export3mf("share")],
         ["m-glb", "glb", () => void this.exportGLB("share")],
         ["m-dxf", "dxf", () => this.exportDXF("share")],
+        ["m-svg", "svg", () => this.exportDXF("share", "svg")],
       ];
       // Android's share sheet turns these files away or mangles them: downloads only there.
       const android = /Android/i.test(navigator.userAgent);
@@ -2012,18 +2015,20 @@ export class App implements AppContext {
    * DXF of a sketch: the one open (e.g. picked in Items), or the one whose
    * curves or regions are selected. Without one, say how to pick it.
    */
-  private exportDXF(how: Delivery = "download"): void {
+  private exportDXF(how: Delivery = "download", as: "dxf" | "svg" = "dxf"): void {
     const fromSel = this.selection.flatMap((s) => (s.kind === "curve" || s.kind === "point" || s.kind === "profile" ? [s.sketch] : []))[0];
     const id = this.tool.activeSketch ?? fromSel;
     const sk = id ? this.store.find<SketchFeature>(id) : undefined;
     if (!sk || sk.type !== "sketch") {
-      this.ui.toast("Select a sketch first: open Items, tap the sketch, then File → Export DXF.");
+      this.ui.toast(`Select a sketch first: open Items, tap the sketch, then File → Export ${as.toUpperCase()}.`);
       if (!document.getElementById("items")?.classList.contains("open")) this.items.toggle(true);
       return;
     }
     if (!sk.entities.length) return this.ui.toast("That sketch is empty");
-    void this.deliver(new Blob([sketchToDXF(sk.entities)], { type: "application/dxf" }), `${this.store.doc.name} - ${sk.name}.dxf`, how);
-    this.ui.toast(`Exported “${sk.name}” as DXF`);
+    // (SVG: for a laser cutter, a plotter, a drawing program - millimetres, the page just round the drawing.)
+    const file = as === "svg" ? new Blob([sketchToSVG(sk.entities, `${this.store.doc.name} - ${sk.name}`)], { type: "image/svg+xml" }) : new Blob([sketchToDXF(sk.entities)], { type: "application/dxf" });
+    void this.deliver(file, `${this.store.doc.name} - ${sk.name}.${as}`, how);
+    this.ui.toast(`Exported “${sk.name}” as ${as.toUpperCase()}`);
   }
 
   /** The bodies to export (chosen, else shown) with their fine meshes - for GLB. */
@@ -2148,6 +2153,7 @@ const MIME: Record<string, string> = {
   "3mf": "model/3mf",
   glb: "model/gltf-binary",
   dxf: "image/vnd.dxf",
+  svg: "image/svg+xml",
   super: "application/json",
 };
 

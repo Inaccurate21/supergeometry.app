@@ -443,8 +443,9 @@ body.items-open #undo-dock {
 }
 .menu hr {
   border: 0;
-  border-top: 1px solid var(--line);
-  margin: 4px 0;
+  /* (The same grey line as between the parts of Settings and Display.) */
+  border-top: 1px solid rgba(255, 255, 255, 0.14);
+  margin: 5px 4px;
 }
 
 /* ------------------------------------------------------------ tool column */
@@ -6909,6 +6910,12 @@ html[data-screen="phone"] body.sentence-ui #toast {
   padding-top: 12px;
   border-top: 1px solid rgba(255, 255, 255, 0.14);
 }
+/* Its own name at the top, a line under it: Settings apart from Units & grid, Snapping, Number pad, Appearance. */
+#popover .pop-heading:first-child {
+  padding-bottom: 8px;
+  margin-bottom: 4px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.14);
+}
 #popover .pop-back + .pop-heading {
   margin-top: 0;
   padding-top: 8px;
@@ -6966,4 +6973,14 @@ html[data-screen="phone"] .bim-dtools:has(.bim-dtool.sub) .bim-dtool span {
 }
 html[data-screen="phone"] .bim-dtools:has(.bim-dtool.sub) .bim-dtool.sub {
   padding-left: 22px;
+}
+
+/* A list on the line is the size of what is in it (sentence.ts, fit): its buttons fill their cells, their words in
+   the middle of a cell wider than they need. */
+.sn-sheet.sn-kids .sn-group-words > .sn-word {
+  min-width: 0;
+  justify-content: center;
+}
+.sn-sheet.sn-kids {
+  box-sizing: border-box;
 }
