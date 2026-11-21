@@ -66,6 +66,15 @@ export class KernelClient {
     this.meshes = new Map();
     this.worker = new Worker(new URL("./worker.ts", import.meta.url), { type: "module" });
     this.worker.onmessage = this.handler;
+    // The engine died without an answer (out of memory, a fault outside any step): what waits on it would wait for
+    // ever, and "Working…" with it. Everything waiting ends, and a fresh engine is started.
+    const worker = this.worker;
+    worker.onerror = (e) => {
+      if (worker !== this.worker) return;
+      console.error("The geometry engine stopped:", e.message);
+      this.stop();
+      this.onLost?.();
+    };
     this.ready = this.call({ type: "init" }).then((r) => {
       if (r.type === "error") throw new Error(r.message);
     });
@@ -141,6 +150,12 @@ export class KernelClient {
 
   /** Told when the kernel starts and stops being busy (to show a busy indicator). */
   onBusy: ((busy: boolean) => void) | null = null;
+  /** Told when the engine died and was started again (what was being made is not made). */
+  onLost: (() => void) | null = null;
+  /** Is anything being worked on, or waiting to be? (What the busy indicator is checked against.) */
+  get busy(): boolean {
+    return this.pending.size > 0 || this.regenRunning || !!this.regenQueued;
+  }
 
   private call(msg: Request): Promise<Response> {
     const id = this.nextId++;

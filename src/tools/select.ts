@@ -530,8 +530,12 @@ export class SelectTool implements Tool {
     // (Picks of different kinds: no one handle is for all of them.)
     if (!first || sel.some((x) => x.kind !== first.kind)) return;
     // The most likely next step gets a handle.
+    // Several picked: the handle is on the one picked last - where the hand and the eye are (asked for: "I want the
+    // arrow / fillet or chamfer circle ... to appear on the last element I selected. Now it stays on the first one
+    // and I have to navigate back to it"). The tool started from it works from there too.
+    const lastFirst = sel.length > 1 ? [sel[sel.length - 1], ...sel.slice(0, -1)] : sel;
     if (first.kind === "profile") {
-      const src = sourcesOf(this.app, sel)[0];
+      const src = sourcesOf(this.app, lastFirst)[0];
       if (src) this.showHandle(sourceFrame(this.app, src), "arrow", () => new ExtrudeOp(this.app, src));
     } else if (first.kind === "face" && sel.length === 1 && offsettable(this.app.view.body(first.body)?.faces[first.face]?.type)) {
       // Flat and round faces: drag the arrow to offset (round faces change radius).
@@ -572,12 +576,13 @@ export class SelectTool implements Tool {
         this.copyToggle = new CopyToggle(this.app.view, () => g.origin);
       }
     } else if (first.kind === "edge") {
-      const e = this.edgeRefs()[0];
+      const all = this.edgeRefs();
+      const e = all[all.length - 1];
       // An edge's most likely next step is rounding it: the fillet's dot is
       // ready to drag, and a number typed is the radius. Moving a straight
       // edge (its faces tilt to follow) is Move/Rotate Edge (M) in the list.
       // (A freeform's edges get neither: its shape comes from the cage.)
-      if (e && !this.freeformOf(first.body)) this.showHandle({ base: e.mid, normal: e.dir }, "dot", () => new EdgeOp(this.app, "fillet", this.edgeRefs()).grabFromEdge());
+      if (e && !this.freeformOf(first.body)) this.showHandle({ base: e.mid, normal: e.dir }, "dot", () => new EdgeOp(this.app, "fillet", [e, ...all.slice(0, -1)]).grabFromEdge());
     }
   }
 
@@ -873,7 +878,11 @@ export class SelectTool implements Tool {
     // view) and its list stays open - the selection's edge numbers then point at the preview's
     // edges, and "Drag / type" picked two other edges (rounding the valve's creases failed).
     const picked = this.edgeRefs();
-    const refs = () => picked.map((r) => ({ ...r }));
+    // (The edge picked last first: the tool's dot and its size are at that one.)
+    const refs = () => {
+      const all = picked.map((r) => ({ ...r }));
+      return all.length > 1 ? [all[all.length - 1], ...all.slice(0, -1)] : all;
+    };
     const ref = picked[0];
     // With variables defined, Fillet/Chamfer open a list: a free size, or one of the variables.
     const vars = app.store.doc.variables ?? [];

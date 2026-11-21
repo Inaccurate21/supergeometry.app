@@ -355,7 +355,13 @@ export class DocStore {
     this.saveTimer = window.setTimeout(() => {
       const v = this.edits;
       const text = JSON.stringify(this.doc);
-      void idbSet("autosave", text).then(() => this.wrote(v));
+      // (A write that failed is tried again: left, the name's mark said "Saving…" from then on.)
+      const write = (tries: number): void =>
+        void idbSet("autosave", text).then(
+          () => this.wrote(v),
+          () => tries > 0 && v === this.edits && window.setTimeout(() => write(tries - 1), 2000),
+        );
+      write(3);
       this.onSaved?.(text);
       // The undo steps less eagerly: they're bigger, and only matter after a reload.
       clearTimeout(this.historyTimer);

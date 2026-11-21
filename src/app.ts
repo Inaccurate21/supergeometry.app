@@ -148,11 +148,28 @@ export class App implements AppContext {
     document.body.append(busy);
     busy.querySelector(".busy-stop")!.addEventListener("click", () => this.stopWork());
     let busyTimer = 0;
+    let busyWatch = 0;
     this.kernel.onBusy = (on) => {
       clearTimeout(busyTimer);
+      clearInterval(busyWatch);
       // Only for waits you would notice (not every quick preview while dragging).
-      if (on) busyTimer = window.setTimeout(() => (busy.hidden = false), 300);
+      if (on)
+        busyTimer = window.setTimeout(() => {
+          if (!this.kernel.busy) return;
+          busy.hidden = false;
+          // Shown only while there is work: looked at again as it stands, so it can never stay up over nothing
+          // (asked for: "sometimes the working icon still is showing even if there's nothing to work on").
+          busyWatch = window.setInterval(() => {
+            if (this.kernel.busy) return;
+            busy.hidden = true;
+            clearInterval(busyWatch);
+          }, 400);
+        }, 300);
       else busy.hidden = true;
+    };
+    this.kernel.onLost = () => {
+      this.ui.toast("The geometry engine stopped and was started again - the last change may need doing again", "error");
+      void this.regenerate();
     };
     const cube = new ViewCube(this.view);
     document.getElementById("viewcube-host")!.append(cube.el);

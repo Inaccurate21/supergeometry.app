@@ -411,6 +411,11 @@ export interface ImportFeature extends FeatureBase {
   fileName: string;
   /** Base64 of the file. */
   data: string;
+  /**
+   * Each solid in the file is a body of its own (the first has this step's id, the others "<id>:1", "<id>:2"...).
+   * Missing (files put in before this): all of them one body, as they were - what was built on that body stays.
+   */
+  apart?: boolean;
 }
 
 /** A reference image placed on a plane (for tracing). */

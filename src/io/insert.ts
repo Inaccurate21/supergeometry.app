@@ -81,7 +81,7 @@ export async function insertFile(app: AppContext): Promise<void> {
     const why = unreadable(bytes, format);
     if (why) return app.ui.toast(`Could not insert ${file.name}: ${why}`, "error");
     app.ui.setStatus(`Importing ${file.name}…`);
-    app.store.add({ ...app.store.newIdentity("import"), type: "import", format, fileName: file.name, data: toBase64(bytes) });
+    app.store.add({ ...app.store.newIdentity("import"), type: "import", format, fileName: file.name, data: toBase64(bytes), apart: true });
     app.ui.setStatus(null);
   } catch (err) {
     app.ui.setStatus(null);

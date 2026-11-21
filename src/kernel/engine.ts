@@ -1695,6 +1695,14 @@ async function apply(f: Feature, ctx: Ctx): Promise<void> {
         if (isEmpty(shape)) throw new Error("The file contains no solid geometry");
         importCache.set(f.data, shape);
       }
+      // A file of several solids (an assembly; this app's own STEP of two bodies): each a body of its own, to pick,
+      // hide, move and cut by itself. (They came in as one body of several pieces: the two bodies of a project
+      // saved as STEP and opened again were one, that nothing could take apart.)
+      const solids = f.apart && f.format === "step" ? subShapes(shape, "SOLID") : [];
+      if (solids.length > 1) {
+        solids.forEach((s, i) => bodies.set(i ? `${f.id}:${i}` : f.id, cast(s) as Shape3D));
+        return;
+      }
       bodies.set(f.id, shape);
       return;
     }
@@ -5418,7 +5426,9 @@ function bodyNames(features: Feature[], ids: string[], numbers: Map<string, numb
   for (const id of order) {
     const f = features.find((x) => x.id === baseId(id));
     if (f?.type === "import") {
-      out.set(id, f.fileName);
+      // (One of several solids of a file: the file's name and which.)
+      const part = /:(\d+)$/.exec(id);
+      out.set(id, part ? `${f.fileName} (${Number(part[1]) + 1})` : f.fileName);
       continue;
     }
     // A copy of a surface is a surface too (its id holds the original's).
