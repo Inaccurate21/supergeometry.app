@@ -1515,7 +1515,14 @@ export class Viewport {
         if (!proj(B.x, B.y, B.z, S)) continue;
         ((sb[0] = S[0]), (sb[1] = S[1]));
         const d = distToSeg(x, y, sa, sb);
-        if (d < tol && (!best || d < best.d)) best = { d, c, p: c.pts[i] };
+        if (d < tol && (!best || d < best.d)) {
+          // Where on the piece the pointer is (not the piece's start: a straight line is one piece, and its far
+          // end stood for it - "further away than the face it is drawn on", so the face was picked, not the line).
+          // (Nearest the pointer's own line of sight: right in perspective too, however long the piece.)
+          const at = new Vector3();
+          this.raycaster.ray.distanceSqToSegment(A, B, undefined, at);
+          best = { d, c, p: at };
+        }
       }
     }
     return best ? { kind: "curve", sketch: best.c.sketch, entity: best.c.entity, point: best.p.toArray() as Vec3 } : null;
