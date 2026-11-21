@@ -164,7 +164,7 @@ export class SelectTool implements Tool {
    * same touch goes on to drag it. (Else the hold is the menu, as before.)
    */
   grab(p: ToolPointer): boolean {
-    if (!settings.value.direct || this.pending || this.adding) return false;
+    if (!settings.value.direct || this.pending) return false;
     if (this.gimbal?.hit(p) || this.handle?.hit(p)) return false;
     const s = hitToSel(this.pickAt(p));
     if (!s || (s.kind !== "face" && s.kind !== "profile" && s.kind !== "edge")) return false;
@@ -289,13 +289,13 @@ export class SelectTool implements Tool {
       const b = (s as { body: string }).body;
       this.app.setSelection([...sel.filter((x) => !("body" in x && x.body === b)), s]);
     } else {
-      // A tap picks that thing and lets the last pick go (a second tap on it lets it go too). To pick several:
-      // Shift or Ctrl held, or the + beside the pick's name - then each tap adds, whatever it is (a face, then an
-      // edge, then a plane), and a tap on a picked one lets that one go.
-      // (Every tap added before: a face, then an edge tapped to pick it instead, made "2 items" with fewer tools.)
+      // Each tap adds to what is picked, whatever it is (a face, then an edge, then a plane); a tap on a picked one
+      // lets that one go; a tap on nothing lets them all go. (Asked for: "I don't like that now I have to click the
+      // + icon after I select to add another one ... I should just be able to select another to add to the
+      // selection. If I want to deselect an element from the selection, I can just click on that element again".
+      // A tap had picked that thing alone, with a + on the line - or Shift - to add.)
       const i = sel.findIndex((x) => sameSel(x, s!));
-      if (p.add || this.adding) this.app.setSelection(i >= 0 ? sel.filter((_, j) => j !== i) : [...sel, s]);
-      else this.app.setSelection(i >= 0 && sel.length === 1 ? [] : [s]);
+      this.app.setSelection(i >= 0 ? sel.filter((_, j) => j !== i) : [...sel, s]);
     }
     // Waiting for a body, and a corner of one was tapped (an STL's faces meet
     // in corners everywhere): that body is the pick.
@@ -602,7 +602,7 @@ export class SelectTool implements Tool {
     if (first.kind === "face" && n === 2 && sel[1].kind === "face") return "The distance between the faces is shown. Pick a tool for them.";
     if (first.kind === "edge" && !this.freeformOf(first.body)) return `Drag the dot to round ${n > 1 ? "the edges" : "the edge"}, ${or}.`;
     if (first.kind === "body") return `Drag the arrows or arcs to move it, ${or}.`;
-    return this.quick ? `${cap(tap)} a button beside it, or pick a tool on the line at the bottom.` : `Pick a tool for ${n > 1 ? "them" : "it"}, or ${tap} + to pick more.`;
+    return this.quick ? `${cap(tap)} a button beside it, or pick a tool on the line at the bottom.` : `Pick a tool for ${n > 1 ? "them" : "it"}, or ${tap} another to add it (${tap} a picked one to let it go).`;
   }
 
   /** Called by the app when a top-level tool needs a selection first. */

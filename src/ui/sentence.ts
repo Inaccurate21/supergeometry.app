@@ -485,7 +485,8 @@ export class Sentence {
     // (On the line from More to Create - the wheel's order the other way round, as asked for.)
     words.reverse();
     groups.reverse();
-    const plus: Word | undefined = sel.length ? { key: "s-add", kind: "button", label: "+", on: this.host.adding(), run: () => this.host.setAdding(!this.host.adding()) } : undefined;
+    // (No + to add with: every tap adds, and a tap on a picked one lets it go.)
+    const plus: Word | undefined = undefined;
     // One face, edge or corner picked: its whole body is a tap away (a double tap on the model does it too - which
     // nothing said).
     const part = sel.length === 1 && sel[0].kind !== "body" && "body" in sel[0] ? sel[0].body : null;

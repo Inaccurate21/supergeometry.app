@@ -19,7 +19,9 @@ import { clampToFree } from "./annotate";
 export const QUICK = {
   // (A freeform surface's face: Edit Freeform first - shaping it again is what it is for.)
   face: ["editFreeform", "thread", "sketch", "move", "fillet", "thicken"],
-  edge: ["chamfer", "thread", "move", "connect"],
+  // (Fillet first, before Chamfer - asked for: "when I select an edge, I also want the fillet tool icon ... before
+  // chamfer". Its dot is on the edge to drag as well.)
+  edge: ["fillet", "chamfer", "thread", "move", "connect"],
   vertex: ["moveVertex", "delete"],
   body: ["fillet", "mirror"],
   profile: ["extrude", "revolve"],
