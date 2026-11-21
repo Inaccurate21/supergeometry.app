@@ -882,7 +882,7 @@ export class App implements AppContext {
     // The rows are rebuilt: a hover on an old row is over.
     this.view.setStepHover(null);
     this.ui.renderHistory(this.store.doc.features, this.result?.errors ?? [], this.tool.editingId ?? this.tool.activeSketch ?? null, {
-      edit: (id) => this.editFeature(id),
+      edit: (id, pick) => this.editFeature(id, pick),
       hover: (id) => this.view.setStepHover(id ? this.stepTargets(id) : null),
       toggle: (id) => {
         const f = this.store.find(id);
@@ -1030,7 +1030,7 @@ export class App implements AppContext {
     this.editFeature(id);
   }
 
-  private editFeature(id: string): void {
+  private editFeature(id: string, pick?: string[]): void {
     const f = this.store.find(id);
     if (!f) return;
     this.setSelection([]);
@@ -1045,8 +1045,16 @@ export class App implements AppContext {
         // Subtract / Intersect open their tool (picks, Keep options); Union has nothing to set.
         if (f.op !== "union") return this.setTool(new BooleanOp(this, f.op, f.target, f.tools, f));
         break;
-      case "sketch":
-        return this.setTool(new SketchTool(this, { sketchId: f.id }));
+      case "sketch": {
+        // (From one of its steps in History: open with what that step made picked, ready to change.)
+        const tool = new SketchTool(this, { sketchId: f.id });
+        this.setTool(tool);
+        if (pick?.length) {
+          tool.stopDrawing();
+          tool.preselect(pick);
+        }
+        return;
+      }
       case "extrude":
         return this.setTool(new ExtrudeOp(this, f.source, f as ExtrudeFeature));
       case "fillet":

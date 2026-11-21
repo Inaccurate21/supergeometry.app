@@ -181,7 +181,7 @@ export interface SketchFeature extends FeatureBase {
   links?: EdgeLink[];
 
   /** What was done in the sketch, in order (shown under it in History); repeats are counted. */
-  log?: { op: string; n: number }[];
+  log?: { op: string; n: number; ids?: string[] }[];
 }
 
 export interface ExtrudeFeature extends FeatureBase {

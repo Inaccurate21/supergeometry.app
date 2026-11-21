@@ -681,6 +681,12 @@ export class Sentence {
     // (A tool's sentence is read whole: it runs on to the next line, as writing does. What a pick offers is one line to slide along.)
     // (Not on a screen too low for it - a phone on its side: there it is one line to slide along too.)
     this.row.classList.toggle("sn-wrap", b.about.startsWith("tool:") && innerHeight > 480);
+    // A phone held upright, in a sketch with a tool's own parts on the line (Line on, a point placed: Stop, Values,
+    // Draw, Modify, Transform, Delete): two rows of buttons, each a picture over its name, all in view (asked for:
+    // "it's so small and I have to scroll right in a box that is only a button wide. Maybe you can make that option
+    // window 2 buttons tall?"). It was one row to slide, a button and a half wide beside More and Exit.
+    const upright = document.documentElement.dataset.screen === "phone" && matchMedia("(max-width: 720px) and (orientation: portrait)").matches;
+    this.line.classList.toggle("sn-two", upright && b.about.startsWith("sketch:") && !b.grouped);
     if (fresh) this.row.scrollLeft = 0;
     // The end of the line: everything for this pick, the eraser, the tick.
     this.end.replaceChildren();
@@ -730,11 +736,15 @@ export class Sentence {
     document.body.style.setProperty("--sn-sheet", h);
   }
 
+  private barTall = "";
   private measure(): void {
     // (A phone held upright has the tag at the line's far end, beside undo: only the line's own height counts there.)
     const beside = document.documentElement.dataset.screen === "phone" && matchMedia("(max-width: 720px) and (orientation: portrait)").matches;
     const tag = this.tag.hidden || beside ? 0 : this.tag.offsetHeight;
     const h = `${this.line.offsetHeight + (tag ? tag + 6 : 0)}px`;
+    // (The line's own height, for undo / redo beside it: the same bar, the same height.)
+    const bar = `${this.line.offsetHeight}px`;
+    if (bar !== this.barTall) document.body.style.setProperty("--sn-bar", (this.barTall = bar));
     if (h === this.tall) return;
     this.tall = h;
     document.body.style.setProperty("--sn-line", h);

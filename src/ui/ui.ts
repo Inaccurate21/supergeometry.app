@@ -139,7 +139,7 @@ export interface ValuePanel {
 }
 
 export interface HistoryHandlers {
-  edit(id: string): void;
+  edit(id: string, pick?: string[]): void;
   /** Pointer over a step (null: left it): show what it works on. */
   hover?(id: string | null): void;
   toggle(id: string): void;
@@ -1755,9 +1755,11 @@ export class UI {
         const sub = el("li", "history-steps");
         if (steps.length > shownSteps.length) sub.append(el("div", "history-step more", `… ${steps.length - shownSteps.length} earlier`));
         for (const s of shownSteps) {
+          // (What the step made or changed that is still in the sketch: picked when its line is tapped.)
+          const still = (s.ids ?? []).filter((id) => f.entities.some((e) => e.id === id));
           const row = el("button", "history-step", `${s.op}${s.n > 1 ? ` ×${s.n}` : ""}`);
-          row.title = "Open the sketch";
-          row.addEventListener("click", () => h.edit(f.id));
+          row.title = still.length ? `Open the sketch with ${still.length === 1 ? "this curve" : `these ${still.length} curves`} picked, to change ${still.length === 1 ? "it" : "them"}` : "Open the sketch";
+          row.addEventListener("click", () => h.edit(f.id, still));
           sub.append(row);
         }
         this.historyList.append(sub);

@@ -803,6 +803,7 @@ export function debugBodies(): Map<string, Shape3D> {
 }
 
 async function run(features: Feature[], saved = false) {
+  stepsNow = new Set(features.map((f) => f.id));
   useSafeBooleans();
   useReleases();
   // Steps after the History's breakpoint: off, like suppressed ones.
@@ -1529,7 +1530,8 @@ async function apply(f: Feature, ctx: Ctx): Promise<void> {
           if (!(by > 0)) return [s.clone()];
           let g = grown.get(s)?.get(by);
           if (!g) {
-            g = grownBy(s, by) ?? undefined;
+            // (A threaded body: the same thread cut on the body grown. The kernel can't grow a thread's own faces.)
+            g = grownThreaded(s, by, toolIds[tools.indexOf(s)] ?? (s === target ? f.target : "")) ?? grownBy(s, by) ?? undefined;
             if (!g) throw new Error(`Couldn't keep ${+by.toFixed(4)} mm clear round one of the bodies - try a smaller clearance`);
             grown.set(s, (grown.get(s) ?? new Map()).set(by, g));
           }
@@ -1803,7 +1805,21 @@ async function apply(f: Feature, ctx: Ctx): Promise<void> {
 
     case "thread": {
       const body = need(bodies, f.face.body);
-      bodies.set(f.face.body, threadFace(body, threadTarget(body, f), f.pitch, !!f.left));
+      const face = threadTarget(body, f);
+      const cy = cylinderOf(face);
+      // (How it was cut is kept by its step: a clearance round the body is the same thread cut on the body grown -
+      // see grownThreaded.)
+      if (cy) {
+        const a = norm(cy.a);
+        const ts: number[] = [];
+        for (const e of face.edges) for (const k of [0, 0.25, 0.5, 0.75, 1]) ts.push(dot(sub(e.pointAt(k).toTuple() as Vec3, cy.c), a));
+        const used: { phase?: number } = {};
+        const made = threadFace(body, face, f.pitch, !!f.left, undefined, used);
+        threadsCut.set(f.id, { body: f.face.body, c: cy.c, a, r: cy.r, inside: cy.s < 0, pitch: f.pitch, left: !!f.left, t0: Math.min(...ts), t1: Math.max(...ts), phase: used.phase });
+        bodies.set(f.face.body, made);
+        return;
+      }
+      bodies.set(f.face.body, threadFace(body, face, f.pitch, !!f.left));
       return;
     }
 
@@ -2720,7 +2736,7 @@ function threadTarget(body: Shape3D, f: Extract<Feature, { type: "thread" }>): F
  * a ridge) is the reliable way: a ridge only just overlapping its core can
  * come out of OpenCascade wrong without a word.
  */
-export function threadFace(body: Shape3D, face: Face, pitch: number, left = false): Shape3D {
+export function threadFace(body: Shape3D, face: Face, pitch: number, left = false, like?: { t0: number; t1: number; phase?: number; shallow?: number }, used?: { phase?: number }): Shape3D {
   if (face.geomType !== "CYLINDRE") throw new Error("Threads go on round faces (a shank or a hole)");
   if (!(pitch > 0)) throw new Error("The pitch must be more than 0");
   // (Finer than any standard thread: it failed with "try a slightly different pitch".)
@@ -2728,14 +2744,20 @@ export function threadFace(body: Shape3D, face: Face, pitch: number, left = fals
   const cy = cylinderOf(face);
   if (!cy) throw new Error("Threads go on round faces (a shank or a hole)");
   const inside = cy.s < 0;
-  const depth = threadDepth(pitch, inside);
+  // (`like.shallow`: a groove that much less deep, and so that much narrower - the thread of a body grown by a
+  // clearance. Its round face is already out by the clearance; with the V out by it once more, its sides stand
+  // that clearance off the first thread's sides, not half of it.)
+  const depth = threadDepth(pitch, inside) - (like?.shallow ?? 0);
+  if (!(depth > 0)) throw new Error("That clearance is more than the thread is deep");
   if (!inside && depth >= cy.r * 0.9) throw new Error("That pitch is too coarse for this diameter");
   const a = norm(cy.a);
   // The face's length along its axis.
   const ts: number[] = [];
   for (const e of face.edges) for (const k of [0, 0.25, 0.5, 0.75, 1]) ts.push(dot(sub(e.pointAt(k).toTuple() as Vec3, cy.c), a));
-  const t0 = Math.min(...ts);
-  const t1 = Math.max(...ts);
+  // (`like`: along the same stretch and from the same start as another thread - one cut again on the body grown,
+  // so its turns lie over the first one's.)
+  const t0 = like ? like.t0 : Math.min(...ts);
+  const t1 = like ? like.t1 : Math.max(...ts);
   if (t1 - t0 < pitch) throw new Error("This face is shorter than one turn of the thread");
   // The groove's section in a plane through the axis: a 60° V from its tip
   // (the thread's depth) opening past the face.
@@ -2766,7 +2788,7 @@ export function threadFace(body: Shape3D, face: Face, pitch: number, left = fals
       return false;
     }
   };
-  const res = threadCut(body, face, cy, a, pitch, left, inside, depth, tip, mouth, hm, t0, t1);
+  const res = threadCut(body, face, cy, a, pitch, left, inside, depth, tip, mouth, hm, t0, t1, like?.phase, used);
   if (res) {
     let r = res;
     for (const [t, way] of [[t0, -1], [t1, 1]] as const) if (freeAt(t, way)) r = threadEndChamfer(r, cy.c, a, side, cy.r, tip, out, t, way, pitch) ?? r;
@@ -2818,6 +2840,8 @@ function threadCut(
   hm: number,
   t0: number,
   t1: number,
+  only?: number,
+  used?: { phase?: number },
 ): Shape3D | null {
   const lo = t0 + 0.05 * pitch;
   const hi = t1 - 0.05 * pitch;
@@ -2851,7 +2875,7 @@ function threadCut(
   // Where the thread starts round the face doesn't matter: if OpenCascade
   // trips on one start (a groove lining up with the face's seams), another
   // is tried.
-  for (const phase of [0, 0.37, 0.71]) {
+  for (const phase of only !== undefined ? [only] : [0, 0.37, 0.71]) {
     const start = lo - pitch * (1 + phase);
     const turns = Math.ceil((hi - start) / pitch) + 1;
     // An exact helix (a line wound on a cylinder, not a fitted spline: those
@@ -2893,7 +2917,10 @@ function threadCut(
     for (const fuzzy of [true, false]) {
       try {
         const res = fuzzy ? fuzzyBoolean("cut", body, cut) : body.cut(cut);
-        if (ok(res, cut)) return res;
+        if (ok(res, cut)) {
+          if (used) used.phase = phase;
+          return res;
+        }
       } catch {
         // the other way, or the next start
       }
@@ -3208,6 +3235,61 @@ function grownBy(s: Shape3D, by: number): Shape3D[] | null {
     return out;
   } finally {
     off.delete();
+  }
+}
+
+/** The threads cut in this project, by their step: on which body, the round face's axis, size and reach, the pitch. */
+const threadsCut = new Map<string, { body: string; c: Vec3; a: Vec3; r: number; inside: boolean; pitch: number; left: boolean; t0: number; t1: number; phase?: number }>();
+/** The steps of the project being built (a thread's record is only good while its step is there). */
+let stepsNow = new Set<string>();
+
+/**
+ * A threaded body grown by `by` (the clearance a Subtract keeps round it). The kernel's own offset of a thread's
+ * helical faces fails every time (asked: "when I want to subtract a thread and I put clearance, it always fails").
+ * So: its grooves filled back in (a cylinder over the thread's reach - what it was before the thread), that
+ * grown, and the same thread cut on its round face - a thread that much bigger all round (in a hole: that much
+ * smaller), which is what a nut cut with it needs to turn on the bolt with that gap.
+ * Null when the body has no thread of its own any more, or it doesn't work out (the plain way is tried then).
+ */
+function grownThreaded(s: Shape3D, by: number, bodyId: string): Shape3D[] | null {
+  const cut = [...threadsCut].filter(([step, t]) => t.body === bodyId && stepsNow.has(step)).map(([, t]) => t);
+  if (!cut.length) return null;
+  try {
+    // Its grooves filled in.
+    let plain = s;
+    const v0 = Math.abs(measureVolume(s));
+    for (const t of cut) {
+      const depth = threadDepth(t.pitch, t.inside) * 1.05 + 0.25 * t.pitch;
+      const from = add(t.c, scale(t.a, t.t0));
+      const fill = t.inside
+        ? ((makeCylinder(t.r + depth, t.t1 - t.t0, from, t.a) as Shape3D).cut(makeCylinder(t.r, t.t1 - t.t0, from, t.a) as Shape3D) as Shape3D)
+        : (makeCylinder(t.r, t.t1 - t.t0, from, t.a) as Shape3D);
+      plain = unify(plain.fuse(fill) as Shape3D);
+    }
+    // (Nothing filled: there is no thread on it now - something else was done to it since.)
+    if (!(Math.abs(measureVolume(plain)) > v0 * (1 + 1e-9))) return null;
+    const grown = grownBy(plain, by);
+    if (!grown || grown.length !== 1) return null;
+    let out = grown[0];
+    for (const t of cut) {
+      const want = t.r + (t.inside ? -by : by);
+      if (!(want > 0)) return null;
+      const face = out.faces.find((g) => {
+        if (g.geomType !== "CYLINDRE") return false;
+        const cy = cylinderOf(g);
+        if (!cy || cy.s < 0 !== t.inside || Math.abs(cy.r - want) > 1e-4 * Math.max(1, want)) return false;
+        if (Math.abs(dot(norm(cy.a), t.a)) < 0.9999) return false;
+        // (The same axis: its centre is on the thread's axis line.)
+        const d = sub(cy.c, t.c);
+        return len(sub(d, scale(t.a, dot(d, t.a)))) < 1e-4 * Math.max(1, want);
+      });
+      if (!face) return null;
+      out = threadFace(out, face, t.pitch, t.left, { t0: t.t0, t1: t.t1, phase: t.phase, shallow: by });
+    }
+    return Math.abs(measureVolume(out)) > 0 ? [out] : null;
+  } catch (err) {
+    if (isFault(err)) throw err;
+    return null;
   }
 }
 

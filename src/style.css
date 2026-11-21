@@ -7138,3 +7138,86 @@ body.history-open.history-clear-col #right-col {
   bottom: auto !important;
   transform: translateY(-50%) !important;
 }
+
+/* A phone held upright, in a sketch with a tool's own parts on the line: two rows of buttons, a picture over its
+   name each, four across - nothing to slide to (sentence.ts, sn-two). */
+.sn-line.sn-two .sn-row {
+  flex-wrap: wrap;
+  align-content: flex-start;
+  gap: 0;
+  row-gap: 2px;
+  padding: 3px;
+  overflow: hidden;
+  -webkit-mask-image: none;
+  mask-image: none;
+}
+.sn-line.sn-two .sn-row::after {
+  display: none;
+}
+.sn-line.sn-two .sn-row .sn-word {
+  flex: 1 1 25%;
+  max-width: 50%;
+  min-width: 0;
+  align-items: center;
+  justify-content: center;
+  padding: 4px 1px 3px;
+  min-height: 46px;
+  background: none;
+}
+.sn-line.sn-two .sn-row .sn-word.on:not(.sn-subject):not(.sn-slot) {
+  background: var(--accent-soft);
+}
+.sn-line.sn-two .sn-row .sn-body {
+  flex-direction: column;
+  gap: 2px;
+  max-width: 100%;
+}
+.sn-line.sn-two .sn-row .sn-icon,
+.sn-line.sn-two .sn-row .sn-icon svg {
+  width: 20px;
+  height: 20px;
+}
+.sn-line.sn-two .sn-row .sn-text {
+  font-size: 10.5px;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: clip;
+}
+.sn-line.sn-two .sn-row .sn-more,
+.sn-line.sn-two .sn-row .sn-kbd {
+  display: none;
+}
+.sn-line.sn-two .sn-end {
+  align-self: flex-end;
+  padding: 4px 4px 4px 0;
+}
+.sn-line.sn-two .sn-end-btn.sn-all,
+.sn-line.sn-two .sn-end-btn.sn-exit {
+  flex-direction: column;
+  gap: 2px;
+  height: 46px;
+  min-width: 44px;
+  padding: 3px 4px 2px;
+  background: none;
+}
+.sn-line.sn-two .sn-end-btn .sn-end-name {
+  font-size: 10.5px;
+}
+
+/* Undo and redo are a piece of the bottom bar: its height, whatever that is on this screen (asked for: "the undo and
+   redo buttons should be the same as the ones on the bottom bar. Same bar height"). They were a fixed 52 (48 on a
+   phone) beside a line of 49 to 61. Not taller than one row where the line has two. */
+body.sentence-ui #undo-dock {
+  box-sizing: border-box;
+  height: min(var(--sn-bar, 52px), 64px);
+  align-items: stretch;
+}
+body.sentence-ui #undo-dock .dock-btn {
+  height: auto;
+}
+
+@media (orientation: landscape) {
+  html[data-screen="phone"] body.sentence-ui #undo-dock {
+    bottom: calc(8px + var(--safe-b));
+  }
+}

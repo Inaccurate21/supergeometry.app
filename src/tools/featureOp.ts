@@ -90,9 +90,98 @@ export abstract class FeatureOp<F extends Feature> implements Tool {
     this.render();
     this.update();
     this.app.ui.focusPanel();
+    this.steps = [JSON.stringify(this.feature)];
+    this.redos = [];
+    window.addEventListener("pointerdown", this.onDown, true);
+    window.addEventListener("pointerup", this.onUp, true);
+    window.addEventListener("pointercancel", this.onUp, true);
+  }
+
+  // ---- Undo inside the tool
+  // Each change made while the tool is open - a drag of its handle, a value typed, an option chosen, something more
+  // picked - is a step of its own that Undo takes back, one at a time, and Redo puts back (asked for: "when I ...
+  // select a vertex and I move it around, and I hit undo, that undo should change the last modification, not go back
+  // to the extruding action or the one before entirely ... I want full history control"). Undo used to close the tool,
+  // throwing all of it away, and then take back the step before it as well. With nothing left to take back in the
+  // tool, Undo closes it (nothing made); the next Undo is the project's.
+  private steps: string[] = [];
+  private redos: string[] = [];
+  private held = false;
+  private settle = 0;
+  private restoring = false;
+  private onDown = (): void => void (this.held = true);
+  private onUp = (): void => {
+    this.held = false;
+    // (After the tool's own handlers for this lift have run.)
+    window.setTimeout(() => this.record(), 0);
+  };
+
+  /** What the draft is now, as a step - if it differs from the last one. */
+  private record(): void {
+    if (this.restoring || !this.steps.length) return;
+    const now = JSON.stringify(this.feature);
+    if (now === this.steps[this.steps.length - 1]) return;
+    this.steps.push(now);
+    if (this.steps.length > 100) this.steps.shift();
+    this.redos = [];
+    (this.app as AppContext & { refreshUndo?(): void }).refreshUndo?.();
+  }
+
+  /** The draft changed: a step once the drag ends, or once typing stops for a moment (digit by digit is one step). */
+  private noteChange(): void {
+    if (this.restoring || this.held) return;
+    clearTimeout(this.settle);
+    this.settle = window.setTimeout(() => this.record(), 450);
+  }
+
+  /** The draft put back to a step (in place: the window's parts and the handles hold on to it). */
+  private restore(step: string): void {
+    this.restoring = true;
+    try {
+      const f = this.feature as unknown as Record<string, unknown>;
+      for (const k of Object.keys(f)) delete f[k];
+      Object.assign(f, JSON.parse(step));
+      this.restored();
+      this.render();
+      this.update();
+    } finally {
+      this.restoring = false;
+    }
+  }
+
+  /** After Undo / Redo put the draft back: for a tool that keeps something beside the draft in step with it. */
+  protected restored(): void {}
+
+  get canUndo(): boolean {
+    return true;
+  }
+  get canRedo(): boolean {
+    return this.redos.length > 0;
+  }
+  undo(): boolean {
+    clearTimeout(this.settle);
+    this.record();
+    if (this.steps.length < 2) {
+      this.cancel();
+      return true;
+    }
+    this.redos.push(this.steps.pop()!);
+    this.restore(this.steps[this.steps.length - 1]);
+    return true;
+  }
+  redo(): boolean {
+    const next = this.redos.pop();
+    if (!next) return false;
+    this.steps.push(next);
+    this.restore(next);
+    return true;
   }
 
   exit(): void {
+    clearTimeout(this.settle);
+    window.removeEventListener("pointerdown", this.onDown, true);
+    window.removeEventListener("pointerup", this.onUp, true);
+    window.removeEventListener("pointercancel", this.onUp, true);
     this.app.view.setOriginPlanesVisible(false);
     this.app.ui.showPanel(null);
     this.app.ui.setHint(null);
@@ -286,6 +375,7 @@ export abstract class FeatureOp<F extends Feature> implements Tool {
   /** Re-run the preview with the current draft. */
   protected update(): void {
     this.onDraftChanged();
+    this.noteChange();
     const ready = this.ready();
     const base = this.app.store.features;
     // (The steps that aren't the project's own: the draft, or what a tool puts in its place.)

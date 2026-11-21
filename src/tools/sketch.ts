@@ -4146,11 +4146,20 @@ export class SketchTool implements Tool {
     // What this step made (kept across repeats of the same step, for "Select last").
     const before = new Set(this.entities.map((e) => e.id));
     const made = entities.filter((e) => !before.has(e.id)).map((e) => e.id);
+    // What the step made or changed, kept with its line in History: picked there, the sketch opens with those
+    // curves picked, to change them (asked for: "if I make changes in a sketch, I want those changes to be
+    // selectable from that history action so I can edit them").
+    const was = new Map(this.entities.map((e) => [e.id, e]));
+    const touched = entities.filter((e) => !was.has(e.id) || JSON.stringify(was.get(e.id)) !== JSON.stringify(e)).map((e) => e.id);
+    // (A constraint or a size put on: the curves it is on.)
+    const had = new Set(this.constraints.map((c) => c.id));
+    for (const c of cs) if (!had.has(c.id)) touched.push(...refsOf(c));
+    const keep = (ids: string[]) => [...new Set(ids)].filter((id) => entities.some((e) => e.id === id)).slice(-80);
     if (last?.op === op) {
-      log[log.length - 1] = { op, n: last.n + 1 };
+      log[log.length - 1] = { op, n: last.n + 1, ids: keep([...(last.ids ?? []), ...touched]) };
       this.lastMade = [...this.lastMade, ...made];
     } else {
-      log.push({ op, n: 1 });
+      log.push({ op, n: 1, ids: keep(touched) });
       this.lastMade = made;
     }
     const patch = { entities, constraints: cs.length ? cs : undefined, log, links: links.length ? links : undefined };
