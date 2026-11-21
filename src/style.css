@@ -7109,8 +7109,8 @@ html[data-screen="tablet"] body.items-open #undo-dock {
 /* A narrow screen: Items or History is a card across the top that comes down past the middle - the three at the
    left edge step aside while one is open. */
 @media (max-width: 720px) {
-  body.items-open #left-col,
-  body.history-open #left-col {
+  body.items-open:not(.items-clear-col) #left-col,
+  body.history-open:not(.history-clear-left) #left-col {
     visibility: hidden;
   }
 }
@@ -7121,4 +7121,20 @@ html[data-screen="tablet"] body.items-open #undo-dock {
     left: calc(246px + var(--safe-l));
     max-width: calc(100vw - 246px - 280px - var(--safe-l) - var(--safe-r));
   }
+}
+
+/* Items or History open but short - ending above the column at the middle of that edge, or above undo / redo: those
+   stay at the edge, where they stand with the window closed (ui.ts, besidePanels). They move over only for a window
+   that comes down as far as they are. */
+body.items-open.items-clear-col #left-col {
+  left: calc(8px + var(--safe-l)) !important;
+}
+body.items-open.items-clear-undo #undo-dock {
+  left: calc(8px + var(--safe-l)) !important;
+}
+body.history-open.history-clear-col #right-col {
+  right: calc(8px + var(--safe-r)) !important;
+  top: 50% !important;
+  bottom: auto !important;
+  transform: translateY(-50%) !important;
 }

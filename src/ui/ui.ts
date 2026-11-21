@@ -210,7 +210,57 @@ export class UI {
     // History opens by default everywhere (on phones it floats and can be closed).
     this.toggleHistory(true);
     this.holdLabels();
+    this.besidePanels();
     window.addEventListener("resize", () => (this.fitToolbar(), this.fitPanel()));
+  }
+
+  /**
+   * The columns at the middle of the left and right edges, and undo / redo in their corner, move over for Items and
+   * History only when those come down as far as they stand (asked for: "they should be there only if they are that
+   * long"). Items and History are as tall as what is in them now: a short one leaves the edge under it free, and
+   * the column stays at the edge. Said to the stylesheet as classes on the body, set when a window opens, closes,
+   * grows or shrinks, or the screen changes size.
+   */
+  private besidePanels(): void {
+    const items = document.getElementById("items");
+    const history = document.getElementById("history");
+    if (!items || !history) return;
+    let queued = false;
+    const check = () => {
+      queued = false;
+      const box = (el: HTMLElement | null) => {
+        if (!el) return null;
+        const r = el.getBoundingClientRect();
+        return r.width && r.height ? r : null;
+      };
+      const it = items.classList.contains("open") ? box(items) : null;
+      const hi = history.classList.contains("open") ? box(history) : null;
+      const left = box(document.getElementById("left-col"));
+      const right = box(document.getElementById("right-col"));
+      const undo = box(document.getElementById("undo-dock"));
+      const set = (name: string, on: boolean) => document.body.classList.contains(name) !== on && document.body.classList.toggle(name, on);
+      // (Short of it by a finger's gap: the column's top, undo's top. The view cube is at the top, where History always is: it moves over as before.)
+      // (Where a column stands with nothing beside it: the middle of the edge. With History open some screens move
+      // the right one up beside History - going by where it is then, it never came back for a short History.)
+      const mid = (r: DOMRect) => innerHeight / 2 - r.height / 2;
+      set("items-clear-col", !!it && !!left && it.bottom < mid(left) - 8);
+      set("items-clear-undo", !!it && !!undo && it.bottom < undo.top - 8);
+      set("history-clear-col", !!hi && !!right && hi.bottom < mid(right) - 8);
+      // (A narrow screen: History is a card across the top, over the left column too when it is long.)
+      set("history-clear-left", !!hi && !!left && hi.bottom < mid(left) - 8);
+    };
+    const later = () => {
+      if (queued) return;
+      queued = true;
+      requestAnimationFrame(check);
+    };
+    const ro = new ResizeObserver(later);
+    ro.observe(items);
+    ro.observe(history);
+    new MutationObserver(later).observe(items, { attributes: true, attributeFilter: ["class"] });
+    new MutationObserver(later).observe(history, { attributes: true, attributeFilter: ["class"] });
+    window.addEventListener("resize", later);
+    later();
   }
 
   /**
