@@ -21,7 +21,7 @@ export const QUICK = {
   face: ["editFreeform", "thread", "sketch", "move", "fillet", "thicken"],
   // (Fillet first, before Chamfer - asked for: "when I select an edge, I also want the fillet tool icon ... before
   // chamfer". Its dot is on the edge to drag as well.)
-  edge: ["fillet", "chamfer", "thread", "move", "connect"],
+  edge: ["fillet", "chamfer", "move", "thread", "connect"],
   vertex: ["moveVertex", "delete"],
   body: ["fillet", "mirror"],
   profile: ["extrude", "revolve"],
@@ -46,6 +46,12 @@ export interface QuickPlace {
 
 /** At most this many: only the important things (the rest is under More at the row's end). */
 const MOST = 2;
+/**
+ * An edge has three: Fillet, Chamfer and Move/Rotate Edge (asked for: "if I select an edge I want the move and
+ * rotate edge icon there"). Move/Rotate Edge is for one straight edge: with a curved one, or several, it is not
+ * offered and the row is the two.
+ */
+const MOST_OF: Partial<Record<QuickKind, number>> = { edge: 3 };
 
 export class QuickActions {
   private readonly box = document.createElement("div");
@@ -61,7 +67,7 @@ export class QuickActions {
       }
     };
     walk(items);
-    const picked = (QUICK[kind] as readonly string[]).map((id) => byId.get(id)).filter((it): it is ToolItem => !!it && !it.disabled && !!it.run && (!it.beta || it.id === "editFreeform")).slice(0, MOST);
+    const picked = (QUICK[kind] as readonly string[]).map((id) => byId.get(id)).filter((it): it is ToolItem => !!it && !it.disabled && !!it.run && (!it.beta || it.id === "editFreeform")).slice(0, MOST_OF[kind] ?? MOST);
     if (!all) return picked.length ? new QuickActions(view, picked, at, place) : null;
     // On the model: Delete beside them, and a last button that opens every other tool the pick has (asked for: "I
     // also want to have other tools there that could be used on that element. And also delete"). The few most likely

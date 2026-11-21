@@ -741,7 +741,7 @@ export class SelectTool implements Tool {
         const isFreeform = !!ff && ff.type === "freeform";
         return [
           ...head,
-          ...(isFreeform ? [] : [{ id: "moveVertex", label: "Move Vertex", icon: "move" as const, shortcut: "M", active: true, disabled: !pivot, run: () => pivot && this.app.setTool(new MoveFaceOp(this.app, { vertex: { body: s.body, at: pivot } })) }]),
+          ...(isFreeform ? [] : [{ id: "moveVertex", label: "Move Vertex", icon: "point" as const, shortcut: "M", active: true, disabled: !pivot, run: () => pivot && this.app.setTool(new MoveFaceOp(this.app, { vertex: { body: s.body, at: pivot } })) }]),
           { id: "move", label: "Move/Rotate Body", icon: "move", run: () => this.app.setTool(new TransformOp(this.app, "move", bodies, undefined, pivot)) },
           { id: "delete", label: "Delete Vertex", icon: "trash", shortcut: "Del", run: () => this.deleteGeom(s.body, { vertices: at }) },
         ];
