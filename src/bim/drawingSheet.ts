@@ -77,6 +77,7 @@ export function drawingOptions(doc: ProjectDoc) {
     comma: o.comma ?? false,
     lines: { visible: o.lines?.visible ?? 0.5, hidden: o.lines?.hidden ?? 0.25, dims: o.lines?.dims ?? 0.25, center: o.lines?.center ?? 0.25, section: o.lines?.section ?? 0.18 },
     balloons: o.balloons ?? true,
+    balloonAt: o.balloonAt ?? {},
     overall: o.overall ?? true,
     overallDims: o.overallDims ?? {},
     moved: o.moved ?? {},
@@ -684,7 +685,7 @@ export interface SheetData {
 }
 
 /** The whole sheet as an SVG document (mm). */
-export function drawingSVG(data: SheetData): { svg: string; layout: Layout } {
+export function drawingSVG(data: SheetData): { svg: string; layout: Layout; balloons: { id: string; x: number; y: number }[] } {
   const { doc, views, parts } = data;
   const o = drawingOptions(doc);
   const L = layoutSheet(views, o, parts.length);
@@ -841,6 +842,7 @@ export function drawingSVG(data: SheetData): { svg: string; layout: Layout } {
   // housing, seen in no view, points at its hidden lines.
   const hosts = ["iso", "front", L.side, "top", ...o.extra.map((v) => v.id)].map((id) => placed.get(id)).filter((p): p is Placed => !!p);
   const byHost = new Map<Placed, { item: number; at: [number, number] }[]>();
+  const balloonsAt: { id: string; x: number; y: number }[] = [];
   const spot = (r: PartRow) => {
     for (const p of hosts) {
       const b = views.get(p.id)?.bodies.find((x) => x.id === r.id);
@@ -906,13 +908,21 @@ export function drawingSVG(data: SheetData): { svg: string; layout: Layout } {
       taken.push([x, y]);
     }
     for (const b of spots) {
-      const dx = b.at[0] - b.x;
-      const dy = b.at[1] - b.y;
+      // Put somewhere by hand: there (its line still runs to its part).
+      const part = parts.find((r) => r.item === b.item)?.id ?? String(b.item);
+      const id = `balloon:${part}`;
+      const [bx, by] = o.balloonAt[part] ?? [b.x, b.y];
+      const c = color(id);
+      const dx = b.at[0] - bx;
+      const dy = b.at[1] - by;
       const d = Math.hypot(dx, dy) || 1;
-      out.push(`<path d="M${f(b.x + (dx / d) * 4)} ${f(b.y + (dy / d) * 4)}L${f(b.at[0])} ${f(b.at[1])}" stroke="#000" stroke-width="${lw.dims}"/>`);
-      out.push(`<circle cx="${f(b.at[0])}" cy="${f(b.at[1])}" r="0.6" fill="#000"/>`);
-      out.push(`<circle cx="${f(b.x)}" cy="${f(b.y)}" r="4" stroke="#000" stroke-width="0.35" fill="#fff"/>`);
-      out.push(text(b.x, b.y + 1.4, String(b.item), 4, { anchor: "middle" }));
+      const svg =
+        `<path d="M${f(bx + (dx / d) * 4)} ${f(by + (dy / d) * 4)}L${f(b.at[0])} ${f(b.at[1])}" stroke="${c}" stroke-width="${lw.dims}"/>` +
+        `<circle cx="${f(b.at[0])}" cy="${f(b.at[1])}" r="0.6" fill="${c}"/>` +
+        `<circle cx="${f(bx)}" cy="${f(by)}" r="4" stroke="${c}" stroke-width="0.35" fill="#fff"/>` +
+        text(bx, by + 1.4, String(b.item), 4, { anchor: "middle", fill: c });
+      out.push(data.interactive ? `<g data-ann="${id}">${svg}</g>` : svg);
+      balloonsAt.push({ id, x: bx, y: by });
     }
   }
 
@@ -923,7 +933,7 @@ export function drawingSVG(data: SheetData): { svg: string; layout: Layout } {
   else if (o.titleBlock === "horizontal") out.push(stripBlock(o, doc.info ?? {}, data.date, L));
   else if (o.titleBlock === "vertical") out.push(columnBlock(o, doc.info ?? {}, data.date, L));
   out.push(`</svg>`);
-  return { svg: out.join("\n"), layout: L };
+  return { svg: out.join("\n"), layout: L, balloons: balloonsAt };
 }
 
 /** Dimension lines (ISO 129-1): the first this far out from the view (mm on the paper), each next one this much further. */
@@ -1270,12 +1280,13 @@ export function markSVG(m: DrawingMark, p: Placed, width: number, color = "#000"
 
 /** A note: its text; pointing at something, a leader from the near end of its text with an arrow there. */
 export function noteSVG(n: DrawingNote, p: Placed | undefined, width: number, color = "#000"): string {
-  let out = text(n.x, n.y, n.text, 3.5, { fill: color });
+  const size = n.size ?? 3.5;
+  let out = text(n.x, n.y, n.text, size, { fill: color });
   if (n.to && p) {
     const P = toPaper(p, n.to.p);
-    const w = textWidth(n.text, 3.5);
+    const w = textWidth(n.text, size);
     const toLeft = P[0] < n.x + w / 2;
-    const E: [number, number] = [toLeft ? n.x - 1 : n.x + w + 1, n.y - 1.2];
+    const E: [number, number] = [toLeft ? n.x - 1 : n.x + w + 1, n.y - size * 0.34];
     const S: [number, number] = [E[0] + (toLeft ? -2.5 : 2.5), E[1]];
     const d = Math.hypot(P[0] - S[0], P[1] - S[1]) || 1;
     out += `<path d="M${f(E[0])} ${f(E[1])}L${f(S[0])} ${f(S[1])}L${f(P[0])} ${f(P[1])}" stroke="${color}" stroke-width="${width}" fill="none"/>`;

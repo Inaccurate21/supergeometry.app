@@ -292,6 +292,10 @@ export async function openDrawing(app: AppContext, which?: string): Promise<void
   let picks: Pick[] = [];
   /** While dragging: the drawing as it would be (committed when let go). */
   let draft: DrawingOptions | null = null;
+  /** Where each item number's circle is drawn now (dragged from there). */
+  let balloonsNow: { id: string; x: number; y: number }[] = [];
+  /** Where the one being dragged started. */
+  let balloonFrom: [number, number] | null = null;
   const date = new Date();
   /** The sheet as printed or saved (made then: each redraw needn't). */
   const sheetOut = () => drawingSVG({ doc: docNow(), views, parts, date }).svg;
@@ -385,6 +389,7 @@ export async function openDrawing(app: AppContext, which?: string): Promise<void
     const doc = docNow();
     const made = drawingSVG({ doc, views, parts, date, interactive: true, selected });
     layout = made.layout;
+    balloonsNow = made.balloons;
     paper.innerHTML = made.svg;
     const s = paper.querySelector("svg");
     if (s) {
@@ -618,6 +623,7 @@ export async function openDrawing(app: AppContext, which?: string): Promise<void
     const dx = q[0] - drag.x;
     const dy = q[1] - drag.y;
     if (!drag.moved && Math.hypot(dx, dy) < tolerance() / 4) return;
+    if (!drag.moved) balloonFrom = null;
     drag.moved = true;
     const next: DrawingOptions = structuredClone(drag.start);
     const o = drawingOptions({ ...store.doc, drawing: drag.start });
@@ -652,6 +658,14 @@ export async function openDrawing(app: AppContext, which?: string): Promise<void
       }
     } else {
       const id = drag.target;
+      if (id.startsWith("balloon:")) {
+        // An item number: its circle goes where it is dragged (its line still runs to its part).
+        if (!drag.moved || !balloonFrom) {
+          const b = balloonsNow.find((x) => x.id === id);
+          balloonFrom = b ? [b.x, b.y] : [drag.x, drag.y];
+        }
+        next.balloonAt = { ...o.balloonAt, [id.slice(8)]: [balloonFrom[0] + dx, balloonFrom[1] + dy] };
+      }
       const dim = dimsOf(o).find((d) => d.id === id);
       const note = o.notes.find((n) => n.id === id);
       const img = o.images.find((m) => m.id === id);
@@ -1205,6 +1219,12 @@ export async function openDrawing(app: AppContext, which?: string): Promise<void
     if (!id) return;
     selected = null;
     const o = opts();
+    if (id.startsWith("balloon:")) {
+      // (An item number is the parts list's: it is not taken off here - Balloons, in Properties, does that for all
+      // of them. One moved by hand goes back to where the sheet puts it.)
+      const { [id.slice(8)]: _gone, ...rest } = o.balloonAt;
+      return void set({ balloonAt: Object.keys(rest).length ? rest : undefined });
+    }
     if (id.startsWith("view:")) {
       const v = id.slice(5);
       // A section, a detail or an added view: gone with what was put on it, and the views made from it.
@@ -1224,7 +1244,7 @@ export async function openDrawing(app: AppContext, which?: string): Promise<void
           extra: keep(o.extra),
           dims: keep(o.dims),
           marks: keep(o.marks),
-          notes: o.notes.map((n) => (n.to && gone.has(n.to.view) ? { id: n.id, x: n.x, y: n.y, text: n.text } : n)),
+          notes: o.notes.map((n) => (n.to && gone.has(n.to.view) ? { id: n.id, x: n.x, y: n.y, text: n.text, ...(n.size ? { size: n.size } : {}) } : n)),
         });
         return;
       }
@@ -1328,6 +1348,20 @@ export async function openDrawing(app: AppContext, which?: string): Promise<void
       const d = dimsOf(o).find((x) => x.id === id);
       const n = o.notes.find((x) => x.id === id);
       const img = o.images.find((x) => x.id === id);
+      if (id.startsWith("balloon:")) {
+        hint.append(el("span", "", "Item number"));
+        hint.append(el("span", "bim-sub", "Drag it where it reads well"));
+        // (Put by hand: back to where the sheet puts it.)
+        if (o.balloonAt[id.slice(8)]) {
+          button("Put back", () => {
+            const { [id.slice(8)]: _gone, ...rest } = o.balloonAt;
+            selected = null;
+            set({ balloonAt: Object.keys(rest).length ? rest : undefined });
+          });
+        }
+        button("Done", () => ((selected = null), render()), true);
+        return;
+      }
       if (img) {
         hint.append(el("span", "", "Picture"));
         // Bigger or smaller about its middle.
@@ -1365,6 +1399,20 @@ export async function openDrawing(app: AppContext, which?: string): Promise<void
         button("Text and tolerance", () => void editDim(d));
       } else if (n) {
         hint.append(el("span", "", "Note"));
+        // How tall its letters are: a step smaller or bigger (2.5 to 14 mm on the paper).
+        const SIZES = [2.5, 3.5, 5, 7, 10, 14];
+        const now = n.size ?? 3.5;
+        const at = SIZES.reduce((best, s, i) => (Math.abs(s - now) < Math.abs(SIZES[best] - now) ? i : best), 0);
+        const resize = (to: number) => set({ notes: o.notes.map((x) => (x === n ? { ...x, size: SIZES[to] === 3.5 ? undefined : SIZES[to] } : x)) });
+        const smaller = el("button", "text-btn", "A−");
+        smaller.title = "Smaller text";
+        (smaller as HTMLButtonElement).disabled = at === 0;
+        smaller.addEventListener("click", () => resize(at - 1));
+        const bigger = el("button", "text-btn", "A+");
+        bigger.title = "Bigger text";
+        (bigger as HTMLButtonElement).disabled = at === SIZES.length - 1;
+        bigger.addEventListener("click", () => resize(at + 1));
+        hint.append(smaller, el("span", "bim-sub", `${now} mm`), bigger);
         button("Edit", () => {
           const [cx, cy] = clientOf([n.x, n.y]);
           noteInput([n.x, n.y], cx, cy, n);
@@ -1572,7 +1620,9 @@ export async function openDrawing(app: AppContext, which?: string): Promise<void
       const note = o.notes.find((n) => n.id === id);
       const img = o.images.find((m) => m.id === id);
       const dim = dimsOf(o).find((d) => d.id === id);
-      if (note) set({ notes: o.notes.map((n) => (n === note ? { ...n, x: note.x + dx, y: note.y + dy } : n)) });
+      const ball = id.startsWith("balloon:") ? balloonsNow.find((b) => b.id === id) : undefined;
+      if (ball) set({ balloonAt: { ...o.balloonAt, [id.slice(8)]: [ball.x + dx, ball.y + dy] } });
+      else if (note) set({ notes: o.notes.map((n) => (n === note ? { ...n, x: note.x + dx, y: note.y + dy } : n)) });
       else if (img) set({ images: o.images.map((m) => (m === img ? { ...m, x: img.x + dx, y: img.y + dy } : m)) });
       else if (dim) {
         const out = dx - dy;

@@ -736,6 +736,8 @@ export interface DrawingOptions {
   /** Line widths, mm. */
   lines?: { visible?: number; hidden?: number; dims?: number; center?: number; section?: number };
   balloons?: boolean;
+  /** Item numbers moved by hand: where each one's circle is (mm on the paper), by the part it numbers. */
+  balloonAt?: Record<string, [number, number]>;
   /** The overall sizes dimensioned by themselves. */
   overall?: boolean;
   /** What was changed on an overall size, by its id (overall-width, overall-height, overall-depth): where it sits, its text, taken off. */
@@ -882,6 +884,8 @@ export interface DrawingNote {
   x: number;
   y: number;
   text: string;
+  /** How tall its letters are, mm on the paper (missing: 3.5). */
+  size?: number;
   /** What it points at: a point on a view (that view's coordinates), its leader drawn to it. */
   to?: { view: string; p: [number, number] };
 }
