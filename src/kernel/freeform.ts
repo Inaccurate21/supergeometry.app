@@ -3,7 +3,7 @@
 // when the cage is closed, made into a solid.
 
 import { cast, getOC, type Shape3D } from "replicad";
-import { measureVolume } from "./ocFree";
+import { quickVolume } from "./ocFree";
 import { cubicKnots, interpolateGrid } from "../freeform/bspline";
 import { isClosed, limitPoints, subdivide, type Cage, type Subdivided } from "../freeform/cage";
 
@@ -74,7 +74,7 @@ function thickenSheet(sheet: unknown, { thickness: t, side }: Thicken): Shape3D 
       mk.MakeThickSolidBySimple(sheet as never, d);
       const solid = cast(mk.Shape()) as Shape3D;
       // Growing along the normals comes out inside-out: turn it the right way.
-      return measureVolume(solid) < 0 ? (cast(solid.wrapped.Reversed()) as Shape3D) : solid;
+      return quickVolume(solid) < 0 ? (cast(solid.wrapped.Reversed()) as Shape3D) : solid;
     } finally {
       mk.delete();
     }

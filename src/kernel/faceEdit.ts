@@ -7,7 +7,7 @@
 // F then only means adding/removing the right slab of E.
 
 import { assembleWire, basicFaceExtrusion, getOC, loft, makeFace, makeBSplineApproximation, makeCylinder, makeLine, makePolygon, makeSphere, measureArea, cast, revolution, Vector, type Edge, type Face, type Shape3D } from "replicad";
-import { measureVolume } from "./ocFree";
+import { measureVolume, quickVolume } from "./ocFree";
 import type { PlaneDef, Vec3 } from "../doc/types";
 import { add, cross, dist, dot, len, norm, scale, sub, xDirFor } from "../geom";
 import { shapeValid, subShapes, validNow } from "./health";
@@ -35,11 +35,58 @@ export function sizeOf(body: Shape3D): number {
   const key = body.wrapped as object;
   let s = sizes.get(key);
   if (s === undefined) {
-    const bb = body.boundingBox;
-    s = Math.hypot(bb.width, bb.height, bb.depth) || 1;
+    s = looseSize(body);
     sizes.set(key, s);
   }
   return s;
+}
+
+/**
+ * About how big a shape is (the diagonal of the kernel's quick box: never smaller than the shape, a few percent
+ * bigger on curved faces). Its exact box takes 0.4 to 1 s on a body with curved faces (a mug with its handle, a
+ * freeform) - asked for by every step that touched such a body, just to know how big a helper to make.
+ */
+function looseSize(body: Shape3D): number {
+  const [lo, hi] = looseBox(body);
+  return Math.hypot(hi[0] - lo[0], hi[1] - lo[1], hi[2] - lo[2]) || 1;
+}
+
+/**
+ * The kernel's quick box of a shape, [low corner, high corner]: the shape is all inside it, and it is a little
+ * bigger than the shape where its faces are curved. For telling shapes apart that can't touch, and how far
+ * something reaches. (An empty shape: an upside-down box, as the exact one's.)
+ */
+const looseBoxes = new WeakMap<object, [Vec3, Vec3]>();
+export function looseBox(body: Shape3D): [Vec3, Vec3] {
+  const key = body.wrapped as object;
+  const had = looseBoxes.get(key);
+  if (had) return had;
+  const oc = getOC();
+  const box = new oc.Bnd_Box();
+  let out: [Vec3, Vec3] | null = null;
+  try {
+    oc.BRepBndLib.Add(body.wrapped, box, false);
+    if (!box.IsVoid()) {
+      const [a, b] = [box.CornerMin(), box.CornerMax()];
+      const got: [Vec3, Vec3] = [
+        [a.X(), a.Y(), a.Z()],
+        [b.X(), b.Y(), b.Z()],
+      ];
+      a.delete();
+      b.delete();
+      if ([...got[0], ...got[1]].every(Number.isFinite)) out = got;
+    }
+  } catch {
+    // The exact one, below.
+  } finally {
+    box.delete();
+  }
+  if (!out) {
+    const [lo, hi] = body.boundingBox.bounds;
+    out = [[...lo] as Vec3, [...hi] as Vec3];
+  }
+  looseBoxes.set(key, out);
+  return out;
 }
 
 // Each helper solid gets a slightly different size: when two of them end on the
@@ -472,7 +519,7 @@ export function sheetFaces(body: Shape3D, Fs: Face[], cage: Cage, n: Vec3): Shap
     fix.delete();
     oc.BRepLib.OrientClosedSolid(oc.TopoDS.Solid(made));
     const solid = cast(made) as Shape3D;
-    if (!(measureVolume(solid) > 0)) throw new Error("volume");
+    if (!(quickVolume(solid) > 0)) throw new Error("volume");
     if (!validNow(solid.wrapped)) throw new Error("invalid");
     return solid;
   } finally {
@@ -567,7 +614,7 @@ function filledFace(body: Shape3D, F: Face, points: Vec3[], degree: number): Sha
     fix.delete();
     oc.BRepLib.OrientClosedSolid(oc.TopoDS.Solid(made));
     const solid = cast(made) as Shape3D;
-    if (!(measureVolume(solid) > 0)) throw new Error("volume");
+    if (!(quickVolume(solid) > 0)) throw new Error("volume");
     return solid;
   } finally {
     fill.delete();

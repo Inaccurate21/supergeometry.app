@@ -7,7 +7,7 @@
 // one surface merged, skins made solid, inside-out solids turned round.
 
 import { assembleWire, cast, getOC, makeCompound, makeFace, makeLine, makeThreePointArc, measureArea, type Shape3D, type Wire } from "replicad";
-import { measureVolume } from "./ocFree";
+import { measureVolume, quickVolume } from "./ocFree";
 import { unify } from "./faceEdit";
 import { deepCopy, hairThin, meshVolume, openEdges, pinchedEdges, shapeValid, subShapes } from "./health";
 
@@ -316,7 +316,7 @@ const FIXES: Fix[] = [
     label: "turned it the right way out",
     run: (s) => {
       const oc = getOC();
-      if (!(measureVolume(s) < 0)) return null;
+      if (!(quickVolume(s) < 0)) return null;
       const c = deepCopy(s);
       for (const x of subShapes(c, "SOLID")) oc.BRepLib.OrientClosedSolid(x);
       return c;

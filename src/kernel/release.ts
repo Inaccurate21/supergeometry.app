@@ -13,7 +13,7 @@
 // So each such thing is told to let go just before it is deleted - here, for
 // its whole class, which covers the deleting done by replicad as well.
 
-import { getOC } from "replicad";
+import { BoundingBox, getOC, Solid } from "replicad";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
@@ -27,7 +27,44 @@ function last(handle: any): boolean {
   return !record?.count || record.count.value === 1;
 }
 
+/**
+ * A shape's box, worked out once. The kernel's exact box of a body with curved faces takes its time (a mug with its
+ * handle: 0.95 s; a freeform shoe: 0.7 s) and was worked out again each time it was asked for - by every step that
+ * touched the body, several times over, and once more to draw it. Kept by the shape's handle: another shape, or
+ * the same one moved, is another handle. (Each asker gets a box of its own: some delete theirs.)
+ */
+const boxes = new WeakMap<object, [number, number, number, number, number, number]>();
+let boxed = false;
+function useBoxes(): void {
+  if (boxed) return;
+  boxed = true;
+  let proto: any = Solid.prototype;
+  while (proto && !Object.getOwnPropertyDescriptor(proto, "boundingBox")) proto = Object.getPrototypeOf(proto);
+  const exact = proto && Object.getOwnPropertyDescriptor(proto, "boundingBox")?.get;
+  if (!exact) return;
+  Object.defineProperty(proto, "boundingBox", {
+    configurable: true,
+    get(this: any) {
+      const key = this.wrapped as object;
+      const had = key && boxes.get(key);
+      if (had) return BoundingBox.fromBounds([had[0], had[1], had[2]], [had[3], had[4], had[5]]);
+      const box = exact.call(this);
+      try {
+        // (An empty shape's box is no box: asked again each time, as it was.)
+        if (key && !box.wrapped.IsVoid()) {
+          const [lo, hi] = box.bounds;
+          if ([...lo, ...hi].every(Number.isFinite)) boxes.set(key, [lo[0], lo[1], lo[2], hi[0], hi[1], hi[2]]);
+        }
+      } catch {
+        // As it came.
+      }
+      return box;
+    },
+  });
+}
+
 export function useReleases(): void {
+  useBoxes();
   const oc = getOC() as any;
   if (done.has(oc)) return;
   done.add(oc);

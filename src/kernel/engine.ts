@@ -70,7 +70,7 @@ export { shapeValid } from "./health";
 import { applyPlan, boundaryEdges, cachedPlan, deleteFaces, isClosed, selfCrossings, subdivide } from "../freeform/cage";
 import { useSafeBooleans, withoutInternals } from "./safeBooleans";
 import { useReleases } from "./release";
-import { areaProperties, measureArea as trueArea, measureVolume, normalOnEdge, roughVolume, surfaceAt, volumeProperties } from "./ocFree";
+import { areaProperties, measureArea as trueArea, measureVolume, normalOnEdge, quickVolume, roughVolume, surfaceAt, volumeProperties } from "./ocFree";
 import { binarySTL, faceTriangles, meshEdgeLines, meshFaces, meshOff, type FaceMesh } from "./meshing";
 import { loftInLine } from "./loftAlign";
 import { railLoft } from "./loftRails";
@@ -78,7 +78,7 @@ import { edgeOrigins, edgeSteps, faceAliases, faceOrigins, faceSteps, inheritTag
 import { closestOnEntity } from "../sketch/regions";
 
 import { cylinderOf, deleteFace,
- deleteFaces as deleteBodyFaces, editNotes, freeformFace, sameSizesAgain, sheetFace, sheetFaces, hasBlends, inFlatFace, offsetFace, onFace as pointOnFace, planeOf, replaceFacePlane, SIDES_MEET, sizeOf, unify } from "./faceEdit";
+ deleteFaces as deleteBodyFaces, editNotes, freeformFace, sameSizesAgain, sheetFace, sheetFaces, hasBlends, inFlatFace, looseBox, offsetFace, onFace as pointOnFace, planeOf, replaceFacePlane, SIDES_MEET, sizeOf, unify } from "./faceEdit";
 import { threadDepth } from "./threads";
 import { anchorOf, freeformFaces, meshViews, viewEdge } from "./viewLines";
 import { entitiesWire, pathOf, regionFaces, regionHoleWires, regionWire, withFittedSplines } from "./sketchGeom";
@@ -896,7 +896,10 @@ async function run(features: Feature[], saved = false) {
           // too many), and more than the engine or the view can work with.
           for (const [id, after] of out.bodies) {
             if (after === ctx.bodies.get(id)) continue;
-            const [lo, hi] = after.boundingBox.bounds;
+            // (The quick box first - never smaller than the body: its exact one, up to a second for a curved body
+            // and asked after every step, only for a body that may be over a limit.)
+            let [lo, hi] = looseBox(after) as [number[], number[]];
+            if (!(Math.max(...lo.map(Math.abs), ...hi.map(Math.abs)) < MAX_REACH) || Math.hypot(hi[0] - lo[0], hi[1] - lo[1], hi[2] - lo[2]) < 1e-2) [lo, hi] = after.boundingBox.bounds;
             const reach = Math.max(...lo.map(Math.abs), ...hi.map(Math.abs));
             // (An empty result has an upside-down box: left to the checks below.)
             if (lo[0] <= hi[0] && !(reach < MAX_REACH)) throw new Error("This would reach more than 10 km from the origin - check its values (a typo?)");
@@ -1322,7 +1325,7 @@ async function apply(f: Feature, ctx: Ctx): Promise<void> {
         try {
           // One smooth side where the sections' starts are in line already (see loftAlign.ts).
           const inLine = loftInLine(wires, f.ruled);
-          shape = inLine && shapeValid(inLine) && volumeOf(inLine) > 0 ? inLine : loft(wires, { ruled: f.ruled });
+          shape = inLine && shapeValid(inLine) && quickVolume(inLine) > 0 ? inLine : loft(wires, { ruled: f.ruled });
         } catch {
           throw new Error("These profiles can't be lofted together");
         }
@@ -1432,8 +1435,9 @@ async function apply(f: Feature, ctx: Ctx): Promise<void> {
       }
       // Positive thickness shells inward (negative grows outward with rounded corners).
       const t = Math.abs(f.thickness);
-      const v0 = Math.abs(measureVolume(body));
-      const hollowed = (s: Shape3D | null): s is Shape3D => !!s && Math.abs(Math.abs(measureVolume(s)) - v0) > 1e-6 * v0;
+      // (To a thousandth first: a hollowed body is well off what it was. Only one within a hundredth is measured exactly.)
+      const q0 = Math.abs(quickVolume(body));
+      const hollowed = (s: Shape3D | null): s is Shape3D => !!s && (Math.abs(Math.abs(quickVolume(s)) - q0) > 0.01 * q0 || Math.abs(Math.abs(volumeOf(s)) - Math.abs(volumeOf(body))) > 1e-6 * Math.abs(volumeOf(body)));
       // A shell to trust: hollow, a sound solid, a wall behind every face it
       // kept and nothing left deep inside. OpenCascade can "succeed" without
       // hollowing anything, or hollowing only a corner of it - or hollow it
@@ -2154,7 +2158,7 @@ function checkedFreeform(cage: { verts: Vec3[]; faces: [number, number, number, 
     editNotes.push(`Repaired automatically: ${r.fixes.join(", ")}.`);
     shape = r.shape;
   }
-  if (closed && (subShapes(shape, "SOLID").length !== 1 || !(measureVolume(shape) > 0))) throw new Error(degenerate);
+  if (closed && (subShapes(shape, "SOLID").length !== 1 || !(quickVolume(shape) > 0))) throw new Error(degenerate);
   return shape;
 }
 
@@ -2817,9 +2821,10 @@ function threadEndChamfer(body: Shape3D, c: Vec3, a: Vec3, side: Vec3, r: number
     const root = tip - out * 0.15 * pitch;
     const tri = makePolygon([at(root - out * e, t + way * e), at(air, t + way * e), at(air, t - way * Math.abs(air - root))]);
     const ring = revolution(tri, c, a, 360) as Shape3D;
-    const v0 = Math.abs(measureVolume(body));
+    // (Each volume once: this body is the groove's result, measured there already.)
+    const v0 = Math.abs(volumeOf(body));
     const res = body.cut(ring);
-    const v = Math.abs(measureVolume(res));
+    const v = Math.abs(volumeOf(res));
     // It takes a little (no more than the ring holds, at most the body's own share of it).
     const most = Math.abs(measureVolume(ring));
     if (!Number.isFinite(v) || !(v < v0) || v0 - v > most || subShapes(res, "SOLID").length !== subShapes(body, "SOLID").length) return null;
@@ -2853,7 +2858,7 @@ function threadCut(
   // Only along the face (a shank's thread mustn't run into the head).
   const reach = Math.max(cy.r, tip, mouth) + pitch * 2;
   const slab = makeCylinder(reach, hi - lo, add(cy.c, scale(a, lo)), a) as Shape3D;
-  const v0 = Math.abs(measureVolume(body));
+  const v0 = Math.abs(volumeOf(body));
   // What it must take away: the V inside the face (depth deep, 2·depth·tan30
   // wide at the face) along the helix through its centroid.
   const section = depth * depth * Math.tan(Math.PI / 6);
@@ -2866,7 +2871,7 @@ function threadCut(
   // took half, and "what the groove overlaps" passed it.)
   const whole = trueArea(face) > 2 * Math.PI * cy.r * (t1 - t0) * (1 - 1e-4);
   const ok = (r: Shape3D, cut: Shape3D) => {
-    const v = Math.abs(measureVolume(r));
+    const v = Math.abs(volumeOf(r));
     if (!Number.isFinite(v)) return false;
     if (Math.abs(v0 - v - expect) < expect * 0.03) return true;
     if (whole) return false;
@@ -3210,7 +3215,7 @@ function offsetSolid(off: any, shape: Shape3D, by: number): Shape3D | null {
       // shape itself - class names are renamed in the app's build, so a
       // constructor.name test never matched there and the cut came out null.)
       if (got.wrapped.ShapeType() === oc.TopAbs_ShapeEnum.TopAbs_SHELL) got = makeSolid([got as never]);
-      if (Math.abs(measureVolume(got as Shape3D)) > 0) return tightenEdges(got as Shape3D);
+      if (Math.abs(quickVolume(got as Shape3D)) > 0) return tightenEdges(got as Shape3D);
     } catch (err) {
       if (isFault(err)) throw err;
     } finally {
@@ -3302,7 +3307,7 @@ function grownThreaded(s: Shape3D, by: number, bodyId: string): Shape3D[] | null
       const g1 = Math.max(...along);
       out = threadFace(out, face, t.pitch, t.left, { t0: Math.max(t.t0, g0), t1: Math.min(t.t1, g1), anchor: t.t0, phase: t.phase, shallow: by, c: t.c, a: t.a });
     }
-    return Math.abs(measureVolume(out)) > 0 ? [out] : null;
+    return Math.abs(quickVolume(out)) > 0 ? [out] : null;
   } catch (err) {
     if (isFault(err)) throw err;
     return null;
@@ -3434,7 +3439,7 @@ function innerByCutouts(off: any, body: Shape3D, t: number): Shape3D | null {
     grown.push(g);
   }
   const inner = fuzzyBoolean("cut", room, fuseAll(grown));
-  if (isEmpty(inner) || !(Math.abs(measureVolume(inner)) > 0)) return null;
+  if (isEmpty(inner) || !(Math.abs(quickVolume(inner)) > 0)) return null;
   // Held to what it is for: nowhere nearer the body's skin than t (a lump that
   // didn't grow all the way round - one ending in a knife edge - would leave the wall thin there).
   const clear = Math.min(...subShapes(body, "SHELL").map((skin) => measureDistanceBetween(inner, cast(skin) as AnyShape)));
@@ -3749,7 +3754,8 @@ function combine(id: string, mode: string, target: string | undefined, solid: Sh
   // Joined, but only touching along an edge (a back stood on the base's
   // edge): one body by name, two pieces held by nothing. Said, not refused.
   if (m === "join" && pinchedEdges(result) > pinchedEdges(t) + pinchedEdges(solid)) editNotes.push(PINCHED);
-  if (m === "cut" && !isEmpty(result) && Math.abs(volumeOf(result) - volumeOf(t)) <= Math.abs(volumeOf(t)) * 1e-9) editNotes.push(MISSED_CUT);
+  // (Measured to a thousandth first: further apart than that, something was cut - and the exact measure isn't asked for.)
+  if (m === "cut" && !isEmpty(result) && Math.abs(quickVolume(result) - quickVolume(t)) <= Math.abs(quickVolume(t)) * 0.01 && Math.abs(volumeOf(result) - volumeOf(t)) <= Math.abs(volumeOf(t)) * 1e-9) editNotes.push(MISSED_CUT);
   if (isEmpty(result)) ctx.bodies.delete(target);
   else ctx.bodies.set(target, result);
 }
@@ -3819,6 +3825,14 @@ function volumeOf(s: Shape3D): number {
  */
 function booleanVolumeOk(op: "fuse" | "cut", a: Shape3D, b: Shape3D, r: Shape3D): boolean {
   try {
+    // Measured to a thousandth first: clear of the limits by more than that can be out, it fits - and the measure
+    // to a millionth (seconds, on curved bodies) is not asked for.
+    {
+      const near = (s: Shape3D) => volumes.get(s) ?? quickVolume(s);
+      const [qa, qb, q] = [Math.abs(near(a)), Math.abs(near(b)), isEmpty(r) ? 0 : near(r)];
+      const tol = Math.min(qa, qb) * 0.6 - (qa + qb + Math.abs(q)) * 0.005;
+      if (tol > 0 && Number.isFinite(q) && q >= -tol && (op === "fuse" ? q >= Math.max(qa, qb) - tol && q <= qa + qb + tol : q <= qa + tol && q >= qa - qb - tol)) return true;
+    }
     const va = Math.abs(volumeOf(a));
     const vb = Math.abs(volumeOf(b));
     const v = isEmpty(r) ? 0 : volumeOf(r);
@@ -4040,19 +4054,22 @@ function flatFaces(s: Shape3D): Shape3D {
 
 /** Bodies (other than `skip`) that `solid` really overlaps (not just touches). */
 function overlapping(solid: Shape3D, ctx: Ctx, skip?: string): string[] {
-  const sb = solid.boundingBox;
-  const vs = Math.abs(volumeOf(solid));
+  // (Quick boxes, never smaller than the bodies: two that are apart can't overlap. And volumes to a thousandth:
+  // is what they share more than a millionth of the smaller? Exact, both took seconds on curved bodies.)
+  const sb = looseBox(solid);
+  const about = (s: Shape3D) => volumes.get(s) ?? quickVolume(s);
+  const vs = Math.abs(about(solid));
   const out: string[] = [];
   for (const [id, body] of ctx.bodies) {
     if (id === skip) continue;
-    const bb = body.boundingBox;
-    const apart = [0, 1, 2].some((k) => (bb.bounds[1] as number[])[k] < (sb.bounds[0] as number[])[k] || (bb.bounds[0] as number[])[k] > (sb.bounds[1] as number[])[k]);
+    const bb = looseBox(body);
+    const apart = [0, 1, 2].some((k) => bb[1][k] < sb[0][k] || bb[0][k] > sb[1][k]);
     if (apart) continue;
     try {
       // Tolerant: a wall drawn from the body's own edge (projected, offset…) sits a hair
       // off the body's surface, and an exact boolean then finds no overlap at all.
       const common = fuzzyBoolean("common", body, solid);
-      if (!isEmpty(common) && Math.abs(measureVolume(common)) > Math.max(1e-9, Math.min(vs, Math.abs(volumeOf(body))) * 1e-6)) out.push(id);
+      if (!isEmpty(common) && Math.abs(quickVolume(common)) > Math.max(1e-9, Math.min(vs, Math.abs(about(body))) * 1e-6)) out.push(id);
     } catch {
       // can't tell: leave it alone
     }
@@ -4063,14 +4080,14 @@ function overlapping(solid: Shape3D, ctx: Ctx, skip?: string): string[] {
 /** Bodies the solid overlaps or touches, the most overlapped first. */
 function touching(solid: Shape3D, ctx: Ctx): string[] {
   const over = overlapping(solid, ctx);
-  const sb = solid.boundingBox;
-  const size = Math.max(1e-9, ...[0, 1, 2].map((k) => (sb.bounds[1] as number[])[k] - (sb.bounds[0] as number[])[k]));
+  const sb = looseBox(solid);
+  const size = Math.max(1e-9, ...[0, 1, 2].map((k) => sb[1][k] - sb[0][k]));
   const tol = size * 1e-6 + 1e-7;
   const near: string[] = [];
   for (const [id, body] of ctx.bodies) {
     if (over.includes(id)) continue;
-    const bb = body.boundingBox;
-    const apart = [0, 1, 2].some((k) => (bb.bounds[1] as number[])[k] < (sb.bounds[0] as number[])[k] - tol || (bb.bounds[0] as number[])[k] > (sb.bounds[1] as number[])[k] + tol);
+    const bb = looseBox(body);
+    const apart = [0, 1, 2].some((k) => bb[1][k] < sb[0][k] - tol || bb[0][k] > sb[1][k] + tol);
     if (apart) continue;
     try {
       if (measureDistanceBetween(body, solid) <= tol) near.push(id);
@@ -4705,7 +4722,7 @@ function sweepBridge(a: BridgeEnd, b: BridgeEnd, along: (t: number) => Vec3, how
       try {
         let out = s;
         for (const e of [a, b]) if (e.depth > 0) out = out.fuse(plug(e));
-        if (measureVolume(out) < 0) out = cast(out.wrapped.Reversed()) as Shape3D;
+        if (quickVolume(out) < 0) out = cast(out.wrapped.Reversed()) as Shape3D;
         if (shapeValid(out) && [...iterTopo(out.wrapped, "solid")].length === 1 && measureVolume(out) > measureVolume(s)) return { shape: out, exact: true };
       } catch {
         /* (a curved face, or a plug that won't join) the way below */
@@ -4805,6 +4822,45 @@ function faceInfo(face: Face): FaceInfo {
     if (cy) info.round = { r: cy.r, hole: cy.s < 0 };
   }
   return info;
+}
+
+/**
+ * A face's facts, kept from the last time it was shown: a step changes a few of a body's faces and leaves the rest
+ * the very same faces, and each one's exact area was measured again for the whole body all the same (a freeform
+ * shoe with a hole cut in it: 1.7 s of measuring faces that hadn't changed).
+ */
+let infosNow = new Map<number, { face: { IsEqual(o: unknown): boolean; IsNull(): boolean }; info: FaceInfo }[]>();
+let infosWas = new Map<number, { face: { IsEqual(o: unknown): boolean; IsNull(): boolean }; info: FaceInfo }[]>();
+let infosKept = 0;
+function faceInfoKept(face: Face): FaceInfo {
+  let hash = -1;
+  try {
+    hash = (face.wrapped as unknown as { HashCode(max: number): number }).HashCode(2147483647);
+    for (const kept of [infosNow, infosWas]) {
+      const hit = kept.get(hash)?.find((x) => !x.face.IsNull() && x.face.IsEqual(face.wrapped));
+      if (hit) {
+        if (kept === infosWas) keepInfo(hash, hit);
+        return hit.info;
+      }
+    }
+  } catch {
+    // Measured, below.
+  }
+  const info = faceInfo(face);
+  if (hash >= 0) keepInfo(hash, { face: face.wrapped as never, info });
+  return info;
+}
+function keepInfo(hash: number, entry: { face: { IsEqual(o: unknown): boolean; IsNull(): boolean }; info: FaceInfo }): void {
+  // (Not for ever: the faces of bodies long gone are let go, two lots back.)
+  if (infosKept >= 6000) {
+    infosWas = infosNow;
+    infosNow = new Map();
+    infosKept = 0;
+  }
+  const list = infosNow.get(hash);
+  if (list) list.push(entry);
+  else infosNow.set(hash, [entry]);
+  infosKept++;
 }
 
 function edgeInfo(edge: Edge): EdgeInfo {
@@ -5092,8 +5148,8 @@ function movedMesh(shape: Shape3D) {
 function meshLines(shape: Shape3D) {
   const moved = movedMesh(shape);
   if (moved) return moved;
-  const bb = shape.boundingBox;
-  const diag = Math.hypot(bb.width, bb.height, bb.depth) || 1;
+  // (About its size is enough for how fine to draw it: the exact box of a curved body takes up to a second.)
+  const diag = sizeOf(shape);
   // (Never finer than 1/50 000 of its size: a 100 m arc at 0.1 mm is millions of triangles.)
   const tolerance = Math.max(Math.min(0.1, Math.max(0.001, diag * 0.0008)), diag * 2e-5);
   const angularTolerance = 0.25;
@@ -5156,7 +5212,7 @@ function meshBody(id: string, name: string, shape: Shape3D): BodyMesh {
     faceGroups: m.faceGroups.map((g, i) => ({ start: g.start, count: g.count, face: i })),
     edgePositions: new Float32Array(e.lines),
     edgeGroups: e.edgeGroups.map((g, i) => ({ start: g.start, count: g.count, edge: i })),
-    faces: shape.faces.map((f, i) => ({ ...faceInfo(f), step: faceSteps(shape)?.[i], curve: faceOrigins(shape)?.[i], ...(faceAliases(shape)?.[i] ? { was: faceAliases(shape)![i] } : {}) })),
+    faces: shape.faces.map((f, i) => ({ ...faceInfoKept(f), step: faceSteps(shape)?.[i], curve: faceOrigins(shape)?.[i], ...(faceAliases(shape)?.[i] ? { was: faceAliases(shape)![i] } : {}) })),
     edges: shape.edges.map((e, i) => ({ ...edgeInfo(e), steps: edgeSteps(shape)?.[i], curves: edgeOrigins(shape)?.[i], ...(oldEdgeSteps(shape) ? { was: oldEdgeSteps(shape)![i] } : {}), ...(seamEdges(shape)[i] ? { seam: true } : {}) })),
 
     openEdges: openEdges(shape),
@@ -5250,7 +5306,10 @@ function guardEdit(before: Shape3D | undefined, after: Shape3D, mayPart: boolean
   const was = before ? subShapes(before, "SOLID").length : Math.max(1, subShapes(after, "SOLID").length);
   // Not a solid before (an imported mesh, a sheet): nothing to hold it to.
   if (!was) return after;
-  const v0 = before ? Math.abs(volumeOf(before)) : 0;
+  // (Volumes here to a thousandth: they tell dust from a body and inside out from right way out. To a millionth
+  // they took seconds on a curved body - on every step that changed it.)
+  const about = (s: Shape3D) => volumes.get(s) ?? quickVolume(s);
+  const v0 = before ? Math.abs(about(before)) : 0;
   let solids = subShapes(after, "SOLID");
   if (!solids.length) {
     // A hollow (outer skin + inner skin) left as loose skins: one solid with a void.
@@ -5268,7 +5327,7 @@ function guardEdit(before: Shape3D | undefined, after: Shape3D, mayPart: boolean
   // (One solid: the body itself - its volume, worked out once.)
   // (Or a group holding that one solid and nothing else, as a cut gives back: the same volume, likely known already.)
   const one = solids.length === 1 && (after instanceof Solid || [...iterTopo(after.wrapped, "face")].length === [...iterTopo(solids[0], "face")].length);
-  const signed = one ? [volumeOf(after)] : solids.map((x) => measureVolume(cast(x) as Shape3D));
+  const signed = one ? [about(after)] : solids.map((x) => quickVolume(cast(x) as Shape3D));
   if (solids.length > 1 && signed.some((v) => v < 0) && signed.some((v) => v > 0)) throw new Error("That edit would damage the body - try a different value");
   // Crumbs: lumps far smaller than the rest (left between coincident faces).
   const vols = signed.map((v) => Math.abs(v));
@@ -5285,11 +5344,11 @@ function guardEdit(before: Shape3D | undefined, after: Shape3D, mayPart: boolean
   if (!mayPart && solids.length > was) throw new Error("That would break the body into pieces - try a smaller value");
   // Inside out (negative volume): turn it right - on a copy (its faces may be
   // shared with earlier steps' results, which must never change).
-  if (volumeOf(after) < 0) {
+  if (about(after) < 0) {
     after = deepCopy(after);
     solids = subShapes(after, "SOLID");
     for (const x of solids) oc.BRepLib.OrientClosedSolid(x);
-    if (measureVolume(after) < 0) throw new Error("That edit would turn the body inside out");
+    if (quickVolume(after) < 0) throw new Error("That edit would turn the body inside out");
   }
   // Something wrong with it: repaired if that can be done without changing
   // the shape (noted in History); else the step stops with the message.

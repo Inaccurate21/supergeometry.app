@@ -100,6 +100,35 @@ export function measureVolume(s: Measurable): number {
 }
 
 /**
+ * The volume to a thousandth or so (measured: within 0.15 %), for checks that need no more: which way out a solid
+ * is, whether it is empty, whether a join or a cut came to about what it should. The measure to a millionth takes
+ * seconds on curved bodies (a mug: 1.7 s; a jet engine's cowl: 10.6 s) where this takes 0.2 s and 0.06 s - and such
+ * checks, asked several times a step, were most of what a join, a cut or a thread on such a body took.
+ * (The exact one where it is known already.)
+ */
+const quick = new WeakMap<object, number>();
+export function quickVolume(s: Measurable): number {
+  const exact = measured.get(s);
+  if (exact) return exact.vol;
+  const had = quick.get(s);
+  if (had !== undefined) return had;
+  const oc = getOC();
+  let v = NaN;
+  const p = new oc.GProp_GProps();
+  try {
+    const err = oc.BRepGProp.VolumeProperties(s.wrapped, p, 1e-3, false, false);
+    if (Number.isFinite(err)) v = p.Mass();
+  } catch {
+    // The plain one, below.
+  } finally {
+    p.delete();
+  }
+  if (!Number.isFinite(v)) v = roughVolume(s);
+  quick.set(s, v);
+  return v;
+}
+
+/**
  * The volume roughly (OpenCascade's plain measure, a percent or so out on
  * curved sweeps): enough to tell a solid's sign, or that it isn't empty. The
  * exact measure of a mug handle's sweep took 3.5 s each time, asked twice for

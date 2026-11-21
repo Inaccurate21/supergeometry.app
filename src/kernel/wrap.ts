@@ -6,7 +6,7 @@ import { cast, draw, getOC, makeCompound, makeLine, makeVertex, type Drawing, ty
 import type { Vec3 } from "../doc/types";
 import { add, cross, dist, dot, len, norm, scale, sub } from "../geom";
 import { cylinderOf } from "./faceEdit";
-import { measureVolume } from "./ocFree";
+import { measureVolume, quickVolume } from "./ocFree";
 
 const tup = (v: { toTuple(): number[] }) => v.toTuple() as Vec3;
 
@@ -258,7 +258,7 @@ function thicken(face: Face, height: number, cy: { s: number }): Shape3D {
       th.MakeThickSolidBySimple(face.wrapped, k);
       if (!th.IsDone()) return null;
       let s = cast(th.Shape()) as Shape3D;
-      if (measureVolume(s) < 0) s = cast(s.wrapped.Reversed()) as Shape3D;
+      if (quickVolume(s) < 0) s = cast(s.wrapped.Reversed()) as Shape3D;
       return s;
     } catch {
       return null;
