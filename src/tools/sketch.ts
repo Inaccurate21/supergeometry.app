@@ -465,7 +465,9 @@ export class SketchTool implements Tool {
 
   enter(): void {
     document.body.classList.remove("sketch-compact");
-    this.prevOrtho = this.app.view.cam.ortho;
+    // (Only flat for a view of the cube's: perspective is what to go back to. A sketch stays flat when turned.)
+    this.prevOrtho = this.app.view.cam.ortho && !this.app.view.cam.flatForNow;
+    this.app.view.cam.flatForNow = false;
     // Already looking straight at the model along an axis (Top, Front, Right, …):
     // sketch on that origin plane, facing the camera, without asking.
     if (this.phase === "plane") {

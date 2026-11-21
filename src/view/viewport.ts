@@ -310,7 +310,9 @@ export class Viewport {
     this.axesGroup.visible = s.showAxes;
     this.cam.animate = s.animateCamera;
     // A 2D section is always seen straight on, without perspective.
-    this.cam.setOrtho(s.ortho || (this.sectionStyle === "flat" && !!this.clip));
+    // (Orthographic chosen in Settings: no longer only flat for a view of the cube's.)
+    if (s.ortho) this.cam.flatForNow = false;
+    this.cam.setOrtho(s.ortho || (this.sectionStyle === "flat" && !!this.clip) || this.cam.flatForNow);
     // Select Through shows what's behind (X-ray), since that's what it picks.
     const xray = s.shader === "xray" || this.selectThrough;
     for (const m of this.allBodyMats()) {

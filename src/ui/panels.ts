@@ -95,7 +95,7 @@ export function setupRightColumn(ui: UI, view: Viewport, store: DocStore, onUnit
     const showViews = () => {
       body.innerHTML = "";
       // Picking a view closes the list (it would only cover the view picked).
-      const go = (label: string, n: Vec3, x?: Vec3) => choiceRow(label, false, () => (view.cam.lookAlong(n, x), ui.closePopover()));
+      const go = (label: string, n: Vec3, x?: Vec3) => choiceRow(label, false, () => (view.cam.flatUntilTurned(), view.cam.lookAlong(n, x), ui.closePopover()));
       body.append(choiceRow("⌂ Default view", false, () => (view.cam.iso(), view.fitAll(), ui.closePopover())));
       body.append(go("Top", [0, 0, 1]), go("Bottom", [0, 0, -1]), go("Front", [0, -1, 0]), go("Back", [0, 1, 0], [-1, 0, 0]), go("Right", [1, 0, 0], [0, 1, 0]), go("Left", [-1, 0, 0], [0, -1, 0]));
       body.append(heading("Saved views"));

@@ -153,6 +153,8 @@ export class ViewCube {
       const face = FACES.find((f) => f.n.every((v, i) => v === zone[i]));
       const n = new Vector3(...zone).normalize().toArray() as Vec3;
       // Faces get an upright view; edges/corners keep the current spin.
+      // (In perspective: this view without it, until the view is turned by hand.)
+      this.view.cam.flatUntilTurned();
       this.view.cam.lookAlong(n, face?.u);
       this.view.requestRender();
     });

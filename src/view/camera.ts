@@ -42,11 +42,30 @@ export class CameraController {
 
   setOrtho(on: boolean): void {
     this.ortho = on;
+    if (!on) this.flatForNow = false;
     this.update();
+  }
+
+  /**
+   * A view asked for by name (a side of the view cube, Front / Top / ... in Views) while the view is in
+   * perspective: seen flat, without perspective, until the view is turned by hand - then in perspective again.
+   */
+  flatForNow = false;
+  flatUntilTurned(): void {
+    if (this.ortho && !this.flatForNow) return;
+    this.flatForNow = true;
+    this.setOrtho(true);
+  }
+  /** Back in perspective, if the view was only flat for a view asked for by name. */
+  private endFlat(): void {
+    if (!this.flatForNow) return;
+    this.flatForNow = false;
+    this.ortho = false;
   }
 
   orbit(dxPx: number, dyPx: number): void {
     this.animation = null;
+    this.endFlat();
     this.roll = 0;
     const az0 = this.azimuth;
     const el0 = this.elevation;
@@ -143,6 +162,7 @@ export class CameraController {
   }
 
   iso(): void {
+    this.endFlat();
     this.go({ ...this.aim(), azimuth: MathUtils.degToRad(-60), elevation: MathUtils.degToRad(30), roll: 0 });
   }
 
@@ -245,6 +265,7 @@ export class CameraController {
   }
 
   restore(v: SavedView): void {
+    this.flatForNow = false;
     this.ortho = v.ortho;
     this.go({ target: new Vector3(...v.target), distance: v.distance, azimuth: v.azimuth, elevation: v.elevation, roll: 0 });
   }
@@ -254,6 +275,7 @@ export class CameraController {
     return this.aim();
   }
   back(s: ViewState): void {
+    this.endFlat();
     this.go({ ...s, target: s.target.clone() });
   }
 
