@@ -120,6 +120,22 @@ export function entityCorners(e: Extract<SketchEntity, { kind: "rect" | "polygon
   ] as Vec2[]).map(([x, y]) => [e.center[0] + x * c - y * s, e.center[1] + x * s + y * c] as Vec2);
 }
 
+/** A spline's heights off its sketch's plane, one for each of its points - null when it is flat (or they don't fit its points). */
+export function splineHeights(e: SketchEntity): number[] | null {
+  if (e.kind !== "spline" || !e.z || e.z.length !== e.points.length || !e.z.some((v) => Math.abs(v) > 1e-12)) return null;
+  return e.z;
+}
+
+/**
+ * The height at each point of the spline's drawn polyline (entityPolylines' own points, in step with them): the
+ * heights of its points run through the same curve as their places. Null for a flat one.
+ */
+export function splineHeightSamples(e: SketchEntity): number[] | null {
+  const z = splineHeights(e);
+  if (!z || e.kind !== "spline") return null;
+  return splinePoints(z.map((v): Vec2 => [v, 0]), e.closed && e.points.length > 2, e.mode).map((p) => p[0]);
+}
+
 /** Dense polyline for drawing an entity. */
 export function entityPolylines(e: SketchEntity): Vec2[][] {
   return entityPrims(e).map((p) => samplePrim(p, 0, 1));

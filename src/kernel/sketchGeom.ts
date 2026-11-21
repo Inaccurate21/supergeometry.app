@@ -17,7 +17,7 @@ import {
 } from "replicad";
 import type { PlaneDef, SketchEntity, Vec2, Vec3 } from "../doc/types";
 import { toWorld } from "../geom";
-import { entityPrims, evalPrim, isClosedPrim, SPLINE_PER_SPAN, splineSpanAt, splineSpans, type Prim } from "../sketch/curves";
+import { entityPolylines, entityPrims, evalPrim, isClosedPrim, SPLINE_PER_SPAN, splineHeightSamples, splineSpanAt, splineSpans, type Prim } from "../sketch/curves";
 import { arrangement, resolveRegion, type Arrangement, type Loop, type LoopRef, type Piece, type RegionRef } from "../sketch/regions";
 
 /** Faces for the referenced regions of a sketch (one face per region, holes included). */
@@ -54,6 +54,22 @@ export function entitiesWire(entities: SketchEntity[], ids: string[], plane: Pla
   for (const id of ids) {
     const e = entities.find((x) => x.id === id);
     if (!e) throw new Error("A path curve was deleted");
+    // A spline with points off the plane: through space, as it is drawn.
+    const high = splineHeightSamples(e);
+    if (high) {
+      const flat = entityPolylines(e)[0] ?? [];
+      const pts = flat.map((q, i): Vec3 => {
+        const at = toWorld(plane, q);
+        const h = high[Math.min(i, high.length - 1)];
+        return [at[0] + plane.normal[0] * h, at[1] + plane.normal[1] * h, at[2] + plane.normal[2] * h];
+      });
+      let run = 0;
+      for (let i = 1; i < pts.length; i++) run += Math.hypot(pts[i][0] - pts[i - 1][0], pts[i][1] - pts[i - 1][1], pts[i][2] - pts[i - 1][2]);
+      if (pts.length >= 3 && run > 1e-9) {
+        edges.push(makeBSplineApproximation(pts, { tolerance: Math.max(1e-6, run * 1e-6), degMax: 5, degMin: 3 }));
+        continue;
+      }
+    }
     for (const p of entityPrims(e)) {
       if (p.t === "line") edges.push(makeLine(toWorld(plane, p.a), toWorld(plane, p.b)));
       else if (p.t === "circle" && isClosedPrim(p)) edges.push(makeCircle(p.r, toWorld(plane, p.c), plane.normal));

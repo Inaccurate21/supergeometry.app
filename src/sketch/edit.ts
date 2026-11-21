@@ -56,7 +56,8 @@ export function transformEntity(e: SketchEntity, xf: Xf, newId = false): SketchE
       // (Part of an ellipse, mirrored: it runs the other way round from the other side of its axis.)
       return { ...base, kind: "ellipse", center: xf(e.center), rx: e.rx * k, ry: e.ry * k, rotation: mirrored ? rot - e.rotation : e.rotation + rot, ...(e.sweep === undefined ? {} : { a0: mirrored ? -(e.a0 ?? 0) : (e.a0 ?? 0), sweep: mirrored ? -e.sweep : e.sweep }) };
     case "spline":
-      return { ...base, kind: "spline", points: e.points.map(xf), closed: e.closed, mode: e.mode };
+      // (Moved, turned or mirrored in the plane, its points stay as far off it; scaled, that much nearer or further.)
+      return { ...base, kind: "spline", points: e.points.map(xf), closed: e.closed, mode: e.mode, ...(e.z ? { z: e.z.map((v) => v * k) } : {}) };
     case "rect":
       return { ...base, kind: "rect", center: xf(e.center), w: e.w * k, h: e.h * k, rotation: mirrored ? rot - e.rotation : e.rotation + rot };
     case "polygon": {
@@ -383,7 +384,7 @@ export function splineEnds(e: SketchEntity): [Vec2, Vec2] | null {
 function reverseIf(e: SketchEntity, rev: boolean): SketchEntity {
   if (!rev) return e;
   if (e.kind === "line" || e.kind === "arc") return { ...e, a: e.b, b: e.a } as SketchEntity;
-  if (e.kind === "spline") return { ...e, points: [...e.points].reverse() };
+  if (e.kind === "spline") return { ...e, points: [...e.points].reverse(), ...(e.z ? { z: [...e.z].reverse() } : {}) };
   return e;
 }
 

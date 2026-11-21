@@ -29,7 +29,12 @@ export type SketchEntity = EntityBase &
      * round edge seen at a slant is, with two ends like the edge. Neither: whole.
      */
     | { kind: "ellipse"; center: Vec2; rx: number; ry: number; rotation: number; a0?: number; sweep?: number }
-    | { kind: "spline"; points: Vec2[]; closed: boolean; mode: "fit" | "control" }
+    /**
+     * `z`: how far each of its points is off the sketch's plane (mm along the plane's normal; missing, or not one
+     * for each point: flat). The curve then runs through space - a path for a sweep, a guide for a loft. Everything
+     * that works in the plane (shapes to extrude, constraints, snapping, DXF) goes by its shadow on the plane.
+     */
+    | { kind: "spline"; points: Vec2[]; closed: boolean; mode: "fit" | "control"; z?: number[] }
     | { kind: "rect"; center: Vec2; w: number; h: number; rotation: number }
     | { kind: "polygon"; center: Vec2; radius: number; sides: number; angle: number }
     | { kind: "polyline"; points: Vec2[]; closed: boolean }

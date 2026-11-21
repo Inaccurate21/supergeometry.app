@@ -13,7 +13,7 @@ import { Gimbal, IN_PLANE, type GimbalPart } from "./gimbal";
 import { buildConstraints, CONSTRAINT_BUTTONS, ConstraintGlyphs, dimOf, distanceOf, existingConstraints, setDim } from "./sketchConstraints";
 import { settings } from "../settings";
 import { isCoarse, screenClass } from "../device";
-import { arcFrom3, closestOnPrim, entityPolylines, entityPrims, evalPrim } from "../sketch/curves";
+import { arcFrom3, closestOnPrim, entityPolylines, entityPrims, evalPrim, splineHeights } from "../sketch/curves";
 import {
   offsetChain,
   outlineOffsetCurves,
@@ -358,6 +358,8 @@ export class SketchTool implements Tool {
   /** Selected sketch points (curves are in `selected`). */
   private selPts: PointRef[] = [];
   private gimbal: Gimbal | null = null;
+  /** The gimbal has its arrow off the plane (points of a spline are picked). */
+  private gimbalLifts = false;
   private copyToggle: CopyToggle | null = null;
   private glyphs: ConstraintGlyphs | null = null;
   private bar: HTMLElement | null = null;
@@ -367,6 +369,8 @@ export class SketchTool implements Tool {
     | { kind: "points"; from: Vec2; refs: DragRef[] }
     | { kind: "gimbal"; part: GimbalPart; from: ToolPointer; refs: DragRef[]; center: Vec2; last: { d: Vec2; ang: number } }
     | { kind: "pivot"; line: string }
+    /** Points of a spline pulled off the sketch's plane (the gimbal's third arrow): each one's height as it began. */
+    | { kind: "lift"; from: ToolPointer; origin: Vec3; pts: { e: string; i: number; z0: number }[]; dz: number }
     | null = null;
   /**
    * One line selected: where its rotation pivot sits along it (0 = start,
@@ -1616,9 +1620,17 @@ export class SketchTool implements Tool {
                 },
               }))
             : [];
+          // A spline's point: how far off the plane it is, typed (the gimbal's third arrow drags it).
+          const lift = this.liftable();
+          const height: PanelItem[] =
+            lift?.length === 1
+              ? [{ type: "number", label: "Height", value: lift[0].z0, kind: "length", onInput: (v: number) => (this.liftPoints([{ ...lift[0], z0: 0 }], v, true), this.refreshGimbal(), this.updatePanel()) }]
+              : lift
+                ? [{ type: "button", label: "Flat on the plane", icon: "plane", onClick: () => (this.liftPoints(lift.map((q) => ({ ...q, z0: 0 })), 0, true), this.refreshGimbal(), this.updatePanel()) }]
+                : [];
           return ui.showPanel({
-            title: this.selPts.length === 1 ? "Point" : `${this.selPts.length} points`,
-            items: [...xy, ...this.constraintChips(), ...this.deleteConstraintsItem()],
+            title: this.selPts.length === 1 ? (lift ? "Spline point" : "Point") : `${this.selPts.length} points`,
+            items: [...xy, ...height, ...this.constraintChips(), ...this.deleteConstraintsItem()],
             onDone: () => this.clearSelection(),
           });
         }
@@ -2120,6 +2132,15 @@ export class SketchTool implements Tool {
       this.gimbal.setHot(part);
       return true;
     }
+    // The arrow off the plane: the picked points of a spline go up or down with it (the curve then runs through
+    // space - a sweep's path, a loft's guide).
+    if (part.kind === "axis" && part.i === 2) {
+      const pts = this.liftable();
+      if (!pts) return false;
+      this.sdrag = { kind: "lift", from: p, origin: [...this.gimbal.origin] as Vec3, pts, dz: 0 };
+      this.gimbal.setHot(part);
+      return true;
+    }
     const refs = this.joinCorners(this.dragRefs(this.selected, this.selPts));
     if (!refs.length) return false;
     const c = toPlane(this.plane!, this.gimbal.origin);
@@ -2201,6 +2222,19 @@ export class SketchTool implements Tool {
 
   private dragGeometry(p: ToolPointer): void {
     const dr = this.sdrag!;
+    if (dr.kind === "lift") {
+      const view = this.app.view;
+      const step = niceStepOf(view.cam.worldPerPixel(view.height) * 4);
+      const raw = axisDrag(view, dr.origin, this.plane!.normal, dr.from, p);
+      const dz = p.shift ? raw : Math.round(raw / step) * step;
+      this.liftPoints(dr.pts, dz);
+      dr.dz = dz;
+      const n = this.plane!.normal;
+      this.gimbal?.setCenter([dr.origin[0] + n[0] * dz, dr.origin[1] + n[1] * dz, dr.origin[2] + n[2] * dz]);
+      const now = dr.pts.length === 1 ? dr.pts[0].z0 + dz : dz;
+      this.app.ui.setLabel(p.x, p.y, dr.pts.length === 1 ? `${fmtLen(now)} off the plane` : `${dz >= 0 ? "+" : ""}${fmtLen(dz)}`);
+      return;
+    }
     if (dr.kind === "pivot") {
       // Slide along the line; snaps to its ends and middle.
       const e = this.entities.find((x) => x.id === dr.line);
@@ -2264,7 +2298,12 @@ export class SketchTool implements Tool {
       const y = q[1] - c[1];
       return [c[0] + x * cs - y * sn + d[0], c[1] + x * sn + y * cs + d[1]];
     });
-    this.gimbal?.setCenter(sketchToWorld(this.plane!, [c[0] + d[0], c[1] + d[1]]).toArray() as Vec3);
+    // (Points of a spline up off the plane: the gimbal stays up there with them as they slide.)
+    const lift = this.liftable();
+    const up = lift ? lift.reduce((s, q) => s + q.z0, 0) / lift.length : 0;
+    const nrm = this.plane!.normal;
+    const flat = sketchToWorld(this.plane!, [c[0] + d[0], c[1] + d[1]]).toArray() as Vec3;
+    this.gimbal?.setCenter([flat[0] + nrm[0] * up, flat[1] + nrm[1] * up, flat[2] + nrm[2] * up]);
     // Copying: the originals stay where they were (drawn there while the copy moves).
     if (copyMode.on && this.dragBase) {
       this.clearOverlays();
@@ -2289,6 +2328,44 @@ export class SketchTool implements Tool {
   }
 
   private dragBase: SketchEntity[] | null = null;
+
+  /** Only points of splines picked (no curve, no other point): those can go off the plane. Each with its height now. */
+  private liftable(): { e: string; i: number; z0: number }[] | null {
+    if (this.selected.size || !this.selPts.length) return null;
+    const out: { e: string; i: number; z0: number }[] = [];
+    for (const r of this.selPts) {
+      const e = this.entities.find((x) => x.id === r.e);
+      const m = /^k(\d+)$/.exec(r.p);
+      // (Not a curve that follows a body's edge: that one is where the edge is.)
+      if (e?.kind !== "spline" || !m || e.id.startsWith(LINKED)) return null;
+      const i = Number(m[1]);
+      if (i >= e.points.length) return null;
+      out.push({ e: e.id, i, z0: splineHeights(e)?.[i] ?? 0 });
+    }
+    return out;
+  }
+
+  /** Those points `dz` higher than they began (shown as it goes; kept when the drag ends, or at once with `keep`). */
+  private liftPoints(pts: { e: string; i: number; z0: number }[], dz: number, keep = false): void {
+    if (!this.sketchId) return;
+    const base = this.dragBase ?? this.entities;
+    if (!keep) this.dragBase ??= base;
+    const next = base.map((e) => {
+      const mine = pts.filter((q) => q.e === e.id);
+      if (e.kind !== "spline" || !mine.length) return e;
+      const z = e.z && e.z.length === e.points.length ? [...e.z] : e.points.map(() => 0);
+      for (const q of mine) z[q.i] = Math.round((q.z0 + dz) * 1e9) / 1e9;
+      // (All of it back on the plane: a flat spline again, as it was drawn.)
+      const { z: _was, ...flat } = e;
+      return z.some((v) => Math.abs(v) > 1e-12) ? { ...e, z } : (flat as SketchEntity);
+    });
+    if (keep) return this.commit(next);
+    const id = this.sketchId;
+    this.app.store.transient((doc) => {
+      const f = doc.features.find((x) => x.id === id);
+      if (f?.type === "sketch") f.entities = next;
+    });
+  }
 
   /** A single point being dragged onto another point: where it would join (Coincident on release). */
   private dropOn: PointRef | null = null;
@@ -2436,11 +2513,26 @@ export class SketchTool implements Tool {
       c = [line.a[0] + (line.b[0] - line.a[0]) * t, line.a[1] + (line.b[1] - line.a[1]) * t];
     }
     const plane = this.plane!;
-    this.gimbal ??= new Gimbal(this.app.view, { axes: [plane.xDir, planeY(plane), plane.normal], parts: IN_PLANE });
+    // Points of a spline: the arrow off the plane too, and the gimbal where they are (up off the plane with them).
+    const lift = this.liftable();
+    if (this.gimbal && this.gimbalLifts !== !!lift) {
+      this.gimbal.dispose();
+      this.gimbal = null;
+      this.copyToggle?.dispose();
+      this.copyToggle = null;
+    }
+    // (Said once as the arrow comes: seen straight on, it points at the eye and can't be dragged.)
+    if (lift && !this.gimbalLifts) this.setHint("A spline's point can leave the plane: turn the view and drag the third arrow, or type its Height.");
+    else if (!lift && this.gimbalLifts) this.setHint();
+    this.gimbalLifts = !!lift;
+    this.gimbal ??= new Gimbal(this.app.view, { axes: [plane.xDir, planeY(plane), plane.normal], parts: lift ? (p) => IN_PLANE(p) || (p.kind === "axis" && p.i === 2) : IN_PLANE });
     const g = this.gimbal;
     this.copyToggle ??= new CopyToggle(this.app.view, () => g.origin);
-    this.gimbal.setCenter(sketchToWorld(plane, c).toArray() as Vec3);
-    this.showQuick(sketchToWorld(plane, c).toArray() as Vec3);
+    const up = lift ? lift.reduce((s, q) => s + q.z0, 0) / lift.length : 0;
+    const centre = sketchToWorld(plane, c).toArray() as Vec3;
+    const at: Vec3 = [centre[0] + plane.normal[0] * up, centre[1] + plane.normal[1] * up, centre[2] + plane.normal[2] * up];
+    this.gimbal.setCenter(at);
+    this.showQuick(at);
   }
 
   /** Quick actions beside the picked curves and points (the gimbal moves them): Construction / Regular, Delete. */
@@ -4344,7 +4436,11 @@ export class SketchTool implements Tool {
         if (hit?.kind !== "point") return false;
         const e = this.entities.find((x) => x.id === hit.entity);
         const q = e && pointOf(e, hit.p);
-        const sc = q && this.app.view.toScreen(sketchToWorld(this.plane!, q));
+        // (Where it is drawn: a spline's point may be up off the plane.)
+        const up = (e && /^k\d+$/.test(hit.p) ? splineHeights(e)?.[Number(hit.p.slice(1))] : 0) ?? 0;
+        const nrm = this.plane!.normal;
+        const at = q && (sketchToWorld(this.plane!, q).toArray() as Vec3);
+        const sc = at && this.app.view.toScreen([at[0] + nrm[0] * up, at[1] + nrm[1] * up, at[2] + nrm[2] * up]);
         return !sc || Math.hypot(sc[0] - p.x, sc[1] - p.y) < Math.max(10, p.tol * 0.7) || !this.curveAt(p);
       })();
       if (hit?.kind === "point" && hit.sketch === this.sketchId && onPoint) {
@@ -4352,6 +4448,9 @@ export class SketchTool implements Tool {
         const i = this.selPts.findIndex((x) => refKey(x) === refKey(r));
         if (i >= 0) this.selPts.splice(i, 1);
         else (this.selPts.push(r), this.pickSeq.set(refKey(r), ++this.seq));
+        // A point of a spline that is itself picked (it was picked to show its points): the pick is now that point,
+        // not the whole curve with it - the gimbal moves the point (and can take it off the plane), not the curve.
+        if (i < 0 && !p.shift && this.selected.has(r.e) && this.entities.find((x) => x.id === r.e)?.kind === "spline") this.selected.delete(r.e);
         return this.selectionChanged();
       }
     }

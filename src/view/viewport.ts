@@ -55,7 +55,7 @@ import { FRONT, GROUND, RIGHT, planeY } from "../geom";
 import type { BodyMesh, ConstructionInfo, EdgeInfo, FaceInfo } from "../kernel/protocol";
 import { settings } from "../settings";
 import { pointsOf } from "../sketch/constraints";
-import { entityPolylines } from "../sketch/curves";
+import { entityPolylines, splineHeights, splineHeightSamples } from "../sketch/curves";
 import { arrangement } from "../sketch/regions";
 import { CameraController, type Insets } from "./camera";
 import { AdaptiveGrid } from "./grid";
@@ -801,8 +801,11 @@ export class Viewport {
       const held: number[] = [];
       // Offsets of the face's edge (linked to it): drawn and tapped like the sketch's own curves.
       for (const e of [...s.entities, ...(s.boundary ?? []).filter((b) => b.id.startsWith("lnk-"))]) {
+        // (A spline with points off the plane runs through space: drawn, picked and snapped to where it is.)
+        const high = splineHeightSamples(e);
+        const lift = splineHeights(e);
         for (const poly of entityPolylines(e)) {
-          const pts = poly.map((p) => new Vector3(p[0], p[1], 0).applyMatrix4(m));
+          const pts = poly.map((p, i) => new Vector3(p[0], p[1], high ? (high[Math.min(i, high.length - 1)] ?? 0) : 0).applyMatrix4(m));
           const into = e.construction ? dashed : e.id.startsWith("ref-") ? linked : active && s.defined?.has(e.id) ? held : solid;
           for (let i = 0; i < pts.length - 1; i++) into.push(...pts[i].toArray(), ...pts[i + 1].toArray());
           this.curveLines.push({ sketch: s.id, entity: e.id, pts });
@@ -811,7 +814,7 @@ export class Viewport {
           const all = pointsOf(e);
           // (A spline not picked: its two ends - none for a closed one. Picked: every point it is shaped by.)
           const shown = e.kind === "spline" && all.length > 2 && !this.openCurves.has(e.id) ? (e.closed ? [] : [all[0], all[all.length - 1]]) : all;
-          for (const q of shown) this.sketchPoints.push({ sketch: s.id, entity: e.id, p: q.p, pos: new Vector3(q.at[0], q.at[1], 0).applyMatrix4(m) });
+          for (const q of shown) this.sketchPoints.push({ sketch: s.id, entity: e.id, p: q.p, pos: new Vector3(q.at[0], q.at[1], lift && q.p.startsWith("k") ? (lift[Number(q.p.slice(1))] ?? 0) : 0).applyMatrix4(m) });
         }
       }
       if (solid.length) {
