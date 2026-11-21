@@ -22,7 +22,7 @@ export const QUICK = {
   edge: ["chamfer", "thread", "move", "connect"],
   vertex: ["moveVertex", "delete"],
   body: ["fillet", "mirror"],
-  profile: ["sketch", "revolve"],
+  profile: ["extrude", "revolve"],
   plane: ["sketch", "plane"],
   axis: ["delete"],
   image: ["scale", "delete"],

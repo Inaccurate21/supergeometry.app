@@ -317,13 +317,9 @@ export class SelectTool implements Tool {
       run();
       return true;
     }
-    // A shape's region tapped (not added with Shift/Ctrl): its extrude arrow is
-    // ready - at 0, so nothing is made until the arrow is dragged (or a value typed).
-    const now = this.app.selection;
-    if (s.kind === "profile" && !p.add && count < 2 && now.length && now.every((x) => x.kind === "profile") && now.some((x) => sameSel(x, s!))) {
-      const src = sourcesOf(this.app, now)[0];
-      if (src) this.app.setTool(new ExtrudeOp(this.app, src, undefined, "auto", { distance: 0 }).markTapped());
-    }
+    // (A shape's region tapped is picked, like anything else: its arrow to drag and its tools beside it - Extrude,
+    // Revolve, Delete and the rest. It went straight into Extrude, which showed the arrow alone; asked for: "I want
+    // them to appear from the first click". Extrude still starts by dragging the arrow or the shape, or typing a size.)
     return true;
   }
 
