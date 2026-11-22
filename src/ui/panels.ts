@@ -49,25 +49,43 @@ export function setupRightColumn(ui: UI, view: Viewport, store: DocStore, onUnit
       const s = settings.value;
       // Switched on, it keeps the squares as they are right now, at this zoom (asked for: "I want the lock grid size
       // toggle to adjust to whatever the zoom level is so I can just click toggle on").
-      host.append(
-        toggleRow(s.gridLocked ? `Lock grid size (${fmtStep(s.gridStep)})` : `Lock grid size (now ${fmtStep(view.grid.step)})`, s.gridLocked, (v) => {
-          if (v) settings.set("gridStep", +view.grid.step.toPrecision(6));
-          settings.set("gridLocked", v);
-          ui.refreshPopover();
-        }),
-      );
+      const lockRow = toggleRow(s.gridLocked ? `Lock grid size (${fmtStep(s.gridStep)})` : `Lock grid size (now ${fmtStep(view.grid.step)})`, s.gridLocked, (v) => {
+        if (v) settings.set("gridStep", +view.grid.step.toPrecision(6));
+        settings.set("gridLocked", v);
+        ui.refreshPopover();
+      });
+      host.append(lockRow);
       const stepRow = el("label", "pop-row");
       stepRow.append(el("span", "", "Locked size (mm)"));
       const input = textField("pop-input");
       input.inputMode = "decimal";
-      input.value = String(s.gridStep);
+      // (Not locked: the squares' size right now - what locking would keep.)
+      input.value = String(s.gridLocked ? s.gridStep : +view.grid.step.toPrecision(6));
       input.addEventListener("change", () => {
         const v = Number(input.value);
         if (v > 0) settings.set("gridStep", v);
       });
       stepRow.append(input);
       host.append(stepRow);
-      host.append(el("div", "pop-note", s.gridLocked ? "The squares stay this size at any zoom, and a sketch snaps to them. Switch the lock off for a grid that follows the zoom." : `The grid follows the zoom (now ${fmtStep(view.grid.step)} a square), and a sketch snaps to the squares shown. Lock it to keep them as they are now.`));
+      const gridNote = el("div", "pop-note", s.gridLocked ? "The squares stay this size at any zoom, and a sketch snaps to them. Switch the lock off for a grid that follows the zoom." : `The grid follows the zoom (now ${fmtStep(view.grid.step)} a square), and a sketch snaps to the squares shown. Lock it to keep them as they are now.`);
+      host.append(gridNote);
+      // Not locked, the size follows the zoom while this is open: the row, the box and the note say the squares'
+      // size as it is now (asked for: "the lock grid size should change on the fly when I zoom so I can see what
+      // size grid it is in that moment"). They said the size it was when the window opened.
+      if (!s.gridLocked) {
+        let shown = view.grid.step;
+        const follow = () => {
+          // (Closed, or drawn again: this one is done.)
+          if (!lockRow.isConnected || lockRow.closest("[hidden]")) return void view.frameHooks.delete(follow);
+          const now = view.grid.step;
+          if (now === shown) return;
+          shown = now;
+          (lockRow.firstElementChild as HTMLElement).textContent = `Lock grid size (now ${fmtStep(now)})`;
+          if (document.activeElement !== input) input.value = String(+now.toPrecision(6));
+          gridNote.textContent = `The grid follows the zoom (now ${fmtStep(now)} a square), and a sketch snaps to the squares shown. Lock it to keep them as they are now.`;
+        };
+        view.frameHooks.add(follow);
+      }
       host.append(heading("Degree format"));
       host.append(choiceRow("Decimal (27.15°)", s.degrees === "decimal", () => (settings.set("degrees", "decimal"), ui.refreshPopover())), choiceRow("Fractional (27° 15′)", s.degrees === "fractional", () => (settings.set("degrees", "fractional"), ui.refreshPopover())));
     }),

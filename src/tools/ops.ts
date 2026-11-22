@@ -1691,6 +1691,8 @@ export class TransformOp extends FeatureOp<TransformFeature> {
       this.slots = [axisSlot(app, "Axis", () => this.axis, (a) => ((this.axis = a), this.applyAxis()))];
     this.center = o.kind === "move" && o.rotate ? o.rotate.origin : center;
     if (copy && !existing && linkMode.on) this.feature.link = true;
+    // (A new pattern: linked if Link was left on the last time.)
+    if ((kind === "linear" || kind === "circular") && !existing && linkMode.on) this.feature.link = true;
     if (kind === "move") {
       this.gimbal = new Gimbal(app.view);
       const g = this.gimbal;
@@ -1811,6 +1813,20 @@ export class TransformOp extends FeatureOp<TransformFeature> {
       },
     };
     const copy: PanelItem[] = this.feature.copy && !this.existing ? [copyToggle, link] : [copyToggle];
+    // A pattern's Link: its copies and what they were made from change together afterwards - a hole cut in one is
+    // cut in all (asked for: "we should also have this in patterns"). Off, each is a body of its own.
+    const patternLink: PanelItem = {
+      type: "toggle",
+      label: "Link",
+      value: !!this.feature.link,
+      onChange: (v) => {
+        linkMode.on = v;
+        if (v) this.feature.link = true;
+        else delete this.feature.link;
+        this.render();
+        up();
+      },
+    };
     // ΔX ΔY ΔZ: when changing a step opened from History, and on touch screens
     // (with a mouse, moving is dragging or typing while dragging - the numbers
     // are clutter there; a finger has no keyboard mid-drag, so exact moves need them).
@@ -1846,11 +1862,13 @@ export class TransformOp extends FeatureOp<TransformFeature> {
         return [
           this.num("Count", "op.count", "int", { min: 2 }),
           this.num("Spacing", "op.spacing", "length"),
+          patternLink,
         ];
       case "circular":
         return [
           this.num("Count", "op.count", "int", { min: 2 }),
           this.num("Angle", "op.angle", "angle"),
+          patternLink,
         ];
     }
   }

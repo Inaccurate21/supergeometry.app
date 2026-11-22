@@ -23,7 +23,9 @@ export const QUICK = {
   // chamfer". Its dot is on the edge to drag as well.)
   edge: ["fillet", "chamfer", "move", "thread", "connect"],
   vertex: ["moveVertex", "delete"],
-  body: ["fillet", "mirror"],
+  // (A body that is, or began as, a freeform: Edit Freeform first - asked for: "when I double click a freeform body,
+  // I want the edit freeform button there".)
+  body: ["editFreeform", "fillet", "mirror"],
   profile: ["extrude", "revolve"],
   plane: ["sketch", "plane"],
   axis: ["delete"],

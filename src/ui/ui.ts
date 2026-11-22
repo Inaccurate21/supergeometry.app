@@ -558,19 +558,8 @@ export class UI {
       this.popoverFill();
       if (!this.popover.childElementCount) return this.closePopover();
       this.popover.hidden = false;
-      const r = b.getBoundingClientRect();
-      if (place) {
-        // Opened from the view cube: under the cube, its right edge lined up with the button.
-        // (Clear of the right-hand column below it.)
-        const col = this.rightCol.getBoundingClientRect();
-        this.popover.style.right = `${Math.max(window.innerWidth - r.right, col.width ? window.innerWidth - col.left + 8 : 8)}px`;
-        this.popover.style.top = `${Math.min(r.bottom + 6, window.innerHeight - this.popover.offsetHeight - 8)}px`;
-      } else {
-        this.popover.style.right = "";
-        // Phones: below the top bar, like History.
-        const topMin = window.innerWidth <= 720 || window.innerHeight <= 500 ? 52 : 8;
-        this.popover.style.top = `${Math.max(topMin, Math.min(r.top, window.innerHeight - this.popover.offsetHeight - 8))}px`;
-      }
+      this.popoverAt = { button: b, cube: !!place };
+      this.placePopover();
       document.querySelectorAll(".pop-open").forEach((x) => x.classList.remove("pop-open"));
       b.classList.add("pop-open");
       // Things placed beside the right column (the constraint column) move over.
@@ -585,6 +574,80 @@ export class UI {
   }
 
   private popoverFill: (() => void) | null = null;
+  /** The button the open window came from (and whether that is the view cube's). */
+  private popoverAt: { button: HTMLElement; cube: boolean } | null = null;
+  private popoverWatch: ResizeObserver | null = null;
+
+  /**
+   * Where the window opened from the right column (Shaded, Settings, Views...) stands: beside its button, and in
+   * the room there is - under the top bar and whatever else is above it there (the view cube, History, Items),
+   * over the line at the bottom, undo / redo and the guide text. Longer than that room, it scrolls inside. Worked
+   * out from where those are now, on every screen (asked for: "when a window opens from those, to not override
+   * anything else (should be dynamic)"): it stood by fixed sizes, and on a phone came down over the line.
+   */
+  private placePopover(): void {
+    const at = this.popoverAt;
+    const pop = this.popover;
+    if (!at || pop.hidden) return;
+    const W = window.innerWidth;
+    const H = window.innerHeight;
+    const r = at.button.getBoundingClientRect();
+    const col = this.rightCol.getBoundingClientRect();
+    pop.style.maxHeight = "";
+    // Sideways: beside the column (the stylesheet's place), or under the cube with its right edge at the button.
+    pop.style.right = at.cube ? `${Math.max(W - r.right, col.width ? W - col.left + 8 : 8)}px` : "";
+    let box = pop.getBoundingClientRect();
+    const seen = (sel: string): DOMRect | null => {
+      const e = document.querySelector<HTMLElement>(sel);
+      if (!e || e === at.button || e.contains(at.button)) return null;
+      const cs = getComputedStyle(e);
+      if (cs.display === "none" || cs.visibility === "hidden") return null;
+      const q = e.getBoundingClientRect();
+      return q.width && q.height && q.right > box.left + 2 && q.left < box.right - 2 ? q : null;
+    };
+    // (What stands above it gives way to nothing; what stands below neither: the window takes what is between.)
+    let top = 8;
+    let bottom = H - 8;
+    const between = () => {
+      top = 8;
+      bottom = H - 8;
+      for (const sel of ["#topbar", "#viewcube-host", "#history.open", "#items.open", "#hint", ".sn-line", "#undo-dock", "#numpad"]) {
+        const q = seen(sel);
+        if (!q) continue;
+        // (Above the middle: over it. Below: under it. One down the whole edge - a long History - is beside it.)
+        if (q.bottom < H * 0.55) top = Math.max(top, q.bottom + 6);
+        else if (q.top > H * 0.45) bottom = Math.min(bottom, q.top - 6);
+      }
+    };
+    between();
+    // Hardly any room under the view cube (a phone on its side): beside the cube, not a slit under it.
+    const cube = !at.cube && bottom - top < 170 ? seen("#viewcube-host") : null;
+    if (cube && cube.left - 8 >= box.width) {
+      pop.style.right = `${Math.round(W - cube.left + 6)}px`;
+      box = pop.getBoundingClientRect();
+      between();
+    }
+    const room = Math.max(120, bottom - top);
+    pop.style.maxHeight = `${room}px`;
+    const h = Math.min(pop.offsetHeight, room);
+    const want = at.cube ? r.bottom + 6 : r.top;
+    pop.style.top = `${Math.round(Math.max(top, Math.min(want, bottom - h)))}px`;
+    // Its size or the line's changes (a choice inside it, a list opened from the line): placed again.
+    if (!this.popoverWatch) {
+      let queued = false;
+      const again = () => {
+        if (queued) return;
+        queued = true;
+        requestAnimationFrame(() => ((queued = false), this.placePopover()));
+      };
+      this.popoverWatch = new ResizeObserver(again);
+      for (const sel of [".sn-line", "#history", "#items", "#hint"]) {
+        const e = document.querySelector(sel);
+        if (e) this.popoverWatch.observe(e);
+      }
+      window.addEventListener("resize", again);
+    }
+  }
 
   /** The right column's lists and switches, by id (Settings opens the ones that have no button of their own). */
   private rightEntries = new Map<string, { open: (host: HTMLElement) => void; label?: () => string }>();
@@ -602,6 +665,7 @@ export class UI {
     this.popover.style.maxHeight = "";
     this.popover.hidden = true;
     this.popoverFill = null;
+    this.popoverAt = null;
     document.querySelectorAll(".pop-open").forEach((x) => x.classList.remove("pop-open"));
     window.dispatchEvent(new Event("resize"));
   }
@@ -609,6 +673,7 @@ export class UI {
   /** Re-draw the open popover (after one of its choices changed). */
   refreshPopover(): void {
     this.popoverFill?.();
+    this.placePopover();
   }
 
   // ------------------------------------------------------- hint/status/toast

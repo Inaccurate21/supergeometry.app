@@ -82,6 +82,8 @@ interface Word {
   quiet?: boolean;
   kbd?: string;
   run?: () => void;
+  /** Done as its list is opened (a sketch's Draw: Line is on, to draw at once). */
+  opens?: () => void;
   /** What it opens: a tool's kinds, a choice's other options. */
   kids?: Word[];
   /** A number: typed, or dragged sideways. */
@@ -159,7 +161,7 @@ const SK_ONCE = new Set(["trim", "split"]);
 const GROUPS = ["create", "combine", "modify", "construct", "transform", "freeform", "sketch"];
 /** A sketch's groups (as its wheel has them): what each holds, most used first; anything else is under More. */
 const SK_GROUPS: { id: string; label: string; icon: IconName; tools: string[] }[] = [
-  { id: "draw", label: "Draw", icon: "line", tools: ["line", "rect", "circle", "arc", "spline", "polygon", "ellipse", "text", "project"] },
+  { id: "draw", label: "Draw", icon: "line", tools: ["line", "rect", "circle", "arc", "spline", "polygon", "ellipse", "text", "project", "fill"] },
   { id: "modify", label: "Modify", icon: "trim", tools: ["trim", "fillet", "offset", "extend", "split", "align"] },
   { id: "transform", label: "Transform", icon: "transform", tools: ["move", "mirror", "rotate", "pattern", "scale"] },
 ];
@@ -355,8 +357,9 @@ export class Sentence {
     const [l, r] = to.split("|");
     this.root.style.left = to ? `${l}px` : "";
     this.root.style.right = to ? `${r}px` : "";
-    // (No wider than that room: past it the line slides.)
-    this.root.style.maxWidth = to ? `${Math.max(200, Math.min(980, innerWidth - Number(l) - Number(r)))}px` : "";
+    // (No wider than that room: past it the line slides. All of that room, though: it stopped at 980 on a wide
+    // screen, and a sketch's picked line had to be slid to reach its last buttons.)
+    this.root.style.maxWidth = to ? `${Math.max(200, innerWidth - Number(l) - Number(r))}px` : "";
     this.threadSig = "";
   }
 
@@ -545,7 +548,15 @@ export class Sentence {
         const its = g.tools.map((id) => tools.find((it) => it.id === id)).filter((it): it is ToolItem => !!it && offered(it));
         for (const it of its) placed.add(it);
         const w = its.map(retapped);
-        words.push(this.group(g.id, g.label, g.icon, w, "Pick a line or a shape of the sketch first."));
+        const word = this.group(g.id, g.label, g.icon, w, "Pick a line or a shape of the sketch first.");
+        // Draw opened with no tool on: Line is on, its list open as ever - a tap on the grid draws at once, a tap
+        // in the list takes another (asked for: "when I click draw, line should be automatically selected (but
+        // the window with different line types should open normally) so I can start drawing right away").
+        if (g.id === "draw" && !drawing && picked === 0) {
+          const line = w.find((x) => x.key.endsWith("line") || x.label === "Line");
+          if (line?.run) word.opens = line.run;
+        }
+        words.push(word);
         if (w.length) groups.push({ cap: g.label, words: w });
       }
       // (Delete: a tap - the curves picked, else the tool that deletes what is tapped; unless their window has it already.)
@@ -659,6 +670,9 @@ export class Sentence {
 
   // ------------------------------------------------------------------ drawing
 
+  /** A list kept open through the next change of sentence (opening it started a tool). */
+  private stays = "";
+
   private render(): void {
     const b = (this.built = this.build());
     const fresh = b.about !== this.about;
@@ -668,10 +682,11 @@ export class Sentence {
     else if (!b.about.startsWith("tool:")) this.lastPick = "";
     const lead: Word[] = b.about.startsWith("tool:") && this.lastPick ? [{ key: "s-was", kind: "subject", label: this.lastPick, quiet: true }] : [];
     // (Another sentence: whatever was open belonged to the last one.)
-    if (fresh && this.open) {
+    if (fresh && this.open && !(this.open.kind === "kids" && this.open.key === this.stays)) {
       this.typing?.end(false);
       this.open = null;
     }
+    if (fresh) this.stays = "";
     // (Nothing picked: no subject - the groups say it all.)
     const about = [...lead, ...(b.subject.key === "s-make" ? [] : [b.subject]), ...(b.more ? [b.more] : []), ...(b.also ?? []), ...(b.title ? [b.title] : [])];
     this.fill(this.tag, about, fresh);
@@ -917,7 +932,16 @@ export class Sentence {
     if (w.off) return void (buzz(), this.host.ui.toast(w.off));
     if (w.value) return void this.toggle({ kind: "type", key: w.key });
     // A tool with kinds starts as it was used last; while it is the one in use, a tap shows its kinds.
-    if (w.kids?.length && (!w.first || w.on)) return void this.toggle({ kind: "kids", key: w.key });
+    if (w.kids?.length && (!w.first || w.on)) {
+      const opening = !(this.open?.kind === "kids" && this.open.key === w.key);
+      this.toggle({ kind: "kids", key: w.key });
+      if (opening && w.opens) {
+        // (What it does makes another sentence - Line is on: this list stays open through that.)
+        this.stays = w.key;
+        w.opens();
+      }
+      return;
+    }
     if (!w.run) return;
     buzz();
     const stays = w.kind === "toggle" || w.kind === "slot" || d.closest(".sn-sheet") === null;

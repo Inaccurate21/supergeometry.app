@@ -196,6 +196,10 @@ is placed with Enter or Done.
 perpendicular, where two cross) are kept as constraints. Dragging a point onto
 another joins them.
 
+**Fill Pattern:** a closed shape filled with lines from edge to edge (straight, crossed, zigzag, waves) or with
+small shapes (dots, honeycomb, squares, diamonds), its spacing, size and angle set; the strips and cells are
+shapes to extrude or cut, for textures.
+
 **Edit tools:** Offset Edge (parallel copy; whole outlines too), Fillet and
 Chamfer (round or bevel a corner where lines or arcs meet; tap the next corner
 to go on), Mirror (the selected shapes, across a line or an axis), Trim (cut

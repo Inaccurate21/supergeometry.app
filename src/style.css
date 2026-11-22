@@ -725,8 +725,15 @@ body.panel-open .tool.active::before,
 .right-btn:hover {
   background: rgba(255, 255, 255, 0.08);
 }
-.right-btn.on {
+.right-btn.on,
+.right-btn.pop-open {
   background: var(--accent-soft);
+  color: #b9d4ff;
+}
+/* (Lit while its window is open, as the three at the left edge are while they are on - asked for: "make sure even
+   the buttons on the middle right (fit, shaders, settings) show when something is opened. like the ones on the
+   middle left".) */
+.right-btn.pop-open .right-label {
   color: #b9d4ff;
 }
 /* Buttons that only make sense while sketching. */
@@ -5926,7 +5933,11 @@ body.sentence-ui #panel:not(:has(.text-input)) {
   bottom: calc(10px + var(--safe-b));
   width: fit-content;
   min-width: min(260px, 100%);
-  max-width: 980px;
+  /* (As wide as what is on it, up to all the room between undo and the right edge's column: it stopped at 980 and
+     ran under its own end on a wide screen - a sketch's line picked, its sizes and constraints on the line. Asked
+     for: "the bar should be wider to fit all the buttons without having to scroll on it. It's more than enough
+     space on desktop".) */
+  max-width: none;
   z-index: 12;
   display: flex;
   flex-direction: column;
@@ -7220,4 +7231,20 @@ body.sentence-ui #undo-dock .dock-btn {
   html[data-screen="phone"] body.sentence-ui #undo-dock {
     bottom: calc(8px + var(--safe-b));
   }
+}
+
+/* A switch on a row of the More list (Guide text, Offline mode), at the row's right end - they said On or Off in
+   words (asked for: "make the two buttons (guide text and offline mode) have a toggle icon"). */
+.menu .menu-toggle {
+  align-items: center;
+  gap: 10px;
+}
+.menu .menu-toggle .menu-soon {
+  margin-left: auto;
+}
+.menu-toggle.on .switch {
+  background: var(--accent);
+}
+.menu-toggle.on .switch::after {
+  left: 17px;
 }

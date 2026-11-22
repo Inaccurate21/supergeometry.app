@@ -170,7 +170,7 @@ export function explodeJoined(
 }
 
 /** Parameters where other entities cross primitive `p`. */
-function crossings(p: Prim, others: Prim[]): number[] {
+export function crossings(p: Prim, others: Prim[]): number[] {
   const ts: number[] = [];
   const n = Math.max(primSegments(p), 1) * 4;
   const A = Array.from({ length: n + 1 }, (_, i) => evalPrim(p, i / n));
@@ -311,7 +311,7 @@ export function trim(entities: SketchEntity[], id: string, at: Vec2): SketchEnti
 }
 
 /** Entity for part [t0, t1] of a primitive (t may exceed 1 for closed curves). */
-function pieceEntity(p: Prim, t0: number, t1: number, construction?: boolean): SketchEntity {
+export function pieceEntity(p: Prim, t0: number, t1: number, construction?: boolean): SketchEntity {
   const at = (t: number) => evalPrim(p, isClosedPrim(p) && p.t !== "spline" ? t : Math.min(1, t > 1 ? t - 1 : t));
   if (p.t === "line") return { id: uid(), kind: "line", a: at(t0), b: at(t1), construction };
   if (p.t === "circle") return { id: uid(), kind: "arc", a: at(t0), m: at((t0 + t1) / 2), b: at(t1), construction };

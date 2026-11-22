@@ -182,6 +182,25 @@ export interface SketchFeature extends FeatureBase {
 
   /** What was done in the sketch, in order (shown under it in History); repeats are counted. */
   log?: { op: string; n: number; ids?: string[] }[];
+  /**
+   * Fill patterns: closed shapes of the sketch filled with lines or small shapes (see sketch/fill.ts). Each one's
+   * curves are among `entities`, named "fp-<fill id>-<n>", and are made again when the sketch's curves change.
+   */
+  fills?: SketchFill[];
+}
+
+/** A closed shape of a sketch filled with a pattern (Fill Pattern). */
+export interface SketchFill {
+  id: string;
+  /** A point inside the shape it fills. */
+  at: Vec2;
+  kind: "lines" | "cross" | "zigzag" | "waves" | "dots" | "hex" | "squares" | "diamonds";
+  /** Lines: how far apart. Shapes: the gap between one and the next (mm). */
+  spacing: number;
+  /** The pattern turned by this much (degrees). */
+  angle: number;
+  /** Shapes: how big each is. Zigzag, waves: how big a tooth or a wave is (mm). */
+  size: number;
 }
 
 export interface ExtrudeFeature extends FeatureBase {

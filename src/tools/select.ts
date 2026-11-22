@@ -478,14 +478,14 @@ export class SelectTool implements Tool {
     // left); edges: the fillet radius. The tool armed on tap takes the value.
     if (!e.ctrlKey && !e.metaKey && !e.altKey && /^[0-9.]$/.test(e.key) && sel.length) {
       const first = sel[0];
-      if (first.kind === "face" && sel.length === 1 && offsettable(this.app.view.body(first.body)?.faces[first.face]?.type) && !this.freeformOf(first.body)) {
+      if (first.kind === "face" && sel.length === 1 && offsettable(this.app.view.body(first.body)?.faces[first.face]?.type) && !this.sheetFreeform(first.body)) {
         const src = sourcesOf(this.app, sel)[0];
         if (src) {
           this.app.setTool(new ExtrudeOp(this.app, src, undefined, "auto", { typed: e.key }));
           return true;
         }
       }
-      if (first.kind === "edge" && sel.every((x) => x.kind === "edge") && !this.freeformOf(first.body)) {
+      if (first.kind === "edge" && sel.every((x) => x.kind === "edge") && !this.sheetFreeform(first.body)) {
         const refs = this.edgeRefs();
         if (refs.length) {
           this.app.setTool(new EdgeOp(this.app, "fillet", refs.map((r) => ({ ...r })), undefined, undefined, e.key));
@@ -554,8 +554,8 @@ export class SelectTool implements Tool {
       this.copyToggle = new CopyToggle(this.app.view, () => g.origin);
     } else if (first.kind === "vertex" && sel.length === 1) {
       const v = this.app.view.vertexOf(first.body, first.vertex);
-      // A freeform's points are moved in Edit Freeform, so no gimbal here.
-      if (v && !this.freeformOf(first.body)) {
+      // (A freeform left as an open surface: its points are moved in Edit Freeform, so no gimbal here.)
+      if (v && !this.sheetFreeform(first.body)) {
         this.gimbal = new Gimbal(this.app.view);
         this.gimbal.setCenter(v);
       }
@@ -582,7 +582,7 @@ export class SelectTool implements Tool {
       // ready to drag, and a number typed is the radius. Moving a straight
       // edge (its faces tilt to follow) is Move/Rotate Edge (M) in the list.
       // (A freeform's edges get neither: its shape comes from the cage.)
-      if (e && !this.freeformOf(first.body)) this.showHandle({ base: e.mid, normal: e.dir }, "dot", () => new EdgeOp(this.app, "fillet", [e, ...all.slice(0, -1)]).grabFromEdge());
+      if (e && !this.sheetFreeform(first.body)) this.showHandle({ base: e.mid, normal: e.dir }, "dot", () => new EdgeOp(this.app, "fillet", [e, ...all.slice(0, -1)]).grabFromEdge());
     }
   }
 
@@ -599,13 +599,13 @@ export class SelectTool implements Tool {
     const or = this.quick ? `or ${tap} a button beside it` : "or pick a tool";
     const direct = settings.value.direct;
     if (direct && first.kind === "profile") return `Drag the shape (or its arrow) to pull it into 3D, ${or}.`;
-    if (direct && first.kind === "face" && n === 1 && offsettable(this.app.view.body(first.body)?.faces[first.face]?.type) && !this.freeformOf(first.body)) return `Drag the face (or its arrow) to push or pull it, ${or}.`;
-    if (direct && first.kind === "edge" && !this.freeformOf(first.body)) return `Drag ${n > 1 ? "an edge" : "the edge"} (or its dot) to round ${n > 1 ? "them" : "it"}, ${or}.`;
+    if (direct && first.kind === "face" && n === 1 && offsettable(this.app.view.body(first.body)?.faces[first.face]?.type) && !this.sheetFreeform(first.body)) return `Drag the face (or its arrow) to push or pull it, ${or}.`;
+    if (direct && first.kind === "edge" && !this.sheetFreeform(first.body)) return `Drag ${n > 1 ? "an edge" : "the edge"} (or its dot) to round ${n > 1 ? "them" : "it"}, ${or}.`;
     if (direct && first.kind === "body") return `Drag it to slide it over the floor, or its arrows and arcs to move and turn it, ${or}.`;
     if (first.kind === "profile") return `Drag the arrow to extrude, ${or}.`;
-    if (first.kind === "face" && n === 1 && offsettable(this.app.view.body(first.body)?.faces[first.face]?.type) && !this.freeformOf(first.body)) return `Drag the arrow to move the face, ${or}.`;
+    if (first.kind === "face" && n === 1 && offsettable(this.app.view.body(first.body)?.faces[first.face]?.type) && !this.sheetFreeform(first.body)) return `Drag the arrow to move the face, ${or}.`;
     if (first.kind === "face" && n === 2 && sel[1].kind === "face") return "The distance between the faces is shown. Pick a tool for them.";
-    if (first.kind === "edge" && !this.freeformOf(first.body)) return `Drag the dot to round ${n > 1 ? "the edges" : "the edge"}, ${or}.`;
+    if (first.kind === "edge" && !this.sheetFreeform(first.body)) return `Drag the dot to round ${n > 1 ? "the edges" : "the edge"}, ${or}.`;
     if (first.kind === "body") return `Drag the arrows or arcs to move it, ${or}.`;
     return this.quick ? `${cap(tap)} a button beside it, or pick a tool on the line at the bottom.` : `Pick a tool for ${n > 1 ? "them" : "it"}, or ${tap} another to add it (${tap} a picked one to let it go).`;
   }
@@ -705,9 +705,9 @@ export class SelectTool implements Tool {
       }
       head.push({ id: "thicken", label: "Thickness…", icon: "shell", run: () => this.app.setTool(new FreeformTool(this.app, { feature: own() })) });
     }
-    // A face, edge or point of a freeform: its shape comes from the cage -
-    // fillet, chamfer, offset face… don't apply (they were listed all the same).
-    if (ff?.type === "freeform" && (first.kind === "face" || first.kind === "edge" || first.kind === "vertex")) {
+    // A face, edge or point of a freeform left as an open surface: its shape comes from the cage - fillet, chamfer,
+    // offset face... don't apply. (A finished freeform solid has every tool a body has: it was held to these few.)
+    if (ff?.type === "freeform" && this.sheetFreeform(ffBody) && (first.kind === "face" || first.kind === "edge" || first.kind === "vertex")) {
       const bodies = bodiesOf(sel);
       const app = this.app;
       return [
@@ -738,7 +738,7 @@ export class SelectTool implements Tool {
         const pivot = this.app.view.vertexOf(s.body, s.vertex);
         const at = sel.flatMap((x) => (x.kind === "vertex" && x.body === s.body ? [this.app.view.vertexOf(x.body, x.vertex)!].filter(Boolean) : []));
         // A freeform's points move in Edit Freeform (at the top of this list), not here.
-        const isFreeform = !!ff && ff.type === "freeform";
+        const isFreeform = this.sheetFreeform(s.body);
         return [
           ...head,
           ...(isFreeform ? [] : [{ id: "moveVertex", label: "Move Vertex", icon: "point" as const, shortcut: "M", active: true, disabled: !pivot, run: () => pivot && this.app.setTool(new MoveFaceOp(this.app, { vertex: { body: s.body, at: pivot } })) }]),
@@ -1433,6 +1433,21 @@ export class SelectTool implements Tool {
     this.app.ui.toast("Connected - Thickness… makes it a solid");
   }
 
+  /**
+   * A freeform that is still an open surface (faces deleted from it, or made as a surface): the one kind of freeform
+   * body that isn't worked on like any other - no arrow to push its faces, no dot to round its edges, its points
+   * moved in Edit Freeform. A finished freeform solid is a body like any other: every body tool is its too (asked
+   * for: "a freeform body that is finished (not in freeform edit mode) should be treated like a regular body ... I
+   * want to have access to normal body tools, to polish it even further"). Edit Freeform is still there for it -
+   * beside the body when it is double tapped, and in History.
+   */
+  private sheetFreeform(body: string): boolean {
+    const live = freeformBodies(this.app.store.features).get(body)?.feature;
+    if (!live) return false;
+    const now = editedStep<FreeformFeature>(this.app.store.features, live.id) ?? live;
+    return !isClosed(now.cage);
+  }
+
   /** The freeform a body is made from (its own, or the one a copy was made of). */
   private freeformOf(body: string): FreeformFeature | undefined {
     const f = this.app.store.find<FreeformFeature>(body);
@@ -1470,7 +1485,7 @@ export class SelectTool implements Tool {
   /** Delete faces/edges/vertices of one body; tells the user when it can't heal. */
   private deleteGeom(body: string, what: { faces?: FaceRef[]; edges?: EdgeRef[]; vertices?: Vec3[] }): void {
     // A freeform body: the cage loses the faces there, and stays open for a thickness.
-    const ff = this.freeformOf(body) && this.ownFreeform(body);
+    const ff = this.sheetFreeform(body) ? this.ownFreeform(body) : undefined;
     if (ff) {
       const tool = new FreeformTool(this.app, { feature: ff });
       this.app.setTool(tool);

@@ -57,6 +57,8 @@ export const icons = {
   shell: svg('<path d="M4 8v12h16V8"/><path d="M7 8v9h10V8"/>'),
   split: svg('<rect x="4" y="5" width="16" height="14"/><path d="M12 2v20" stroke-dasharray="2 2"/>'),
   fill: svg('<path d="M4 18L12 4l8 14z" fill="currentColor" fill-opacity=".3"/>'),
+  // Fill Pattern: a closed shape with lines across it, edge to edge.
+  hatch: svg('<rect x="4" y="4" width="16" height="16" rx="2"/><path d="M4 12l8-8M4 20L20 4M12 20l8-8"/>'),
   wrap: svg('<path d="M4 7c5-3 11-3 16 0v10c-5-3-11-3-16 0z"/><path d="M9 11h6"/>'),
   replaceFace: svg('<rect x="4" y="9" width="12" height="11"/><path d="M8 9l4-5h8l-4 5M20 4v11l-4 5"/>'),
   projectEdge: svg('<rect x="4" y="12" width="16" height="8"/><path d="M8 4h8l-2 8h-4z" stroke-dasharray="2 2"/>'),

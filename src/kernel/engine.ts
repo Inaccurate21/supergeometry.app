@@ -103,6 +103,12 @@ interface Ctx {
   freeforms: Map<string, { feature: Extract<Feature, { type: "freeform" }>; m: Affine }>;
   /** The paths sweeps ran along (by sweep): an offset of a sweep's end follows its path back. */
   sweeps: Map<string, Wire>;
+  /**
+   * Bodies linked to one another (a copy or a pattern made with Link on, and what it was made from): which group
+   * each is of, and where it stands in it - the map that takes the group's shape to this body. A step that changes
+   * one of a group changes the others the same way (see `followLinks`).
+   */
+  links: Map<string, { group: string; m: Affine }>;
 }
 
 /**
@@ -118,7 +124,7 @@ interface Reads {
   written: Set<string>;
 }
 let reading: Reads | null = null;
-const KINDS = ["bodies", "sketches", "planes", "axes", "freeforms", "sweeps"] as const;
+const KINDS = ["bodies", "sketches", "planes", "axes", "freeforms", "sweeps", "links"] as const;
 const rawGet = <V>(m: Map<string, V>, k: string): V | undefined => Map.prototype.get.call(m, k) as V | undefined;
 const rawHas = (m: Map<string, unknown>, k: string): boolean => Map.prototype.has.call(m, k) as boolean;
 const rawEntries = <V>(m: Map<string, V>): [string, V][] => [...(Map.prototype.entries.call(m) as IterableIterator<[string, V]>)];
@@ -190,6 +196,7 @@ function fork(ctx: Ctx): Ctx {
     axes: new Noted("axes", ctx.axes),
     freeforms: new Noted("freeforms", ctx.freeforms),
     sweeps: new Noted("sweeps", ctx.sweeps),
+    links: new Noted("links", ctx.links),
   };
 }
 /** How many steps the last rebuild ran, took as they were (nothing before them changed), or put back (nothing they read changed). */
@@ -813,7 +820,7 @@ async function run(features: Feature[], saved = false) {
   editable = new Set(features.filter((f) => (f.type === "freeform" || f.type === "faceFreeform") && !f.suppressed).map((f) => f.id));
   const errors: FeatureError[] = [];
   const notes: FeatureError[] = [];
-  let ctx: Ctx = fork({ bodies: new Map(), sketches: new Map(), planes: new Map(), axes: new Map(), freeforms: new Map(), sweeps: new Map() });
+  let ctx: Ctx = fork({ bodies: new Map(), sketches: new Map(), planes: new Map(), axes: new Map(), freeforms: new Map(), sweeps: new Map(), links: new Map() });
   switchedOff = new Set(features.filter((f) => f.suppressed).map((f) => f.id));
   const off = [...switchedOff].sort().join();
   // The steps as last rebuilt (by step, wherever in the list they are now).
@@ -941,6 +948,12 @@ async function run(features: Feature[], saved = false) {
           for (const [id, body] of out.bodies) {
             const was = ctx.bodies.get(id);
             if (body !== was) tagBody(body, f.id, was ? [was, ...from] : from, was ? others.filter((o) => o !== was) : others);
+          }
+          // Linked bodies: the others of a changed one's group follow it. (Any change among the links is a change
+          // for this step: it is built again then.)
+          if (f.type !== "transform") {
+            reads.all.add("links");
+            followLinks(f.id, ctx, out);
           }
           if (editNotes.length) entry.note = [...new Set(editNotes)].join(" ");
           // Anything but a move/scale changing a freeform body makes it an ordinary body.
@@ -2067,6 +2080,78 @@ async function apply(f: Feature, ctx: Ctx): Promise<void> {
 type Affine = number[];
 const AFFINE_ID: Affine = [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0];
 const applyAffine = (m: Affine, p: Vec3): Vec3 => [0, 1, 2].map((r) => m[r * 4] * p[0] + m[r * 4 + 1] * p[1] + m[r * 4 + 2] * p[2] + m[r * 4 + 3]) as Vec3;
+/** The map that undoes m (null: it squashes something flat, and has none). */
+function affineInverse(m: Affine): Affine | null {
+  const [a, b, c, , d, e, f, , g, h, i] = m;
+  const det = a * (e * i - f * h) - b * (d * i - f * g) + c * (d * h - e * g);
+  if (!(Math.abs(det) > 1e-12)) return null;
+  const r = [(e * i - f * h) / det, (c * h - b * i) / det, (b * f - c * e) / det, (f * g - d * i) / det, (a * i - c * g) / det, (c * d - a * f) / det, (d * h - e * g) / det, (b * g - a * h) / det, (a * e - b * d) / det];
+  const t = [m[3], m[7], m[11]];
+  return [0, 1, 2].flatMap((k) => [r[k * 3], r[k * 3 + 1], r[k * 3 + 2], -(r[k * 3] * t[0] + r[k * 3 + 1] * t[1] + r[k * 3 + 2] * t[2])]);
+}
+const affineDet = (m: Affine): number => m[0] * (m[5] * m[10] - m[6] * m[9]) - m[1] * (m[4] * m[10] - m[6] * m[8]) + m[2] * (m[4] * m[9] - m[5] * m[8]);
+/** A move, turn, mirroring or even scaling (not a stretch): the only maps a shape is put through as it is. */
+function affineIsSimilar(m: Affine): boolean {
+  const cols = [0, 1, 2].map((c) => [m[c], m[4 + c], m[8 + c]] as Vec3);
+  const L = len(cols[0]);
+  if (!(L > 1e-9)) return false;
+  return cols.every((c) => Math.abs(len(c) - L) < 1e-9 * L) && Math.abs(dot(cols[0], cols[1])) < 1e-9 * L * L && Math.abs(dot(cols[0], cols[2])) < 1e-9 * L * L && Math.abs(dot(cols[1], cols[2])) < 1e-9 * L * L;
+}
+/** A shape put through a move, turn, mirroring or even scaling: a new shape, the one given left as it is. */
+function shapeThrough(s: Shape3D, m: Affine): Shape3D {
+  const oc = getOC();
+  const t = new oc.gp_Trsf();
+  t.SetValues(m[0], m[1], m[2], m[3], m[4], m[5], m[6], m[7], m[8], m[9], m[10], m[11]);
+  const mk = new oc.BRepBuilderAPI_Transform(s.wrapped, t, true, false);
+  try {
+    return cast(mk.Shape()) as Shape3D;
+  } finally {
+    mk.delete();
+    t.delete();
+  }
+}
+
+/**
+ * Linked bodies follow each other: a step that changed one body of a group (rounded an edge of it, cut a hole in
+ * it, joined something to it...) leaves every other body of the group changed the same way - the changed body's
+ * new shape, put where the other stands. (Asked for: "if it's linked, whatever change I do to any copy of that
+ * body or the original, it should also change the other ones exactly the same. We should also have this in
+ * patterns".) Moving or turning one of them is its own business: that only changes where it stands. One deleted,
+ * or used up by a join, leaves the group; the others stay.
+ */
+function followLinks(step: string, before: Ctx, out: Ctx): void {
+  const links = rawEntries(before.links);
+  if (!links.length) return;
+  const done = new Set<string>();
+  for (const [id, lk] of links) {
+    const now = rawGet(out.bodies, id);
+    if (!now) {
+      Map.prototype.delete.call(out.links, id);
+      continue;
+    }
+    if (now === rawGet(before.bodies, id) || done.has(lk.group)) continue;
+    done.add(lk.group);
+    const back = affineInverse(lk.m);
+    if (!back) continue;
+    for (const [other, ol] of links) {
+      if (other === id || ol.group !== lk.group) continue;
+      const was = rawGet(out.bodies, other);
+      // (Gone, or changed by this very step itself - a join of two of the group: left as the step left it.)
+      if (!was || was !== rawGet(before.bodies, other)) continue;
+      const rel = affineThen(back, ol.m);
+      const s = shapeThrough(now, rel);
+      const det = affineDet(rel);
+      movedFrom.set(s, { from: new WeakRef(now), m: rel, flip: det < 0 });
+      movedTags(now, s, step, rel);
+      const v = volumes.get(now);
+      if (v !== undefined) volumes.set(s, v * Math.abs(det));
+      out.bodies.set(other, s);
+      // (No longer the freeform it was: its shape is the changed body's now.)
+      out.freeforms.delete(other);
+    }
+  }
+}
+
 /** First m, then n. */
 function affineThen(m: Affine, n: Affine): Affine {
   const out: number[] = [];
@@ -4179,6 +4264,25 @@ function transform(f: Extract<Feature, { type: "transform" }>, ctx: Ctx): void {
       movedTags(body, s, f.id, m);
     });
     const isPattern = op.kind === "linear" || op.kind === "circular";
+    // Linked: the copies and what they were made from are a group (one already of a group: its copies join it);
+    // each stands where its move put it. A linked body moved, turned, mirrored or scaled evenly stands somewhere
+    // else in its group; stretched, it is no longer the others' shape, and leaves it.
+    const placed = (k: number): Affine | null => {
+      const m = rigid(k) ?? (isPattern ? null : opAffine(op));
+      return m && affineIsSimilar(m) ? m : null;
+    };
+    const mine = ctx.links.get(id);
+    if (isPattern || f.copy) {
+      if (f.link && results.every((_, k) => placed(k))) {
+        const at = mine ?? { group: `${f.id}:${id}`, m: AFFINE_ID };
+        if (!mine) ctx.links.set(id, at);
+        results.forEach((_, k) => ctx.links.set(`${f.id}:${id}:${k}`, { group: at.group, m: affineThen(at.m, placed(k)!) }));
+      }
+    } else if (mine) {
+      const m = placed(0);
+      if (m) ctx.links.set(id, { group: mine.group, m: affineThen(mine.m, m) });
+      else ctx.links.delete(id);
+    }
     // A freeform stays rebuildable through moves, scales and mirrors (copies too).
     const ff = ctx.freeforms.get(id);
     const step = ff && !isPattern ? opAffine(op) : null;

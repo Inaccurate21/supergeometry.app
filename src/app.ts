@@ -1622,8 +1622,14 @@ export class App implements AppContext {
     const help = new HelpPanel();
     moreItem("m-help", () => help.toggle());
     // The guide text (what to tap next): on or off.
-    const hintsState = document.getElementById("m-hints-state")!;
-    const paintHints = () => (hintsState.textContent = settings.value.showHints ? "On" : "Off");
+    // (Each a switch on its row - they said On or Off in words. Asked for: "make the two buttons (guide text and
+    // offline mode) have a toggle icon. I don't like how right now it's only on or off in text".)
+    const switchOf = (id: string, on: boolean) => {
+      const b = document.getElementById(id)!;
+      b.classList.toggle("on", on);
+      b.setAttribute("aria-checked", String(on));
+    };
+    const paintHints = () => switchOf("m-hints", settings.value.showHints);
     paintHints();
     moreItem("m-hints", () => {
       settings.set("showHints", !settings.value.showHints);
@@ -1632,7 +1638,8 @@ export class App implements AppContext {
     });
     // Offline mode: the app kept on this device, so it works with no connection.
     const offlineState = document.getElementById("m-offline-state")!;
-    const offline = new Offline((t, k) => this.ui.toast(t, k), (state) => (offlineState.textContent = state));
+    // (Its switch; beside it only how far the download is while it runs.)
+    const offline = new Offline((t, k) => this.ui.toast(t, k), (state) => ((offlineState.textContent = state === "On" || state === "Off" ? "" : state), switchOf("m-offline", settings.value.offline)));
     this.updates.offline = { get on() { return settings.value.offline; }, download: (fresh) => offline.download(fresh) };
     moreItem("m-offline", () => void offline.toggle());
     moreItem("m-tutorial", () => {});
