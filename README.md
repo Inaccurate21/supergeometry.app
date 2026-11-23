@@ -30,7 +30,10 @@ think in 3D: brackets, boxes, vases, knobs, threads, enclosures, furniture parts
 15. [For developers](#for-developers)
 16. [License](#license)
 
-Inside the app, **More → Help** shows what every button does.
+Inside the app, **More → Help** shows what every button does, and **More →
+Tutorial** builds a first part with you: an M10 bolt and the nut that fits it,
+one lit tap at a time (the first time the app is opened, it is offered once
+the welcome window is closed).
 
 ---
 
@@ -330,6 +333,22 @@ sketch. A sketch stays in view until every region of it is used.
   shows as a solid face with a thick outline. **Place Plane** on the line
   puts a construction plane where the cut is (to sketch on or split with).
 - **Measure** - distances and angles; pin a measurement to keep it.
+- **BIM** (under More) - **Materials**: a real material for each body, which
+  gives it its mass. **Technical Sheet**: the parts list with masses and the
+  materials' data. **Drawings**: sheets with views, dimensions, item numbers
+  and a title block.
+- **Assemblies** (More → BIM, still being tried out) - how the parts move.
+  The parts stay where you modelled them; a **joint** only says how two of
+  them move against each other. **Add joint**, tap a face on each part, and
+  the kind is read off the faces: two round faces on one axis, or two flat
+  faces one above the other, make a **Hinge** (a **Screw** of the thread's
+  pitch when one part is threaded); two flat faces side by side, a **Slide**;
+  anything else, **Fixed**. Drag a part to move it by its joint, or type its
+  angle or distance; **Limits** keep it between two values; **Follows** makes
+  one joint go with another by a ratio (gears); **Explode** pulls the parts
+  apart. The pose is kept with the project and shown after OK; **Home** puts
+  every part back where it was modelled. No weight or forces, and parts pass
+  through each other.
 
 ---
 
@@ -401,8 +420,12 @@ can't be rebuilt after a change, it's marked and the reason is shown.
   File → Export DXF. Construction lines go on their own layer.
 - **File → New project** starts an empty one; the open project stays in the
   gallery.
-- **Insert** brings in STEP, STL, SVG and DXF files, and images to trace over
-  (on the floor, front or side, its middle at the X / Y you type).
+- **More → Insert** brings in files (STEP, STL, OBJ, 3MF, DXF, SVG), another
+  project's parts (**Project**), and pictures to trace over (**Image on
+  plane**: on the floor, front or side, its middle at the X / Y you type).
+- A **.super** file is the whole project: every step and sketch, variables,
+  saved views, names, colours, and the BIM side - materials, drawings, joints
+  and the assembly's pose.
 
 ---
 
@@ -516,6 +539,12 @@ three.js view. Units are millimetres internally; the display unit is a setting.
   `parallel`), `axis`, `moveFace` (face / edge / vertex), `scaleFace`,
   `replaceFace`, `deleteGeom`, `freeform` (`cage`, `surface`, `thickness`,
   `symmetry {origin, normal}`), `thread`, `repair`, `import`, `image`.
+- Beside `features`, the project holds `joints` (`type`: `fixed`, `hinge`,
+  `slide`, `screw`; the two bodies `a` and `b`; the joint's line `origin`,
+  `axis`; `min`, `max`; a screw's `pitch`; `drive {joint, ratio}`), `ground`
+  (the body that stands still) and `pose {values, exploded}` (each joint's
+  value by its id: degrees, or mm for a slide). They move what is shown, not
+  the model.
 - Faces and edges are referenced by geometry, not index:
   faces `{body, center, normal, area}`, edges `{body, mid, dir, length}`.
 - `exprs` maps a field path (`"distance"`, `"op.translate.2"`) to an

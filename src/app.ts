@@ -689,8 +689,20 @@ export class App implements AppContext {
     // New planes, sketches and names show in Items now, not once a long rebuild
     // has finished (a plane just made wasn't there to tap for seconds).
     this.items.render(this.result);
+    // A change that leaves the model's steps as they were - a body renamed, coloured or hidden, a material, a joint,
+    // an assembly's pose, a pin, a saved view - needs no model made again: what is shown is brought up to date from
+    // the model there is. (Each of them went to the engine and back: a fifth of a second on a ten-step part.)
+    const steps = JSON.stringify([this.store.doc.features, this.store.doc.variables]);
+    // (Only the project's own model: one a tool is trying out is not the project's.)
+    if (this.result && this.result === this.made && !this.regenerating && steps === this.madeFor) return this.apply(this.result, this.store.doc.features);
+    this.madeFor = steps;
     void this.regenerate();
   }
+
+  /** The steps (and variables) the model on the screen was asked for, as text; and how many askings are under way. */
+  private madeFor = "";
+  private made: RegenResult | null = null;
+  private regenerating = 0;
 
   /** The tags where the variables act on the model as it is now (Variables on). */
   private showVariableTags(): void {
@@ -734,8 +746,16 @@ export class App implements AppContext {
 
   private async regenerate(): Promise<void> {
     const features = this.store.doc.features;
-    const r = await this.kernel.regenerate(features, true);
-    if (r) this.apply(r, features);
+    this.regenerating++;
+    let r: RegenResult | null = null;
+    try {
+      r = await this.kernel.regenerate(features, true);
+    } finally {
+      this.regenerating--;
+    }
+    if (r) ((this.made = r), this.apply(r, features));
+    // (Not made - stopped, or overtaken: the next change asks again, whatever it is.)
+    else this.madeFor = "";
   }
 
   /** Sketches the engine moved the curves of (they follow a body): those curves, by the sketch as it was sent. */

@@ -1971,7 +1971,13 @@ function toolButton(item: ToolItem, withLabel: boolean): HTMLButtonElement {
   b.classList.toggle("has-children", !!item.children?.length);
   b.classList.toggle("disabled", !!item.disabled);
   b.title = item.disabled && item.why ? item.why : item.shortcut ? `${item.label} (${item.shortcut})` : item.label;
-  b.innerHTML = item.swatch ? `<span class="swatch" style="background:${item.swatch}"></span>` : icons[item.icon];
+  // (A colour comes from the project - a file someone else may have made: it is given to the swatch as a colour,
+  // never written into the page as markup.)
+  if (item.swatch) {
+    const sw = el("span", "swatch");
+    sw.style.background = item.swatch;
+    b.replaceChildren(sw);
+  } else b.innerHTML = icons[item.icon];
   if (withLabel) {
     const l = el("span", "tool-label");
     const top = el("span", "tool-name", item.label);

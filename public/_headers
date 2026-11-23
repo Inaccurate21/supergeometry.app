@@ -25,3 +25,14 @@
 
 /version.json
   Cache-Control: no-cache
+
+# Security, on every file.
+# - What the page may load and run: its own files only. No script written into the page runs (a project file from
+#   someone else that got markup onto the page could do nothing with it), no script from another site, no plugins.
+#   'unsafe-eval' is for the geometry engine, which builds part of itself as it starts ('wasm-unsafe-eval': its
+#   WebAssembly). Pictures and the Browser window's pages may come from anywhere: they are what the user opens.
+# - Files are what they say they are (nosniff); other sites are told only the site's address, not the page's.
+/*
+  Content-Security-Policy: default-src 'self'; script-src 'self' 'unsafe-eval' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https: http:; font-src 'self' data:; connect-src 'self' data: blob:; worker-src 'self' blob:; frame-src https: http:; media-src 'self' data: blob:; object-src 'none'; base-uri 'self'; form-action 'none'
+  X-Content-Type-Options: nosniff
+  Referrer-Policy: strict-origin-when-cross-origin

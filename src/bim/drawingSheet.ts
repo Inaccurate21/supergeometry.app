@@ -530,7 +530,7 @@ function placePath(d: string, p: Placed): string {
 
 function text(x: number, y: number, t: string, size: number, opts: { anchor?: string; angle?: number; weight?: string; fill?: string } = {}): string {
   const rot = opts.angle ? ` transform="rotate(${f(opts.angle)} ${f(x)} ${f(y)})"` : "";
-  return `<text x="${f(x)}" y="${f(y)}" font-size="${size}" ${FONT} text-anchor="${opts.anchor ?? "start"}"${opts.weight ? ` font-weight="${opts.weight}"` : ""} fill="${opts.fill ?? "#000"}"${rot}>${esc(t)}</text>`;
+  return `<text x="${f(x)}" y="${f(y)}" font-size="${f(+size)}" ${FONT} text-anchor="${esc(String(opts.anchor ?? "start"))}"${opts.weight ? ` font-weight="${esc(String(opts.weight))}"` : ""} fill="${esc(String(opts.fill ?? "#000"))}"${rot}>${esc(t)}</text>`;
 }
 
 /** A rough width of a text (Arial: about 0.55 of its size a letter). */
@@ -751,7 +751,7 @@ export function drawingSVG(data: SheetData): { svg: string; layout: Layout; ball
   for (const im of o.images) {
     const sel = data.interactive && data.selected === im.id;
     const svg = `<image href="${esc(im.src)}" x="${f(im.x)}" y="${f(im.y)}" width="${f(im.w)}" height="${f(im.h)}" preserveAspectRatio="none"/>${sel ? `<rect x="${f(im.x)}" y="${f(im.y)}" width="${f(im.w)}" height="${f(im.h)}" fill="none" stroke="${SEL}" stroke-width="0.4" stroke-dasharray="2 1"/>` : ""}`;
-    out.push(data.interactive ? `<g data-ann="${im.id}">${svg}</g>` : svg);
+    out.push(data.interactive ? `<g data-ann="${esc(String(im.id))}">${svg}</g>` : svg);
   }
   for (const p of L.views) {
     const v = views.get(p.src ?? p.id);
@@ -789,7 +789,7 @@ export function drawingSVG(data: SheetData): { svg: string; layout: Layout; ball
     }
     if (sec) g.push(text((r.x0 + r.x1) / 2, r.y1 + 8, `${sec.letter}-${sec.letter}`, 5, { anchor: "middle", fill: c }));
     if (det) g.push(text((r.x0 + r.x1) / 2, r.y1 + 8, `${det.letter} (${scaleLabel(p.s)})`, 5, { anchor: "middle", fill: c }));
-    out.push(data.interactive ? `<g data-view="${p.id}">${g.join("")}</g>` : g.join("\n"));
+    out.push(data.interactive ? `<g data-view="${esc(String(p.id))}">${g.join("")}</g>` : g.join("\n"));
   }
 
   // ---- Where the sections are cut (ISO 128-40: a chain line, thick at its
@@ -799,7 +799,7 @@ export function drawingSVG(data: SheetData): { svg: string; layout: Layout; ball
     const p = placed.get(sec.view);
     if (!p || !placed.has(sec.id)) continue;
     const c = color(`view:${sec.id}`);
-    out.push(`<g${data.interactive ? ` data-view="${sec.id}"` : ""}>${cutLine(toPaper(p, sec.a), toPaper(p, sec.b), sec.look, sec.letter, lw, c)}</g>`);
+    out.push(`<g${data.interactive ? ` data-view="${esc(String(sec.id))}"` : ""}>${cutLine(toPaper(p, sec.a), toPaper(p, sec.b), sec.look, sec.letter, lw, c)}</g>`);
   }
   for (const det of o.details) {
     const p = placed.get(det.view);
@@ -809,7 +809,7 @@ export function drawingSVG(data: SheetData): { svg: string; layout: Layout; ball
     const R = det.r * p.s;
     const at: [number, number] = [C[0] + (R + 2.5) * Math.SQRT1_2, C[1] - (R + 2.5) * Math.SQRT1_2];
     out.push(
-      `<g${data.interactive ? ` data-view="${det.id}"` : ""}><circle cx="${f(C[0])}" cy="${f(C[1])}" r="${f(R)}" stroke="${c}" stroke-width="${lw.dims}" fill="none"/>${text(at[0], at[1], det.letter, 5, { fill: c })}</g>`,
+      `<g${data.interactive ? ` data-view="${esc(String(det.id))}"` : ""}><circle cx="${f(C[0])}" cy="${f(C[1])}" r="${f(R)}" stroke="${c}" stroke-width="${lw.dims}" fill="none"/>${text(at[0], at[1], det.letter, 5, { fill: c })}</g>`,
     );
   }
 
@@ -818,7 +818,7 @@ export function drawingSVG(data: SheetData): { svg: string; layout: Layout; ball
     const p = placed.get(m.view);
     if (!p) continue;
     const svg = markSVG(m, p, lw.center, color(m.id));
-    out.push(data.interactive ? `<g data-ann="${m.id}">${svg}</g>` : svg);
+    out.push(data.interactive ? `<g data-ann="${esc(String(m.id))}">${svg}</g>` : svg);
   }
 
   // ---- Overall dimensions (width and height on the front view, depth on the
@@ -828,13 +828,13 @@ export function drawingSVG(data: SheetData): { svg: string; layout: Layout; ball
     if (!p) continue;
     const c = color(d.id);
     const svg = dimSVG(d, p, o, c);
-    out.push(data.interactive ? `<g data-ann="${d.id}">${svg}</g>` : svg);
+    out.push(data.interactive ? `<g data-ann="${esc(String(d.id))}">${svg}</g>` : svg);
   }
 
   // ---- Notes (pointing at what they are about).
   for (const n of o.notes) {
     const svg = noteSVG(n, n.to ? placed.get(n.to.view) : undefined, lw.dims, color(n.id));
-    out.push(data.interactive ? `<g data-ann="${n.id}">${svg}</g>` : svg);
+    out.push(data.interactive ? `<g data-ann="${esc(String(n.id))}">${svg}</g>` : svg);
   }
 
   // ---- Balloons: item numbers of the parts list, each on the isometric view - or,
@@ -921,7 +921,7 @@ export function drawingSVG(data: SheetData): { svg: string; layout: Layout; ball
         `<circle cx="${f(b.at[0])}" cy="${f(b.at[1])}" r="0.6" fill="${c}"/>` +
         `<circle cx="${f(bx)}" cy="${f(by)}" r="4" stroke="${c}" stroke-width="0.35" fill="#fff"/>` +
         text(bx, by + 1.4, String(b.item), 4, { anchor: "middle", fill: c });
-      out.push(data.interactive ? `<g data-ann="${id}">${svg}</g>` : svg);
+      out.push(data.interactive ? `<g data-ann="${esc(String(id))}">${svg}</g>` : svg);
       balloonsAt.push({ id, x: bx, y: by });
     }
   }

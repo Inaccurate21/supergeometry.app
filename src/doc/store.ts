@@ -410,7 +410,25 @@ export function parseProject(text: string): ProjectDoc {
 // ------------------------------------------------------------------ migration
 
 /** Bring any saved project up to the current format. */
+/**
+ * A project file can come from anyone: what the app later puts on the page as a colour is kept to what a colour
+ * is ("#rrggbb"), and what it uses as a number is a number. Anything else is dropped (the body is the default grey).
+ */
+function cleanLooks(doc: ProjectDoc): void {
+  const hex = /^#([0-9a-f]{3}|[0-9a-f]{6}|[0-9a-f]{8})$/i;
+  const record = (v: unknown): v is Record<string, unknown> => !!v && typeof v === "object" && !Array.isArray(v);
+  if (doc.colors !== undefined) doc.colors = record(doc.colors) ? Object.fromEntries(Object.entries(doc.colors).filter((e): e is [string, string] => typeof e[1] === "string" && hex.test(e[1]))) : undefined;
+  if (doc.opacity !== undefined) doc.opacity = record(doc.opacity) ? Object.fromEntries(Object.entries(doc.opacity).filter((e): e is [string, number] => typeof e[1] === "number" && Number.isFinite(e[1]))) : undefined;
+  if (Array.isArray(doc.customMaterials)) for (const m of doc.customMaterials) if (typeof m.color !== "string" || !hex.test(m.color)) m.color = "#9aa3ad";
+}
+
 export function migrate(raw: unknown): ProjectDoc {
+  const out = migrate0(raw);
+  cleanLooks(out);
+  return out;
+}
+
+function migrate0(raw: unknown): ProjectDoc {
   const doc = raw as ProjectDoc & { version: number };
   // "tessel" is the format name of files saved before the rename.
   if (!doc || (doc.format !== "super" && (doc.format as string) !== "tessel") || !Array.isArray(doc.features)) throw new Error("Not a superGeometry.app project file");
