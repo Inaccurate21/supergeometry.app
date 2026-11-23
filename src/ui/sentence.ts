@@ -996,7 +996,7 @@ export class Sentence {
     this.open = same ? null : to;
     buzz();
     this.drawSheet(true);
-    this.end.querySelector(".sn-all")?.classList.toggle("on", this.open?.kind === "all");
+    this.end.querySelector(".sn-all")?.classList.toggle("on", this.fromMore());
   }
 
   private close(): void {
@@ -1010,6 +1010,19 @@ export class Sentence {
   private openTop: string | null = null;
 
   /** The words from the line down to `key` (Transform, Pattern). */
+  /**
+   * Is what is open More's list, or a list opened from inside it (More > BIM, More > Insert)? More stays lit for
+   * those too: a list two or three deep still shows which button it came from (asked for: "if I open a level 3
+   * window, the effect stops showing from what button I started"). A list under one of the line's own words has
+   * that word lit (see `openTop`); one from More is under no word of the line, and nothing was lit.
+   */
+  private fromMore(): boolean {
+    const o = this.open;
+    if (!o) return false;
+    if (o.kind === "all") return true;
+    return o.kind === "kids" && !this.pathTo(o.key).length;
+  }
+
   private pathTo(key: string): Word[] {
     const seek = (ws: Word[]): Word[] | null => {
       for (const w of ws) {
@@ -1084,7 +1097,8 @@ export class Sentence {
       const w = this.find(o.key);
       if (!w?.kids?.length) return void this.close();
       // (Under another: where it is - "Transform › Pattern".)
-      blocks.push({ cap: path.length > 1 ? path.map((x) => x.cap ?? x.label).join(" › ") : (w.cap ?? w.label), words: w.kids });
+      // (From inside More: "More › BIM" - where it is, as a list under a word of the line says.)
+      blocks.push({ cap: path.length > 1 ? path.map((x) => x.cap ?? x.label).join(" › ") : `${path.length ? "" : "More › "}${w.cap ?? w.label}`, words: w.kids });
       if (w.rest?.length) blocks.push({ cap: `Other ${(w.cap ?? w.label).toLowerCase()} tools (each asks for its own pick)`, words: w.rest });
     }
     this.sheet.hidden = false;
