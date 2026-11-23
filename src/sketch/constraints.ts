@@ -303,6 +303,17 @@ function residuals(c: SketchConstraint, get: Lookup): number[] {
         const l = E(0);
         return p && l?.kind === "line" ? [distPointLine(p, l.a, l.b) - c.value] : [];
       }
+      // Line to line: they run the same way, that far apart (the second's middle from the first).
+      if (!c.pts?.length && c.curves?.length === 2) {
+        const [l, m] = [E(0), E(1)];
+        if (l?.kind !== "line" || m?.kind !== "line") return [];
+        const [d1, d2] = [dirOf(l), dirOf(m)];
+        if (!d1 || !d2) return [];
+        const mid: Vec2 = [(m.a[0] + m.b[0]) / 2, (m.a[1] + m.b[1]) / 2];
+        const len = Math.hypot(m.b[0] - m.a[0], m.b[1] - m.a[1]) || 1;
+        // (The turn as a length - the second line's end off the first's way - so it weighs as the distance does.)
+        return [distPointLine(mid, l.a, l.b) - c.value, (d1[0] * d2[1] - d1[1] * d2[0]) * len];
+      }
       const [a, b] = (c.pts ?? []).map(P);
       return a && b ? [Math.hypot(a[0] - b[0], a[1] - b[1]) - c.value] : [];
     }
@@ -1066,7 +1077,7 @@ export function applicable(type: ConstraintType, pts: PointRef[], curves: Sketch
     case "symmetric":
       return pts.length === 2 && lines.length === 1 && curves.length === 1;
     case "distance":
-      return (pts.length === 2 && !curves.length) || (pts.length === 1 && lines.length === 1 && curves.length === 1);
+      return (pts.length === 2 && !curves.length) || (pts.length === 1 && lines.length === 1 && curves.length === 1) || (!pts.length && lines.length === 2 && curves.length === 2);
     case "fix":
       // Points, or whole curves (all their points).
       return pts.length >= 1 || curves.length >= 1;

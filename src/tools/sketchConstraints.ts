@@ -98,6 +98,16 @@ export function distanceOf(pts: PointRef[], curves: SketchEntity[], all: SketchE
     const dy = l.b[1] - l.a[1];
     return Math.abs((p[0] - l.a[0]) * dy - (p[1] - l.a[1]) * dx) / (Math.hypot(dx, dy) || 1);
   }
+  // Two lines that run the same way (within a degree): how far apart they are - the second's middle from the first.
+  // (Asked for: a distance between two lines. Two lines that cross have an angle between them, not a distance.)
+  const m = curves[1];
+  if (!pts.length && curves.length === 2 && l.kind === "line" && m.kind === "line") {
+    const [dx, dy, ex, ey] = [l.b[0] - l.a[0], l.b[1] - l.a[1], m.b[0] - m.a[0], m.b[1] - m.a[1]];
+    const [L, M] = [Math.hypot(dx, dy), Math.hypot(ex, ey)];
+    if (!(L > 1e-12) || !(M > 1e-12) || Math.abs(dx * ey - dy * ex) / (L * M) > Math.sin(Math.PI / 180)) return null;
+    const mid = [(m.a[0] + m.b[0]) / 2, (m.a[1] + m.b[1]) / 2];
+    return Math.abs((mid[0] - l.a[0]) * dy - (mid[1] - l.a[1]) * dx) / L;
+  }
   return null;
 }
 

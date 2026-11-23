@@ -7,6 +7,7 @@ import { uid } from "../sketch/edit";
 import type { AppContext } from "../tools/tool";
 import { bareExpr, evaluate, fmtLen, RESERVED, setVariables, withUnitOf } from "../units";
 import { namesIn } from "../doc/varAnchors";
+import { nameProblem, renameVariable } from "../doc/renameVariable";
 import { DIALOG_ACTION } from "../ui/dialogAction";
 import { read3mf } from "./formats";
 import { parseSVG } from "./svg";
@@ -242,6 +243,12 @@ export async function editVariables(app: AppContext): Promise<void> {
           d.variables = next;
           for (const f of d.features) {
             for (const [path, expr] of Object.entries(f.exprs ?? {})) if (uses(expr)) (delete f.exprs![path], kept++);
+            // (A sketch pattern that followed it: its copies stay as they are, plain curves from now on.)
+            if (f.type === "sketch" && f.repeats?.some((r) => uses(r.countExpr))) {
+              kept += f.repeats.filter((r) => uses(r.countExpr)).length;
+              f.repeats = f.repeats.filter((r) => !uses(r.countExpr));
+              if (!f.repeats.length) delete f.repeats;
+            }
             if (f.type === "sketch")
               for (const c of f.constraints ?? []) {
                 if (c.expr && uses(c.expr)) (delete c.expr, kept++);
@@ -259,6 +266,38 @@ export async function editVariables(app: AppContext): Promise<void> {
     if (!v[DIALOG_ACTION]) return;
     await createVariable(app);
   }
+}
+
+/**
+ * Rename Variables: each variable's name in a box, to change. Everything that uses a renamed variable - other
+ * variables, steps' sizes, sketch dimensions - says its new name; nothing changes size. (A variable could only be
+ * deleted and made again under another name, and what used it lost its link to it.)
+ */
+export async function renameVariables(app: AppContext): Promise<void> {
+  const list = app.store.doc.variables;
+  if (!list.length) return;
+  const v = await app.ui.dialog(
+    "Rename Variables",
+    list.map((x) => ({ key: x.name, label: `${x.name} =  ${bareExpr(x.expr)}`, value: x.name })),
+    "Type a new name over an old one. Everything that uses it follows, and nothing changes size.",
+  );
+  if (!v) return;
+  const wanted = list.map((x) => ({ from: x.name, to: (v[x.name] ?? x.name).trim() || x.name })).filter((x) => x.from !== x.to);
+  if (!wanted.length) return;
+  // Tried on a copy first: all of them, or none (two swapping names go by way of a spare one).
+  const trial = structuredClone(app.store.doc);
+  const spare = (i: number) => `__renaming_${i}__`;
+  wanted.forEach((w, i) => renameVariable(trial, w.from, spare(i)));
+  for (const [i, w] of wanted.entries()) {
+    const problem = nameProblem(trial, spare(i), w.to);
+    if (problem) return app.ui.toast(`${w.from} → ${w.to}: ${problem}`, "error");
+    renameVariable(trial, spare(i), w.to);
+  }
+  app.store.commit((d) => {
+    d.variables = trial.variables;
+    d.features = trial.features;
+  });
+  app.ui.toast(wanted.length === 1 ? `${wanted[0].from} is ${wanted[0].to} now, everywhere it is used` : `${wanted.length} variables renamed, everywhere they are used`);
 }
 
 // -------------------------------------------------------------------- DXF

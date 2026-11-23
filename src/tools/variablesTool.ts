@@ -2,7 +2,7 @@
 // card with New Variable and the whole list. Tapping the view leaves the card;
 // the tags stay until Variables is tapped again (or switched off in the card).
 
-import { createVariable, editVariables } from "../io/insert";
+import { createVariable, editVariables, renameVariables } from "../io/insert";
 import type { AppContext, Tool } from "./tool";
 
 export interface VariablesHost extends AppContext {
@@ -34,6 +34,7 @@ export class VariablesTool implements Tool {
       items: [
         { type: "button", label: "New Variable", icon: "variableNew", primary: !n, onClick: () => void createVariable(this.app).then(() => this.showCard()) },
         ...(n ? [{ type: "button" as const, label: `All Variables (${n})`, icon: "variable" as const, onClick: () => void editVariables(this.app).then(() => this.showCard()) }] : []),
+        ...(n ? [{ type: "button" as const, label: "Rename", icon: "variable" as const, onClick: () => void renameVariables(this.app).then(() => this.showCard()) }] : []),
         // On / off a tap each way: the tags on the model go and come back, the card stays.
         { type: "toggle", label: "Variables", value: this.app.varsOn, onChange: (v) => (this.app.showVariables(v), this.showCard()) },
       ],

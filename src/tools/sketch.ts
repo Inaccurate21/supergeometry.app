@@ -2,7 +2,7 @@ import { QuickActions } from "./quickActions";
 import { isTouchDevice } from "../device";
 import { simplifyStroke } from "../sketch/freehand";
 import { Box3, BufferGeometry, Line, LineBasicMaterial, LineDashedMaterial, Points, PointsMaterial, Vector3 } from "three";
-import type { EdgeLink, FaceRef, PlaneDef, PointRef, SketchConstraint, SketchEntity, SketchFeature, SketchFill, Vec2, Vec3 } from "../doc/types";
+import type { EdgeLink, FaceRef, PlaneDef, PointRef, SketchConstraint, SketchEntity, SketchFeature, SketchFill, SketchRepeat, Vec2, Vec3 } from "../doc/types";
 import { add as add3, dot, GROUND, niceStep as niceStepOf, originOnPlane, patternSpacing, planeY, roundSig, scale as scale3, sub as sub3, toPlane } from "../geom";
 import { addForUser, addStrict, constraintError, constraintName, LINKED, pointOf, pointsOf, refsOf, setValueStrict, sizeOf as sizeOfFn, solve, touchingEnds } from "../sketch/constraints";
 import { isExpression } from "../ui/ui";
@@ -63,6 +63,7 @@ import { evaluate, fmtLen, trim as trimNum } from "../units";
 import type { ToolPointer } from "../view/input";
 import { dotMaterial, sketchToWorld } from "../view/viewport";
 import { FILL_KINDS, FILL_PREFIX, fillCurves, fillRegion, refill, withoutFills } from "../sketch/fill";
+import { applyRepeats } from "../sketch/repeat";
 import { edgeRefOf, edgesOfFace, hitToSel, sourceFrame, sourcesOf, type AppContext, type Sel, type Tool } from "./tool";
 
 export type SketchKind = Kind;
@@ -352,6 +353,8 @@ export class SketchTool implements Tool {
     moveRot: number;
     angle: number;
     patAngle: number;
+    /** A pattern's count typed with a variable or a formula: the pattern follows it. */
+    countExpr?: string;
     factor: number;
     count: number;
     copy: boolean;
@@ -907,7 +910,9 @@ export class SketchTool implements Tool {
     const v = distanceOf(pts, curves, this.entities);
     if (v === null) return;
     const P = (r: PointRef) => pointOf(this.entities.find((x) => x.id === r.e)!, r.p)!;
-    const a = P(pts[0]);
+    // (Two lines: from the second's middle, square across to the first.)
+    const second = curves[1] as Extract<SketchEntity, { kind: "line" }> | undefined;
+    const a: Vec2 = pts.length ? P(pts[0]) : [(second!.a[0] + second!.b[0]) / 2, (second!.a[1] + second!.b[1]) / 2];
     let b: Vec2;
     if (pts.length === 2) b = P(pts[1]);
     else {
@@ -1590,7 +1595,7 @@ export class SketchTool implements Tool {
           this.refreshPreview();
         };
         items.push(
-          { type: "number", label: "Count", value: this.edit.count, kind: "int", min: 2, onInput: (v) => ((this.edit.count = v), this.refreshPreview()) },
+          { type: "number", label: "Count", value: this.edit.count, kind: "int", min: 2, expr: this.edit.countExpr, onExpr: (e) => (this.edit.countExpr = e ?? undefined), onInput: (v) => ((this.edit.count = v), this.refreshPreview()) },
           // Each from the values as they are now (not as when the panel opened:
           // a spacing typed after the direction used to put the old direction back).
           { type: "number", label: "Spacing", value: spacing, kind: "length", onInput: (v) => setPolar(v, Math.hypot(this.edit.dx, this.edit.dy) > 1e-12 ? (Math.atan2(this.edit.dy, this.edit.dx) * 180) / Math.PI : (this.patDirDeg ?? dirDeg)) },
@@ -1603,7 +1608,7 @@ export class SketchTool implements Tool {
       case "rotate":
         items.push(
           { type: "slot", label: k === "rotate" ? "Turn around" : "Center", value: this.edit.pivot ? `${trimNum(this.edit.pivot[0])}, ${trimNum(this.edit.pivot[1])}` : k === "patternCircular" ? "Tap the centre" : "Tap a point", active: this.edit.picking === "pivot" || this.wantsCentre, filled: !!this.edit.pivot, onClick: () => ((this.edit.picking = "pivot"), this.updatePanel()) },
-          ...(k === "patternCircular" ? [{ type: "number", label: "Count", value: this.edit.count, kind: "int", min: 2, onInput: (v: number) => ((this.edit.count = v), this.refreshPreview()) } as PanelItem] : []),
+          ...(k === "patternCircular" ? [{ type: "number", label: "Count", value: this.edit.count, kind: "int", min: 2, expr: this.edit.countExpr, onExpr: (e: string | null) => (this.edit.countExpr = e ?? undefined), onInput: (v: number) => ((this.edit.count = v), this.refreshPreview()) } as PanelItem] : []),
           k === "patternCircular"
             ? { type: "number", label: "Angle", value: this.edit.patAngle, kind: "angle", onInput: (v) => ((this.edit.patAngle = v), this.refreshPreview()) }
             : { type: "number", label: "Angle", value: this.edit.angle, kind: "angle", onInput: (v) => ((this.edit.angle = v), this.refreshPreview()) },
@@ -4145,7 +4150,9 @@ export class SketchTool implements Tool {
     this.commit(entities, carryConstraints(this.entities, entities, this.constraints));
   }
 
-  private commit(entities: SketchEntity[], constraints: SketchConstraint[] = this.constraints, follow: EdgeLink[] = [], fills: SketchFill[] | undefined = this.sketch?.fills): void {
+  private commit(entities: SketchEntity[], constraints: SketchConstraint[] = this.constraints, follow: EdgeLink[] = [], fills: SketchFill[] | undefined = this.sketch?.fills, repeats: SketchRepeat[] | undefined = this.sketch?.repeats): void {
+    // (A pattern that follows a count, all its originals deleted: it is no more - its copies stay as plain curves.)
+    if (repeats?.length) repeats = repeats.filter((r) => r.src.some((id) => entities.some((e) => e.id === id)));
     // The shapes change: a picked region's arrow would point at the old one.
     this.hideRegionArrow();
     // Fill patterns follow their shapes: made again when the sketch's own curves change (or the fills do).
@@ -4209,7 +4216,7 @@ export class SketchTool implements Tool {
       log.push({ op, n: 1, ids: keep(touched) });
       this.lastMade = made;
     }
-    const patch = { entities, constraints: cs.length ? cs : undefined, log, links: links.length ? links : undefined, fills: fills?.length ? fills : undefined };
+    const patch = { entities, constraints: cs.length ? cs : undefined, log, links: links.length ? links : undefined, fills: fills?.length ? fills : undefined, repeats: repeats?.length ? repeats : undefined };
     if (this.sketchId && this.sketch) {
       store.update(this.sketchId, patch);
     } else {
@@ -4882,6 +4889,24 @@ export class SketchTool implements Tool {
       const there = new Set(this.entities.map(sig));
       results = results.filter((e) => !there.has(sig(e)));
       if (!results.length) return this.app.ui.toast("Those copies are there already");
+    }
+    // A pattern whose count was typed with a variable: kept with the sketch, its copies made again whenever the
+    // count comes to another number (asked for: a sketch pattern's count from a variable).
+    if ((this.kind === "patternLinear" || this.kind === "patternCircular") && this.edit.countExpr) {
+      const rep: SketchRepeat = {
+        id: uid(),
+        src: this.entities.filter((e) => this.selected.has(e.id)).map((e) => e.id),
+        kind: this.kind === "patternLinear" ? "linear" : "circular",
+        count: this.edit.count,
+        countExpr: this.edit.countExpr,
+        ...(this.kind === "patternLinear" ? { step: [this.edit.dx, this.edit.dy] as Vec2 } : { at: this.edit.pivot ?? ([0, 0] as Vec2), angle: this.edit.patAngle }),
+      };
+      const repeats = [...(this.sketch?.repeats ?? []), rep];
+      const made = applyRepeats(this.entities, this.constraints, repeats, true);
+      if (made) this.commit(made.entities, made.constraints, [], undefined, repeats);
+      this.app.ui.toast(`This pattern follows ${rep.countExpr}: change it, and the copies change`);
+      this.refreshPreview();
+      return;
     }
     // A pattern's copies stay linked to their originals: change one, and the copies follow.
     const links = this.patternLinks(results);

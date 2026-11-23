@@ -187,6 +187,27 @@ export interface SketchFeature extends FeatureBase {
    * curves are among `entities`, named "fp-<fill id>-<n>", and are made again when the sketch's curves change.
    */
   fills?: SketchFill[];
+  /**
+   * Patterns whose count is a variable or a formula (see sketch/repeat.ts): their copies - curves named
+   * "rp-<pattern>-<copy>-<curve>" - are made again when the count comes to another number.
+   */
+  repeats?: SketchRepeat[];
+}
+
+/** A sketch pattern that follows its count (a pattern made with a plain number is only its copies). */
+export interface SketchRepeat {
+  id: string;
+  /** The curves repeated. */
+  src: string[];
+  kind: "linear" | "circular";
+  /** How many there are, the originals counted (worked out from `countExpr`). */
+  count: number;
+  countExpr: string;
+  /** Linear: from one to the next. */
+  step?: Vec2;
+  /** Circular: the point they go round, and the angle they are spread over (degrees; 360: all the way). */
+  at?: Vec2;
+  angle?: number;
 }
 
 /** A closed shape of a sketch filled with a pattern (Fill Pattern). */

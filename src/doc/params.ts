@@ -1,6 +1,8 @@
 // Parametric document: evaluate expressions (variables) into feature values and
 // re-solve sketch constraints, so the document's numbers are always consistent.
 
+import { applyRepeats } from "../sketch/repeat";
+import { refill } from "../sketch/fill";
 import { solveFine } from "../sketch/constraints";
 import { evaluate, setUnits, setVariables } from "../units";
 import type { Feature, ProjectDoc } from "./types";
@@ -44,6 +46,17 @@ export function resolveDoc(doc: ProjectDoc): string[] {
       if (v === null) problems.push(`${f.name}: "${expr}" can't be evaluated`);
       else setPath(f, path, v);
     }
+    // A sketch's patterns that follow a count: the count worked out, their copies made again if it is another number.
+    if (f.type === "sketch" && f.repeats?.length) {
+      for (const r of f.repeats) {
+        const v = evaluate(r.countExpr, "number");
+        if (v === null) problems.push(`${f.name}: "${r.countExpr}" can't be evaluated`);
+        else if (!(v >= 1)) problems.push(`${f.name}: a pattern's count is ${Math.round(v)} ("${r.countExpr}") - it has to be at least 1`);
+        else r.count = Math.round(v);
+      }
+      const again = applyRepeats(f.entities, f.constraints ?? [], f.repeats);
+      if (again) ((f.entities = again.entities), (f.constraints = again.constraints));
+    }
     if (f.type === "sketch" && f.constraints?.length) {
       for (const c of f.constraints) {
         // A point held where X / Y were typed with a variable.
@@ -68,6 +81,12 @@ export function resolveDoc(doc: ProjectDoc): string[] {
       // time on a desk fan.
       if (!r.ok) problems.push(`${f.name}: constraints can't all be met`);
       else if (!sameNumbers(f.entities, r.entities, 1e-9)) f.entities = r.entities;
+    }
+    // Fill patterns follow their shapes, here too: a shape that changed size by a variable or a dimension has its
+    // pattern made again (it was only made again when the sketch was changed in the sketch tool).
+    if (f.type === "sketch" && f.fills?.length) {
+      const filled = refill(f.entities, f.fills);
+      if (!sameNumbers(f.entities, filled, 1e-9)) f.entities = filled;
     }
   }
   return problems;
