@@ -242,6 +242,13 @@ export class SelectTool implements Tool {
         return false;
       }
     }
+    // A sketch's shape too narrow where it was tapped to tap without its outline (the frame round a face left by a
+    // small offset of its edge): the tap is the shape - its line, the body's edge beside it or the face under it
+    // took it every time, on any screen. (A double tap on its line still opens the sketch.)
+    if (!forced && count < 2 && !this.app.view.selectThrough && hit && (hit.kind === "curve" || hit.kind === "point" || hit.kind === "edge" || hit.kind === "vertex" || hit.kind === "face") && (!this.pending || this.pending.accepts.includes("profile"))) {
+      const thin = this.app.view.thinProfileNear(p.x, p.y, p.tol);
+      if (thin) hit = thin;
+    }
     // A finger on a thin shape (a ruler's tick, a letter) is always on its
     // outline too: one tap takes the shape under it (to extrude); a double
     // tap opens the sketch to edit. (A mouse can aim for one or the other.)

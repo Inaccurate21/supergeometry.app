@@ -796,6 +796,7 @@ export class Viewport {
       const onTop = active || fresh.has(s.id);
       const m = planeMatrix(s.plane, this.cam.distance * 1e-5);
       // Clean 2px lines; the sketch being edited is brighter and on top.
+      // (Each drawn with the see-through things, after the world's axes: a line along an axis is the line's colour.)
       const solid: number[] = [];
       const dashed: number[] = [];
       // Curves that follow a body's edge: in their own colour (they aren't the sketch's to move).
@@ -822,6 +823,7 @@ export class Viewport {
       }
       if (solid.length) {
         const mat = this.lineMaterial(active ? 0xffffff : COLORS.sketch, active ? 2.2 : 1.6, !onTop);
+        mat.transparent = true;
         this.sketchMats.push(mat);
         const l = new LineSegments2(new LineSegmentsGeometry().setPositions(solid), mat);
         l.renderOrder = 2;
@@ -829,6 +831,7 @@ export class Viewport {
       }
       if (held.length) {
         const mat = this.lineMaterial(0x5fd38a, 2.2, !onTop);
+        mat.transparent = true;
         this.sketchMats.push(mat);
         const l = new LineSegments2(new LineSegmentsGeometry().setPositions(held), mat);
         l.renderOrder = 2;
@@ -836,6 +839,7 @@ export class Viewport {
       }
       if (linked.length) {
         const mat = this.lineMaterial(COLORS.linked, active ? 2.2 : 1.6, !onTop);
+        mat.transparent = true;
         this.sketchMats.push(mat);
         const l = new LineSegments2(new LineSegmentsGeometry().setPositions(linked), mat);
         l.renderOrder = 2;
@@ -845,6 +849,7 @@ export class Viewport {
         // As wide as the sketch's other lines (asked for: "should be more visible, like the normal line"): told
         // from them by its dashes and its colour, not by being faint.
         const mat = this.lineMaterial(COLORS.construction, active ? 2.2 : 1.6, !onTop);
+        mat.transparent = true;
         mat.dashed = true;
         mat.dashSize = wpp * 9;
         mat.gapSize = wpp * 5;
@@ -1502,6 +1507,51 @@ export class Viewport {
     return null;
   }
 
+  /**
+   * A sketch's shape at or right beside the pointer that is too narrow there to be tapped without tapping its own
+   * outline - the frame between a face's edge and a small offset of it, a letter's stroke: that shape. (Its lines
+   * and the body's edges took every tap; to pick it, the view had to be zoomed right in on it. Asked for: "because
+   * the surface is so small, it doesn't select that sketch surface and I have to rotate the camera and zoom in
+   * very much to select it".) Null where the shape under the pointer is wide enough to tap, or there is none.
+   */
+  thinProfileNear(x: number, y: number, tol: number): PickHit | null {
+    if (!this.profileMeshes.length) return null;
+    const only = { curves: false, edges: false, vertices: false, planes: false, axes: false, images: false, edgeTolPx: 0 } as const;
+    const at = (px: number, py: number) => {
+      const h = this.pick(px, py, only);
+      return h?.kind === "profile" ? h : null;
+    };
+    const same = (a: PickHit | null, b: PickHit) => a?.kind === "profile" && b.kind === "profile" && a.sketch === b.sketch && a.region === b.region;
+    const area = (h: PickHit) => (h.kind === "profile" ? ((this.profileMeshes.find((m) => m.userData.sketch === h.sketch && m.userData.region === h.region)?.userData.area as number | undefined) ?? Infinity) : Infinity);
+    // The shapes at the pointer and round it, as far as a tap's reach: the smallest of them is the one meant.
+    const found: { h: PickHit; x: number; y: number }[] = [];
+    const reach = Math.max(4, tol);
+    for (const r of [0, reach * 0.5, reach]) {
+      for (let k = 0; k < (r ? 8 : 1); k++) {
+        const [px, py] = [x + r * Math.cos((k * Math.PI) / 4), y + r * Math.sin((k * Math.PI) / 4)];
+        const h = at(px, py);
+        if (h && !found.some((f) => same(f.h, h))) found.push({ h, x: px, y: py });
+      }
+    }
+    // (Right on a shape that is wide enough to tap: its line was meant, not a narrow neighbour's.)
+    const under = found[0] && found[0].x === x && found[0].y === y ? found[0] : null;
+    const narrow = (f: { h: PickHit; x: number; y: number }, by = 2 * reach) => [0, 1, 2, 3].some((k) => {
+      const [dx, dy] = [by * Math.cos((k * Math.PI) / 4), by * Math.sin((k * Math.PI) / 4)];
+      return !same(at(f.x + dx, f.y + dy), f.h) && !same(at(f.x - dx, f.y - dy), f.h);
+    });
+    found.sort((a, b) => area(a.h) - area(b.h));
+    // One no wider than a tap's own reach - a hair of a frame, seen from far off: it is meant even from just beside
+    // it, on the wide shape next to it (there is no tapping it otherwise; a double tap on its line opens the sketch).
+    const hair = found.find((f) => f !== under && narrow(f, reach));
+    if (hair) return hair.h;
+    if (under) return narrow(under) ? under.h : null;
+    for (const f of found) {
+      // Narrow there: some way across it, two taps' reach either side of the spot are both off it.
+      if (narrow(f)) return f.h;
+    }
+    return null;
+  }
+
   private pickCurve(x: number, y: number, tol: number, onlySketch?: string): PickHit | null {
     let best: { d: number; c: { sketch: string; entity: string; pts: Vector3[] }; p: Vector3 } | null = null;
     const proj = this.projector();
@@ -1806,7 +1856,17 @@ function makeAxes(): Object3D {
     const geo = new BufferGeometry();
     geo.setAttribute("position", new Float32BufferAttribute([0, 0, 0, ...to], 3));
     // Transparent + later render order so the axes draw over the coplanar grid.
-    const line = new LineSegments(geo, new LineBasicMaterial({ color, transparent: true }));
+    const mat = new LineBasicMaterial({ color, transparent: true, depthWrite: false });
+    // The axes are the background of whatever is made: a hair further from the eye than they are (a third of a
+    // percent of the way to what is looked at), so a body's edge or a sketch's line that runs along one is drawn
+    // whole, in its own colour. (Lying in the very same place, the two fought for each pixel - an edge along X came
+    // out in dashes of red, a sketch line there lost its colour to the axis. Asked for: "I want the line of
+    // whatever was made to be on top of everything. The axis lines should be in the background".)
+    mat.onBeforeCompile = (shader) => {
+      shader.vertexShader = shader.vertexShader.replace("#include <project_vertex>", "#include <project_vertex>\n  gl_Position.z += 3.0e-6 * gl_Position.w;");
+    };
+    mat.customProgramCacheKey = () => "axis-behind";
+    const line = new LineSegments(geo, mat);
     line.renderOrder = 1;
     return line;
   };
