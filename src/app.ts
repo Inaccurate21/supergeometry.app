@@ -39,7 +39,9 @@ import { sectionPlane, SectionTool, type SectionState } from "./tools/section";
 import { SelectTool } from "./tools/select";
 import { BooleanOp } from "./tools/booleanOp";
 import { FeatureOp, sketchesUsed } from "./tools/featureOp";
-import { SketchTool } from "./tools/sketch";
+import { Vector3 } from "three";
+import { SketchTool, sketchVariant } from "./tools/sketch";
+import { Tutorial, type TutorialHost } from "./ui/tutorial";
 import { definedCurves } from "./sketch/constraints";
 import { keepSizes } from "./doc/unitChange";
 import { bodiesOf, edgeRefOf, edgesOfFace, faceRefOf, sameSel, sourceFrame, sourcesOf, type AppContext, type Sel, type Tool } from "./tools/tool";
@@ -98,6 +100,8 @@ export class App implements AppContext {
   /** The headset mode (its pictures can be checked on the page: vr.snapshot). */
   vr: VRMode | null = null;
   private tool: Tool;
+  /** The tutorial begun (More > Tutorial, and the welcome window's button). */
+  private startTutorial: () => void = () => {};
   private shownErrors = "";
   private pinLayer: PinLayer;
   private items: ItemsPanel;
@@ -1642,7 +1646,22 @@ export class App implements AppContext {
     const offline = new Offline((t, k) => this.ui.toast(t, k), (state) => ((offlineState.textContent = state === "On" || state === "Off" ? "" : state), switchOf("m-offline", settings.value.offline)));
     this.updates.offline = { get on() { return settings.value.offline; }, download: (fresh) => offline.download(fresh) };
     moreItem("m-offline", () => void offline.toggle());
-    moreItem("m-tutorial", () => {});
+    // The tutorial: a first part, built one lit tap at a time (see ui/tutorial.ts).
+    const tutorial = new Tutorial({
+      tool: () => this.tool as unknown as ReturnType<TutorialHost["tool"]>,
+      selection: () => this.selection,
+      setSelection: (sel) => this.setSelection(sel),
+      features: () => this.store.features,
+      toScreen: (p) => this.view.toScreen(new Vector3(p[0], p[1], p[2])),
+      canvas: () => this.view.canvas,
+      edges: (body) => (this.view.body(body)?.edges ?? []).map((e) => ({ mid: e.mid, dir: e.dir, type: e.type })),
+      bodies: () => this.view.bodyList.map((b) => b.id),
+      eye: () => this.view.cam.camera.position,
+      newProject: () => this.newProject(),
+      cornerRectangles: () => sketchVariant("rect", "diagonal"),
+    });
+    moreItem("m-tutorial", () => void tutorial.start());
+    this.startTutorial = () => void tutorial.start();
     // About: the README, in the app. Support links open in a new tab (no access back to this page).
     moreItem("m-about", () => showAbout());
     // Feedback: a bug report, suggestion or discussion, posted on r/supergeometry (Reddit's page, in a new tab).
@@ -1947,6 +1966,7 @@ export class App implements AppContext {
     const entries = await libraryEntries();
     showLibrary(entries, this.projectId, {
       open: (id) => void this.openKept(id),
+      tutorial: () => this.startTutorial(),
       newProject: () => void this.newProject(),
       openFile: () => this.open(),
       download: (id) => void this.downloadKept(id),

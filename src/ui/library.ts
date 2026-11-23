@@ -10,6 +10,8 @@ import { el, twoTap } from "./ui";
 
 export interface LibraryActions {
   open(id: string): void;
+  /** The tutorial: a first part, built one tap at a time (offered in the window's head). */
+  tutorial?(): void;
   newProject(): void;
   openFile(): void;
   download(id: string): void;
@@ -131,6 +133,15 @@ export function showLibrary(entries: LibraryEntry[], currentId: string | null, a
     fsBtn.addEventListener("click", () => fs.toggle());
     paintFull();
     head.append(fsBtn);
+  }
+  // The tutorial: where someone new starts - the button that stands out while there are no projects yet.
+  if (act.tutorial) {
+    const tutBtn = el("button", entries.length ? "text-btn" : "text-btn primary", "Tutorial");
+    tutBtn.type = "button";
+    tutBtn.title = "Build a first part, one tap at a time";
+    tutBtn.addEventListener("click", () => (close(), act.tutorial!()));
+    if (!entries.length) newBtn.className = "text-btn";
+    head.append(tutBtn);
   }
   head.append(newBtn, fileBtn, closeBtn);
   box.append(head);

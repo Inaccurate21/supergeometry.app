@@ -190,6 +190,13 @@ try {
 } catch {
   /* nothing saved, or no storage */
 }
+/** A tool's way of drawing set from outside (the tutorial's rectangle is drawn corner to corner). */
+export function sketchVariant(tool: string, way: string): void {
+  if (!VARIANTS[tool]?.includes(way)) return;
+  (memory as unknown as Record<string, string>)[tool] = way;
+  storeVariants();
+}
+
 function storeVariants(): void {
   try {
     localStorage.setItem("sg.sketchVariants", JSON.stringify(Object.fromEntries(Object.keys(VARIANTS).map((k) => [k, (memory as unknown as Record<string, string>)[k]]))));
