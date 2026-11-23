@@ -47,6 +47,8 @@ export interface TutorialHost {
   setNumber(field: "distance" | "clearance" | "pitch", mm: number): void;
   /** Chamfer open: the straight edges of its body that lie at the height `z` are chamfered with the rest. */
   chamferAt(z: number): void;
+  /** A press however long is a tap (on), or press-and-hold is itself again (off). */
+  plainTaps(on: boolean): void;
   /** The circle or polygon drawn last in the sketch that is open, put exactly: its middle and a point of its rim. */
   exact(kind: "circle" | "polygon", centre: Vec3, edge: Vec3): void;
 }
@@ -151,6 +153,8 @@ export class Tutorial {
   private gate = (e: Event): void => {
     const t = e.target;
     if (t instanceof Node && this.card.contains(t)) return;
+    // (A window the app puts up meanwhile - a question, a warning: it is answered, not locked under the tutorial.)
+    if (t instanceof Element && t.closest(".dialog-back")) return;
     const te = e as TouchEvent;
     const at = (te.touches?.[0] ?? te.changedTouches?.[0] ?? e) as { clientX?: number; clientY?: number };
     const x = at.clientX;
@@ -227,6 +231,7 @@ export class Tutorial {
     // were 20 mm: a rod as wide as it was tall, its head hiding the wall the thread goes on.)
     this.host.zoomTo(5, 52);
     this.zoomed = false;
+    this.host.plainTaps(true);
     this.on = true;
     this.finished = false;
     this.lostSince = 0;
@@ -257,6 +262,7 @@ export class Tutorial {
     clearInterval(this.tick);
     window.removeEventListener("keydown", this.onKey, true);
     for (const type of Tutorial.GATED) window.removeEventListener(type, this.gate, { capture: true });
+    this.host.plainTaps(false);
     this.through.clear();
     this.touching = this.pressing = this.clickable = false;
     this.open = [];
@@ -520,6 +526,7 @@ export class Tutorial {
         this.ring.remove();
         window.removeEventListener("keydown", this.onKey, true);
         for (const type of Tutorial.GATED) window.removeEventListener(type, this.gate, { capture: true });
+        this.host.plainTaps(false);
         this.show("An M10 bolt and its nut, in their real sizes and ready to print: the nut's thread is 0.2 mm bigger all round, so it turns. Drag to look at them, pinch or use the wheel to zoom. You can export them now, from File.", "Done", [], "Finish");
       }
       return;

@@ -1725,6 +1725,7 @@ export class App implements AppContext {
         if (t.edgeSels) this.setSelection(t.edgeSels());
         t.update?.();
       },
+      plainTaps: (on) => void (this.input.plainTaps = on),
       exact: (kind, centre, edge) => void (this.tool instanceof SketchTool && this.tool.exact(kind, centre, edge)),
       setNumber: (field, mm) => {
         const t = this.tool as unknown as { id: string; feature?: Record<string, unknown>; render?(): void; update?(): void; setPitch?(v: number): void };

@@ -167,7 +167,7 @@ export class InputRouter {
     // Fingers, pens and a headset's controller have no right button: press
     // and hold still is the right-click (the same menu). (A headset's browser
     // may report its controller as a mouse.)
-    if ((type !== "mouse" || isHeadset) && this.handler.context) {
+    if (!this.plainTaps && (type !== "mouse" || isHeadset) && this.handler.context) {
       clearTimeout(this.holdTimer);
       this.holdTimer = setTimeout(() => {
         if (this.mode !== "pending" || this.pointers.get(t.id) !== t || this.pointers.size !== 1) return;
@@ -185,6 +185,12 @@ export class InputRouter {
     }
   }
 
+  /**
+   * Press-and-hold is not looked for: a press however long is a tap when it lifts. The tutorial's - a beginner
+   * presses slowly and waits, and a hold (which takes hold of what is under it, or opens its menu) was no tap:
+   * the lit spot did nothing.
+   */
+  plainTaps = false;
   private holdTimer: ReturnType<typeof setTimeout> | undefined;
   /** This touch took hold of what was under it (see `grab`): lifted without moving, it is not a tap. */
   private held = false;
