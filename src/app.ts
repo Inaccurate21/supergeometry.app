@@ -40,14 +40,14 @@ import { SelectTool } from "./tools/select";
 import { BooleanOp } from "./tools/booleanOp";
 import { FeatureOp, sketchesUsed } from "./tools/featureOp";
 import { Vector3 } from "three";
-import { SketchTool, sketchVariant } from "./tools/sketch";
+import { SketchTool, sketchSides, sketchVariant } from "./tools/sketch";
 import { Tutorial, type TutorialHost } from "./ui/tutorial";
 import { definedCurves } from "./sketch/constraints";
 import { keepSizes } from "./doc/unitChange";
 import { bodiesOf, edgeRefOf, edgesOfFace, faceRefOf, sameSel, sourceFrame, sourcesOf, type AppContext, type Sel, type Tool } from "./tools/tool";
 import { setupRightColumn } from "./ui/panels";
 import type { ToolItem } from "./ui/ui";
-import { UI } from "./ui/ui";
+import { el, UI } from "./ui/ui";
 import { Sentence } from "./ui/sentence";
 import { Ghost } from "./tools/ghost";
 import { arrangement, drawnRegions, materialRegions } from "./sketch/regions";
@@ -1654,11 +1654,29 @@ export class App implements AppContext {
       features: () => this.store.features,
       toScreen: (p) => this.view.toScreen(new Vector3(p[0], p[1], p[2])),
       canvas: () => this.view.canvas,
-      edges: (body) => (this.view.body(body)?.edges ?? []).map((e) => ({ mid: e.mid, dir: e.dir, type: e.type })),
+      faces: (body) => (this.view.body(body)?.faces ?? []).map((f) => ({ center: f.center, normal: f.normal, type: f.type })),
       bodies: () => this.view.bodyList.map((b) => b.id),
       eye: () => this.view.cam.camera.position,
       newProject: () => this.newProject(),
-      cornerRectangles: () => sketchVariant("rect", "diagonal"),
+      setUp: () => (sketchVariant("circle", "center"), sketchSides(6)),
+      closePanels: () => (this.ui.toggleHistory(false), this.items.toggle(false)),
+      zoomTo: (mm, px) => {
+        const now = this.view.cam.worldPerPixel(this.view.height);
+        const want = mm / px;
+        const off = this.view.cam.target.lengthSq() > 1e-12;
+        // (Asked for each frame until the first circle is drawn: nothing is done when the view is there already.)
+        if (!(now > 0) || (!off && Math.abs(now / want - 1) < 1e-3)) return;
+        this.view.cam.target.set(0, 0, 0);
+        this.view.cam.zoom(want / now);
+        this.view.requestRender();
+      },
+      setNumber: (field, mm) => {
+        const t = this.tool as unknown as { id: string; feature?: Record<string, unknown>; render?(): void; update?(): void };
+        if (!t.feature || (field === "clearance" ? t.id !== "boolean" : t.id !== "extrude")) return;
+        t.feature[field] = mm;
+        t.render?.();
+        t.update?.();
+      },
     });
     moreItem("m-tutorial", () => void tutorial.start());
     this.startTutorial = () => void tutorial.start();
@@ -1966,7 +1984,7 @@ export class App implements AppContext {
     const entries = await libraryEntries();
     showLibrary(entries, this.projectId, {
       open: (id) => void this.openKept(id),
-      tutorial: () => this.startTutorial(),
+      tutorial: () => (this.tutorialAsked(), this.startTutorial()),
       newProject: () => void this.newProject(),
       openFile: () => this.open(),
       download: (id) => void this.downloadKept(id),
@@ -1979,7 +1997,49 @@ export class App implements AppContext {
         else await renameProject(id, name);
         return name;
       },
-    }, { welcome, fullscreen: this.fullscreen });
+    }, { welcome, fullscreen: this.fullscreen, onClose: welcome ? () => this.offerTutorial() : undefined });
+  }
+
+  /** The tutorial has been offered on this device (or begun): it isn't offered again. */
+  private tutorialAsked(): void {
+    try {
+      localStorage.setItem("sg.tutorialAsked", "1");
+    } catch {
+      /* a private window: asked again next time */
+    }
+  }
+
+  /**
+   * The first time the app is opened on a device, once the welcome window is closed: would they like the tutorial?
+   * Asked once, whatever the answer (More > Tutorial has it from then on). (Asked for: "a popup only for the first
+   * time someone opens the app, after they close the welcome window, that asks them if they want to start the
+   * tutorial".)
+   */
+  private offerTutorial(): void {
+    let asked = true;
+    try {
+      asked = localStorage.getItem("sg.tutorialAsked") === "1";
+    } catch {
+      /* no storage: not offered (it would be offered every time) */
+    }
+    if (asked) return;
+    this.tutorialAsked();
+    // (After what closing the window started - a new project, a file being opened - has had its turn.)
+    setTimeout(() => {
+      const back = el("div", "dialog-back");
+      const box = el("div", "dialog tutorial-ask");
+      box.append(el("div", "panel-title", "New here?"), el("div", "tutorial-ask-text", "The tutorial builds a bolt and the nut that fits it with you, one tap at a time. It takes a few minutes."));
+      const row = el("div", "dialog-actions");
+      const no = el("button", "text-btn", "Not now");
+      const yes = el("button", "text-btn primary", "Start the tutorial");
+      const close = () => back.remove();
+      no.addEventListener("click", close);
+      yes.addEventListener("click", () => (close(), this.startTutorial()));
+      row.append(no, yes);
+      box.append(row, el("div", "tutorial-ask-note", "It is under More > Tutorial whenever you want it."));
+      back.append(box);
+      document.body.append(back);
+    }, 350);
   }
 
   private async openKept(id: string): Promise<void> {

@@ -89,6 +89,8 @@ export interface LibraryOptions {
   welcome?: boolean;
   /** A Full screen button (null: not offered). */
   fullscreen?: { isFull(): boolean; toggle(): void } | null;
+  /** Told when the window is closed, however it was (its close button, a project picked, Esc). */
+  onClose?(): void;
 }
 
 /** The page already fills the screen (the browser's own full screen, or an app window that has it all). */
@@ -138,7 +140,7 @@ export function showLibrary(entries: LibraryEntry[], currentId: string | null, a
   if (act.tutorial) {
     const tutBtn = el("button", entries.length ? "text-btn" : "text-btn primary", "Tutorial");
     tutBtn.type = "button";
-    tutBtn.title = "Build a first part, one tap at a time";
+    tutBtn.title = "Build a bolt and its nut, one tap at a time";
     tutBtn.addEventListener("click", () => (close(), act.tutorial!()));
     if (!entries.length) newBtn.className = "text-btn";
     head.append(tutBtn);
@@ -158,6 +160,7 @@ export function showLibrary(entries: LibraryEntry[], currentId: string | null, a
 
   const grid = el("div", "library-grid");
   const close = () => {
+    if (back.isConnected) opts.onClose?.();
     back.remove();
     window.removeEventListener("keydown", onKey, true);
     document.removeEventListener("fullscreenchange", paintFull);

@@ -197,6 +197,11 @@ export function sketchVariant(tool: string, way: string): void {
   storeVariants();
 }
 
+/** How many sides Polygon draws, set from outside (the tutorial's bolt head is a hexagon). */
+export function sketchSides(n: number): void {
+  memory.sides = n;
+}
+
 function storeVariants(): void {
   try {
     localStorage.setItem("sg.sketchVariants", JSON.stringify(Object.fromEntries(Object.keys(VARIANTS).map((k) => [k, (memory as unknown as Record<string, string>)[k]]))));

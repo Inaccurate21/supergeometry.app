@@ -7321,3 +7321,52 @@ body.tut-on #hint {
     animation: none;
   }
 }
+
+/* The tutorial, on any screen: what it has no use for is put away while it runs - the view cube, the columns at the
+   two edges, undo and redo, the floating size boxes - so the lit spot and the card are all there is to look at.
+   (Asked for: "on mobile it's kinda hard to follow because it's so cluttered".) */
+body.tut-on #viewcube-host,
+body.tut-on #right-col,
+body.tut-on #left-col,
+body.tut-on #undo-dock,
+body.tut-on #popover,
+body.tut-on .copy-toggle {
+  visibility: hidden !important;
+}
+/* A narrow screen: the card is a slim band across the screen, its words a little smaller. */
+.tut-card.tut-narrow {
+  padding: 9px 12px 7px;
+  border-radius: 10px;
+}
+.tut-card.tut-narrow .tut-text {
+  font-size: 14px;
+  line-height: 1.35;
+}
+.tut-card.tut-narrow .tut-foot {
+  margin-top: 4px;
+}
+/* (The number pad is over the dimmed screen, in its own opening.) */
+body.tut-on .numpad {
+  z-index: 90001;
+}
+
+/* The first visit's question: the tutorial, or not now. */
+.dialog.tutorial-ask {
+  width: min(360px, calc(100vw - 32px));
+  padding: 18px 18px 14px;
+}
+.tutorial-ask-text {
+  margin: 8px 0 14px;
+  line-height: 1.45;
+  color: #dfe3ea;
+}
+.tutorial-ask .dialog-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+.tutorial-ask-note {
+  margin-top: 10px;
+  font-size: 12px;
+  color: var(--muted);
+}
