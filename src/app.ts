@@ -1742,8 +1742,12 @@ export class App implements AppContext {
       },
     });
     this.tutorial = tutorial;
-    moreItem("m-tutorial", () => void tutorial.start());
-    this.startTutorial = () => void tutorial.start();
+    moreItem("m-tutorial", () => this.startTutorial());
+    this.startTutorial = () => {
+      // (The question whether to start it, should it be up: answered.)
+      document.querySelector(".dialog.tutorial-ask")?.closest(".dialog-back")?.remove();
+      void tutorial.start();
+    };
     // About: the README, in the app. Support links open in a new tab (no access back to this page).
     moreItem("m-about", () => showAbout());
     // Feedback: a bug report, suggestion or discussion, posted on r/supergeometry (Reddit's page, in a new tab).
@@ -2090,6 +2094,10 @@ export class App implements AppContext {
     this.tutorialAsked();
     // (After what closing the window started - a new project, a file being opened - has had its turn.)
     setTimeout(() => {
+      // (The welcome window was closed by its own Tutorial button: the tutorial is running, there is nothing to
+      // ask - the question came up over it, where the tutorial lets nothing be tapped but its lit spot. Reported:
+      // "now i cant do the tutorial on PC. i cant click draw", in a private window - a first visit.)
+      if (this.tutorial?.running) return;
       const back = el("div", "dialog-back");
       const box = el("div", "dialog tutorial-ask");
       box.append(el("div", "panel-title", "New here?"), el("div", "tutorial-ask-text", "The tutorial builds a bolt and the nut that fits it with you, one tap at a time. It takes a few minutes."));

@@ -205,14 +205,21 @@ export class Tutorial {
     if (e.type !== "pointermove" && e.cancelable) e.preventDefault();
   };
 
+  /** Running, or on its way (its new project being opened). */
   get running(): boolean {
-    return this.on;
+    return this.on || this.starting;
   }
+  private starting = false;
 
   /** Begin: a new project (what is open is saved and stays in the list of projects), and the first thing to tap. */
   async start(): Promise<void> {
-    if (this.on) return;
-    await this.host.newProject();
+    if (this.on || this.starting) return;
+    this.starting = true;
+    try {
+      await this.host.newProject();
+    } finally {
+      this.starting = false;
+    }
     this.host.setUp();
     this.host.closePanels();
     // The same bolt on every screen: the view as near as makes its rod's 5 mm radius 52 px - a spot a finger
