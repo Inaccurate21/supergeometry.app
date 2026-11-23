@@ -493,6 +493,39 @@ export class Viewport {
     this.applyClip();
     this.applySettings();
     this.applyHidden();
+    this.applyPoses();
+  }
+
+  /** Assemblies: each body's move from where it was modelled (a 4 x 4, column by column); none: all at home. */
+  private poses: Map<string, number[]> | null = null;
+
+  /**
+   * Bodies shown moved - an assembly's parts at their joints' values, or pulled apart - without the model being
+   * made again: what is drawn of each (its faces, its edges) is put through its move. Null: all where they were
+   * modelled. Picks of faces and bodies go by what is drawn; edges, vertices and what is lit do not (they are
+   * where the model has them), so a tool that shows bodies moved picks by `facesAt`.
+   */
+  setPoses(poses: Map<string, number[]> | null): void {
+    this.poses = poses && poses.size ? poses : null;
+    this.applyPoses();
+    this.requestRender();
+  }
+
+  private applyPoses(): void {
+    for (const [id, b] of this.bodies) {
+      const m = this.poses?.get(id);
+      for (const o of [b.mesh, b.edges, b.hidden, ...b.capStencil]) {
+        if (!m && o.matrixAutoUpdate) continue;
+        if (m) {
+          o.matrixAutoUpdate = false;
+          o.matrix.fromArray(m);
+        } else {
+          o.matrix.identity();
+          o.matrixAutoUpdate = true;
+        }
+        o.matrixWorldNeedsUpdate = true;
+      }
+    }
   }
 
   /** Open (non-watertight) edges stand out in orange. */

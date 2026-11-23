@@ -1,3 +1,4 @@
+import { AssemblyTool } from "../assembly/assemblyTool";
 import { QuickActions, type QuickKind, type QuickPlace } from "./quickActions";
 import { circleAxis } from "./slots";
 import { isTouchDevice } from "../device";
@@ -843,6 +844,12 @@ export class SelectTool implements Tool {
       // Scales just this face, within its plane; the sides tilt to follow.
       { id: "scale", label: "Scale Face", icon: "scale", ...needFlat, run: () => ref && info?.plane && app.setTool(new ScaleFaceOp(app, ref, info.plane)) },
       { id: "thread", label: "Thread", icon: "thread", disabled: !one || !info?.round, why: "Needs one round face (a shank or a hole)", run: () => app.startThread() },
+      // Two faces, one on each of two bodies: the joint between the two (Assemblies opens with it made).
+      (() => {
+        const fs = this.picks.filter((p): p is Extract<Sel, { kind: "face" }> => p.kind === "face");
+        const pair = this.picks.length === 2 && fs.length === 2 && fs[0].body !== fs[1].body;
+        return { id: "joint", label: "Joint", icon: "assembly", disabled: !pair, why: "Needs a face on each of two parts", run: () => pair && app.setTool(new AssemblyTool(app, { a: fs[0], b: fs[1] })) } as ToolItem;
+      })(),
       { id: "offsetFace", label: "Offset Face", icon: "offsetFace", shortcut: "E", active: !editFree.length, disabled: !one || !offsettable(info?.type), why: "Needs one flat or round face", run: () => src && app.setTool(new ExtrudeOp(app, src)) },
       // A line on this face, parallel to an edge (tapped next): Offset Edge started from the face.
       { id: "offsetFromEdge", label: "Offset from Edge", icon: "offsetEdge", ...needFlat, run: () => app.setTool(new OffsetEdgeOp(app, undefined, { body: s.body, face: s.face })) },

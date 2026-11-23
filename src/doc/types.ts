@@ -786,6 +786,10 @@ export interface ProjectDoc {
   drawing?: DrawingOptions;
   /** BIM: the project's drawings, each its own sheet. */
   drawings?: DrawingOptions[];
+  /** Assemblies: how the bodies are held together (see assembly/joints.ts). */
+  joints?: import("../assembly/joints").Joint[];
+  /** Assemblies: the body that stands still (missing: the first of each group of joined bodies). */
+  ground?: string;
 }
 
 /** The drawing sheet: paper size, projection method, scale (missing: the largest that fits), what it shows. */

@@ -42,6 +42,7 @@ import { FeatureOp, sketchesUsed } from "./tools/featureOp";
 import { Vector3 } from "three";
 import { SketchTool, sketchSides, sketchVariant } from "./tools/sketch";
 import { Tutorial, type TutorialHost } from "./ui/tutorial";
+import { AssemblyTool } from "./assembly/assemblyTool";
 import { definedCurves } from "./sketch/constraints";
 import { keepSizes } from "./doc/unitChange";
 import { bodiesOf, edgeRefOf, edgesOfFace, faceRefOf, sameSel, sourceFrame, sourcesOf, type AppContext, type Sel, type Tool } from "./tools/tool";
@@ -1388,7 +1389,7 @@ export class App implements AppContext {
               { id: "bimMaterials", label: "Materials", icon: "bim", sub: "a real material for each body", run: () => this.setTool(new BimTool(this)) },
               { id: "bimSheet", label: "Technical Sheet", icon: "sheet", sub: "parts list, masses, data", run: () => void openSheet(this) },
               { id: "bimDrawings", label: "Drawings", icon: "drawing", sub: "views with dimensions", run: () => void openDrawing(this) },
-              { id: "bimAssemblies", label: "Assemblies", icon: "assembly", sub: "parts placed and joined", soon: true },
+              { id: "bimAssemblies", label: "Assemblies", icon: "assembly", sub: "joints: how the parts move", run: () => this.setTool(new AssemblyTool(this)) },
             ],
           },
         ],

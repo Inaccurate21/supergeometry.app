@@ -17,6 +17,7 @@ import { allMaterials, assignMaterial, fmtMass, fmtVolume, massOf, MATERIAL_CLAS
 export { fmtArea, fmtMass, fmtVolume } from "./materials";
 import { openSheet } from "./sheet";
 import { openDrawing } from "./drawing";
+import { AssemblyTool } from "../assembly/assemblyTool";
 
 /** Each body's properties, measured on the solids (kept until the project changes). */
 export async function measureBodies(app: AppContext): Promise<Map<string, BodyProps>> {
@@ -49,13 +50,12 @@ export class BimTool implements Tool {
   }
 
   enter(): void {
-    const soon = "Coming next";
     this.app.ui.setTools([
       { id: "exit", label: "Exit BIM", icon: "exit", shortcut: "Esc", run: () => this.app.setTool(null) },
       { id: "bimMaterials", label: "Materials", icon: "bim", active: true, sub: "a material for each body" },
       { id: "bimSheet", label: "Technical Sheet", icon: "sheet", sub: "parts, masses, data", run: () => openSheet(this.app) },
       { id: "bimDrawings", label: "Drawings", icon: "drawing", sub: "views, dimensions, balloons", run: () => openDrawing(this.app) },
-      { id: "bimAssemblies", label: "Assemblies", icon: "assembly", disabled: true, why: soon },
+      { id: "bimAssemblies", label: "Assemblies", icon: "assembly", sub: "joints: how the parts move", run: () => this.app.setTool(new AssemblyTool(this.app)) },
     ]);
     this.app.ui.setBottom(this.app.bottomTools());
     this.app.ui.setHint("Tap a body, then its material. The material's data gives the body its mass.");
