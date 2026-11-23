@@ -951,7 +951,8 @@ async function run(features: Feature[], saved = false) {
           }
           // Linked bodies: the others of a changed one's group follow it. (Any change among the links is a change
           // for this step: it is built again then.)
-          if (f.type !== "transform") {
+          // (A pattern of a hole changes its body's shape, as a cut does: the body's linked ones follow.)
+          if (f.type !== "transform" || f.hole) {
             reads.all.add("links");
             followLinks(f.id, ctx, out);
           }
@@ -1831,12 +1832,12 @@ async function apply(f: Feature, ctx: Ctx): Promise<void> {
         const ts: number[] = [];
         for (const e of face.edges) for (const k of [0, 0.25, 0.5, 0.75, 1]) ts.push(dot(sub(e.pointAt(k).toTuple() as Vec3, cy.c), a));
         const used: { phase?: number } = {};
-        const made = threadFace(body, face, f.pitch, !!f.left, undefined, used);
-        threadsCut.set(f.id, { body: f.face.body, c: cy.c, a, r: cy.r, inside: cy.s < 0, pitch: f.pitch, left: !!f.left, t0: Math.min(...ts), t1: Math.max(...ts), phase: used.phase });
+        const made = threadFace(body, face, f.pitch, !!f.left, undefined, used, threadStarts(f.starts));
+        threadsCut.set(f.id, { body: f.face.body, c: cy.c, a, r: cy.r, inside: cy.s < 0, pitch: f.pitch, left: !!f.left, t0: Math.min(...ts), t1: Math.max(...ts), phase: used.phase, starts: threadStarts(f.starts) });
         bodies.set(f.face.body, made);
         return;
       }
-      bodies.set(f.face.body, threadFace(body, face, f.pitch, !!f.left));
+      bodies.set(f.face.body, threadFace(body, face, f.pitch, !!f.left, undefined, undefined, threadStarts(f.starts)));
       return;
     }
 
@@ -2825,7 +2826,10 @@ function threadTarget(body: Shape3D, f: Extract<Feature, { type: "thread" }>): F
  * a ridge) is the reliable way: a ridge only just overlapping its core can
  * come out of OpenCascade wrong without a word.
  */
-export function threadFace(body: Shape3D, face: Face, pitch: number, left = false, like?: { t0: number; t1: number; anchor?: number; phase?: number; shallow?: number; c?: Vec3; a?: Vec3 }, used?: { phase?: number }): Shape3D {
+/** A thread's starts as a whole number from 1 to 8 (missing, or nonsense: 1). */
+const threadStarts = (n: number | undefined): number => (Number.isFinite(n) ? Math.max(1, Math.min(8, Math.round(n!))) : 1);
+
+export function threadFace(body: Shape3D, face: Face, pitch: number, left = false, like?: { t0: number; t1: number; anchor?: number; phase?: number; shallow?: number; c?: Vec3; a?: Vec3 }, used?: { phase?: number }, starts = 1): Shape3D {
   if (face.geomType !== "CYLINDRE") throw new Error("Threads go on round faces (a shank or a hole)");
   if (!(pitch > 0)) throw new Error("The pitch must be more than 0");
   // (Finer than any standard thread: it failed with "try a slightly different pitch".)
@@ -2881,7 +2885,7 @@ export function threadFace(body: Shape3D, face: Face, pitch: number, left = fals
       return false;
     }
   };
-  const res = threadCut(body, face, cy, a, pitch, left, inside, depth, tip, mouth, hm, t0, t1, like?.phase, used, like?.anchor);
+  const res = threadCut(body, face, cy, a, pitch, left, inside, depth, tip, mouth, hm, t0, t1, like?.phase, used, like?.anchor, starts);
   if (res) {
     let r = res;
     for (const [t, way] of [[t0, -1], [t1, 1]] as const) if (freeAt(t, way)) r = threadEndChamfer(r, cy.c, a, side, cy.r, tip, out, t, way, pitch) ?? r;
@@ -2937,7 +2941,10 @@ function threadCut(
   only?: number,
   used?: { phase?: number },
   anchor?: number,
+  starts = 1,
 ): Shape3D | null {
+  // Several starts: that many grooves side by side, each going `lead` along in one turn, a pitch from the next.
+  const lead = pitch * starts;
   const lo = t0 + 0.05 * pitch;
   const hi = t1 - 0.05 * pitch;
   // Only along the face (a shank's thread mustn't run into the head).
@@ -2948,7 +2955,9 @@ function threadCut(
   // wide at the face) along the helix through its centroid.
   const section = depth * depth * Math.tan(Math.PI / 6);
   const rc = inside ? cy.r + depth / 3 : cy.r - depth / 3;
-  const expect = section * Math.hypot(2 * Math.PI * rc, pitch) * ((hi - lo) / pitch);
+  // (As many grooves pass any one place along the face as it is pitches long, whatever the starts: each groove is
+  // longer in a turn, and there are fewer turns of it.)
+  const expect = section * Math.hypot(2 * Math.PI * rc, lead) * ((hi - lo) / lead) * starts;
   // A face that isn't a whole ring (a shank with flats cut along it, a slot
   // across a hole) loses less: what the groove overlaps, if that's no more.
   // (A whole ring must lose all of it: a groove that came out broken - a
@@ -2972,8 +2981,8 @@ function threadCut(
   // is tried.
   for (const phase of only !== undefined ? [only] : [0, 0.37, 0.71]) {
     // (`anchor`: where another thread's stretch began - the turns start from there, whatever stretch this one has.)
-    const start = (anchor !== undefined ? anchor + 0.05 * pitch : lo) - pitch * (1 + phase);
-    const turns = Math.ceil((hi - start) / pitch) + 1;
+    const start = (anchor !== undefined ? anchor + 0.05 * pitch : lo) - lead * (1 + phase);
+    const turns = Math.ceil((hi - start) / lead) + 1;
     // An exact helix (a line wound on a cylinder, not a fitted spline: those
     // drift over many turns and the sweep fails), through the groove's middle.
     // Long threads go in pieces of a few whole turns: one 40-turn groove in an
@@ -2982,11 +2991,14 @@ function threadCut(
     const per = Math.ceil(turns / Math.ceil(turns / MAX_THREAD_TURNS));
     let cut: Shape3D;
     try {
+     const grooves: Shape3D[] = [];
+     for (let s = 0; s < starts; s++) {
       const pieces: Shape3D[] = [];
       for (let k = 0; k * per < turns; k++) {
         const n = Math.min(per, turns - k * per);
-        const base = add(cy.c, scale(a, start + k * per * pitch));
-        const helix = makeHelix(pitch, pitch * n, (tip + mouth) / 2, base, a, left);
+        // (The next start's groove: the same, one pitch along.)
+        const base = add(cy.c, scale(a, start + s * pitch + k * per * lead));
+        const helix = makeHelix(lead, lead * n, (tip + mouth) / 2, base, a, left);
         const r0 = sub(helix.startPoint.toTuple() as Vec3, base);
         const ur = norm(sub(r0, scale(a, dot(r0, a))));
         const at = (rr: number, t: number): Vec3 => add(add(base, scale(a, t)), scale(ur, rr));
@@ -3006,7 +3018,9 @@ function threadCut(
           // the pieces, then
         }
       }
-      cut = one ?? (makeCompound(pieces) as unknown as Shape3D);
+      grooves.push(one ?? (makeCompound(pieces) as unknown as Shape3D));
+     }
+     cut = grooves.length === 1 ? grooves[0] : (makeCompound(grooves) as unknown as Shape3D);
     } catch {
       continue;
     }
@@ -3335,7 +3349,7 @@ function grownBy(s: Shape3D, by: number): Shape3D[] | null {
 }
 
 /** The threads cut in this project, by their step: on which body, the round face's axis, size and reach, the pitch. */
-const threadsCut = new Map<string, { body: string; c: Vec3; a: Vec3; r: number; inside: boolean; pitch: number; left: boolean; t0: number; t1: number; phase?: number }>();
+const threadsCut = new Map<string, { body: string; c: Vec3; a: Vec3; r: number; inside: boolean; pitch: number; left: boolean; t0: number; t1: number; phase?: number; starts?: number }>();
 /** The steps of the project being built (a thread's record is only good while its step is there). */
 let stepsNow = new Set<string>();
 
@@ -3390,7 +3404,7 @@ function grownThreaded(s: Shape3D, by: number, bodyId: string): Shape3D[] | null
       for (const e of face.edges) for (const k of [0, 0.25, 0.5, 0.75, 1]) along.push(dot(sub(e.pointAt(k).toTuple() as Vec3, t.c), t.a));
       const g0 = Math.min(...along);
       const g1 = Math.max(...along);
-      out = threadFace(out, face, t.pitch, t.left, { t0: Math.max(t.t0, g0), t1: Math.min(t.t1, g1), anchor: t.t0, phase: t.phase, shallow: by, c: t.c, a: t.a });
+      out = threadFace(out, face, t.pitch, t.left, { t0: Math.max(t.t0, g0), t1: Math.min(t.t1, g1), anchor: t.t0, phase: t.phase, shallow: by, c: t.c, a: t.a }, undefined, t.starts ?? 1);
     }
     return Math.abs(quickVolume(out)) > 0 ? [out] : null;
   } catch (err) {
@@ -4197,8 +4211,64 @@ function fuseAll(parts: Shape3D[]): Shape3D {
   return level[0];
 }
 
+/**
+ * A pattern of a hole: the hole's round wall as a plug - as long as the wall, a hair longer at an end that is open
+ * - cut out of the body again at each place of the pattern. (A pattern started from a hole's wall copied the whole
+ * body: there was no way to repeat a hole.)
+ */
+function holePattern(f: Extract<Feature, { type: "transform" }>, ctx: Ctx): void {
+  const op = f.op;
+  if (op.kind !== "linear" && op.kind !== "circular") throw new Error("A hole is repeated with a pattern");
+  const id = f.bodies[0];
+  const body = need(ctx.bodies, id);
+  const face = resolveFace(body, f.hole!);
+  const cy = cylinderOf(face);
+  if (!cy || cy.s >= 0) throw new Error("Pick the round wall of a hole to repeat the hole");
+  patternCount(op.count);
+  const a = norm(cy.a);
+  const ts: number[] = [];
+  for (const e of face.edges) for (const k of [0, 0.25, 0.5, 0.75, 1]) ts.push(dot(sub(e.pointAt(k).toTuple() as Vec3, cy.c), a));
+  let [t0, t1] = [Math.min(...ts), Math.max(...ts)];
+  if (!(t1 - t0 > 1e-9)) throw new Error("That hole has no depth to repeat");
+  // An end with nothing past it (the hole's mouth, the far side of a hole right through): a hair past it, so the
+  // cut comes out clean. An end with the body past it (a hole's bottom): exactly there, the same depth.
+  const hair = Math.max(1e-3, cy.r * 0.02);
+  const probe = Math.max(1e-4, Math.min(cy.r, t1 - t0) * 0.01);
+  const [past0, past1] = insideOf(body, [add(cy.c, scale(a, t0 - probe)), add(cy.c, scale(a, t1 + probe))]);
+  if (!past0) t0 -= hair;
+  if (!past1) t1 += hair;
+  const plug = makeCylinder(cy.r, t1 - t0, add(cy.c, scale(a, t0)), a) as Shape3D;
+  let step: (k: number) => Affine;
+  if (op.kind === "linear") {
+    if (Math.abs(op.spacing) < 1e-9 || len(op.dir) < 1e-12) throw new Error("The spacing is zero: the holes would all be in one place");
+    step = (k) => affineFrom((p) => add(p, scale(norm(op.dir), op.spacing * k)));
+  } else {
+    if (Math.abs(op.angle) < 1e-9) throw new Error("The angle is zero: the holes would all be in one place");
+    const ax = resolveAxis(op.axis, ctx);
+    const full = Math.abs(Math.abs(op.angle) - 360) < 1e-6;
+    const turn = op.angle / (full ? op.count : Math.max(1, op.count - 1));
+    step = (k) => affineFrom((p) => rotateAbout(p, ax.origin, ax.dir, turn * k));
+  }
+  let out = body;
+  let missed = 0;
+  for (let k = 1; k < op.count; k++) {
+    const next = out.cut(shapeThrough(plug, step(k))) as Shape3D;
+    if (isEmpty(next)) throw new Error("That pattern would cut the whole body away");
+    // (A place off the body: nothing to cut there - said, and the others made.)
+    if (Math.abs(quickVolume(next) - quickVolume(out)) <= Math.abs(quickVolume(out)) * 1e-9) missed++;
+    out = next;
+  }
+  if (missed === op.count - 1) throw new Error("None of those holes is on the body - check the direction and the spacing");
+  if (missed) editNotes.push(`${missed} of the ${op.count - 1} new holes ${missed === 1 ? "is" : "are"} off the body: nothing was cut there.`);
+  const kept = guardEdit(body, out, true);
+  if (!kept) throw new Error("That pattern would cut the whole body away");
+  ctx.bodies.set(id, kept);
+  ctx.freeforms.delete(id);
+}
+
 function transform(f: Extract<Feature, { type: "transform" }>, ctx: Ctx): void {
   const op = f.op;
+  if (f.hole) return holePattern(f, ctx);
   const copies: [string, Shape3D][] = [];
   for (const id of f.bodies) {
     const body = need(ctx.bodies, id);

@@ -399,6 +399,11 @@ export interface TransformFeature extends FeatureBase {
    * freeform copies become freeforms of their own.
    */
   link?: boolean;
+  /**
+   * A pattern of a hole (its round wall picked): the hole is cut again at each place of the pattern, in the body it
+   * is in - the body itself is not copied. `bodies` is that one body.
+   */
+  hole?: FaceRef;
   op:
     | { kind: "move"; translate: Vec3; rotate?: { origin: Vec3; axis: Vec3; angle: number } }
     /** `ref`: scaled by reference - the two points picked (center is the first), the distance typed between them. */
@@ -569,6 +574,11 @@ export interface ThreadFeature extends FeatureBase {
   pitch: number;
   /** Left-handed (turns the other way). */
   left?: boolean;
+  /**
+   * How many threads run side by side (missing: 1). `pitch` stays the distance from one crest to the next; one turn
+   * then moves a nut `starts` pitches along - a jar's lid, on in a quarter turn.
+   */
+  starts?: number;
   /** The face as it was picked (for the panel when editing: the face itself is threaded by then). */
   round?: { r: number; hole: boolean };
 }

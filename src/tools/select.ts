@@ -813,6 +813,8 @@ export class SelectTool implements Tool {
     const freeFaces = { disabled: !allFlat, why: one ? "Needs a flat face" : "Needs flat faces of one body" };
     const ref = faceRefOf(app, s);
     const bodies = bodiesOf(sel);
+    // (One round wall of a hole picked: a pattern started here repeats the hole.)
+    const holeRef = one && info?.round?.hole && ref ? ref : undefined;
     // A round face: its axis (from its mesh).
     const axis = info?.round && one ? roundAxis(app, s.body, s.face) : null;
     // A face a Freeform Face step made: that step opens again to reshape it.
@@ -855,8 +857,10 @@ export class SelectTool implements Tool {
       { id: "revolve", label: "Revolve", icon: "revolve", ...needFlat, run: () => src && app.setTool(new RevolveOp(app, src)) },
       { id: "sweep", label: "Sweep", icon: "sweep", ...needFlat, run: () => src && app.setTool(new SweepOp(app, src)) },
       // The face's body moved, copied round or mirrored, without picking the body first.
-      { id: "patl", label: "Pattern – Linear", icon: "patternLinear", run: () => app.setTool(new TransformOp(app, "linear", bodies)) },
-      { id: "patc", label: "Pattern – Circular", icon: "patternCircular", run: () => app.setTool(new TransformOp(app, "circular", bodies)) },
+      // (A hole's round wall: the pattern repeats the hole in its body - it copied the whole body, and there was no
+      // way to repeat a hole.)
+      { id: "patl", label: "Pattern – Linear", icon: "patternLinear", ...(holeRef ? { sub: "repeats this hole" } : {}), run: () => app.setTool(new TransformOp(app, "linear", holeRef ? [s.body] : bodies, undefined, undefined, false, holeRef, holeRef ? info?.round?.r : undefined)) },
+      { id: "patc", label: "Pattern – Circular", icon: "patternCircular", ...(holeRef ? { sub: "repeats this hole" } : {}), run: () => app.setTool(new TransformOp(app, "circular", holeRef ? [s.body] : bodies, undefined, undefined, false, holeRef)) },
       { id: "translate", label: "Translate", icon: "translate", shortcut: "N", run: () => app.setTool(new TransformOp(app, "translate", bodies)) },
       { id: "rotate", label: "Rotate Around Axis", icon: "rotateAxis", run: () => app.setTool(new TransformOp(app, "rotate", bodies)) },
       { id: "mirror", label: "Mirror", icon: "mirror", run: () => app.setTool(new TransformOp(app, "mirror", bodies)) },

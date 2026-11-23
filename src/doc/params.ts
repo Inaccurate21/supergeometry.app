@@ -15,7 +15,7 @@ export function kindOfPath(path: string): "length" | "angle" | "number" {
   // A turn's pivot point is a length (only its angle is an angle): a pivot
   // driven by a variable ("p1") was refused as "can't be evaluated".
   if (/angle|rot/i.test(last) && !/origin|translate|center/i.test(last)) return "angle";
-  if (/count|factor|sides|opacity|taper/i.test(last)) return "number";
+  if (/count|factor|sides|opacity|taper|starts/i.test(last)) return "number";
   return "length";
 }
 

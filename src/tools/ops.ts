@@ -1657,6 +1657,10 @@ export class TransformOp extends FeatureOp<TransformFeature> {
     pivot?: Vec3,
     /** Move makes a copy (the gimbal's Copy switch). */
     copy = false,
+    /** A pattern started from a hole's round wall: the hole is repeated in its body, not the body. */
+    hole?: FaceRef,
+    /** That hole's radius: the first spacing is three of them (the body's own length would put the next hole off it). */
+    holeR?: number,
   ) {
     const center = pivot ?? bodyCenter(app, bodies);
     const op: TransformFeature["op"] =
@@ -1665,12 +1669,12 @@ export class TransformOp extends FeatureOp<TransformFeature> {
         : kind === "mirror"
           ? { kind: "mirror", plane: { origin: [0, 0, 0], xDir: [0, 1, 0], normal: [1, 0, 0] } }
           : kind === "linear"
-            ? { kind: "linear", dir: [1, 0, 0], spacing: patternSpacing(bodyExtent(app, bodies, [1, 0, 0]), 20), count: 3 }
+            ? { kind: "linear", dir: [1, 0, 0], spacing: hole && holeR ? Math.max(1, Math.round(holeR * 3 * 100) / 100) : patternSpacing(bodyExtent(app, bodies, [1, 0, 0]), 20), count: 3 }
             : kind === "circular"
               ? { kind: "circular", axis: { origin: [0, 0, 0], dir: [0, 0, 1] }, count: 6, angle: 360 }
               : { kind: "move", translate: [0, 0, 0], rotate: { origin: center, axis: [0, 0, 1], angle: 0 } };
     const label = kind === "linear" || kind === "circular" ? "Pattern" : TITLES[kind].split(" ")[0].replace("/Rotate", "");
-    super(app, { ...app.store.newIdentity("transform", copy ? "Copy" : label), type: "transform", bodies, copy: kind === "mirror" || copy, op }, existing);
+    super(app, { ...app.store.newIdentity("transform", copy ? "Copy" : hole ? "Hole Pattern" : label), type: "transform", bodies, copy: kind === "mirror" || copy, op, ...(hole && (kind === "linear" || kind === "circular") ? { hole } : {}) }, existing);
     const o = this.feature.op;
     if (existing) {
       if (o.kind === "mirror") this.plane = o.plane;
@@ -3366,6 +3370,9 @@ export class ThreadOp extends FeatureOp<ThreadFeature> {
   protected items(): PanelItem[] {
     return [
       this.num("Pitch", "pitch", "length", { min: 0.05, onInput: (v) => this.setPitch(v) }),
+      // How many threads side by side: 1 is a bolt's; 2 to 4, a jar lid's - on in half a turn or a quarter, the
+      // crests still a pitch apart.
+      { type: "number", label: "Starts", value: this.feature.starts ?? 1, kind: "int", min: 1, onInput: (v) => ((this.feature.starts = v > 1 ? Math.min(8, Math.round(v)) : undefined), this.render(), this.update()) },
       { type: "toggle", label: "Left-hand", value: !!this.feature.left, onChange: (v) => ((this.feature.left = v || undefined), this.remember(), this.render(), this.update()) },
     ];
   }
