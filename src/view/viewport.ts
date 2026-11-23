@@ -136,7 +136,9 @@ const COLORS = {
   select: 0x2f7bff,
   sketch: 0xe8e8e8,
   sketchActive: 0xffc23d,
-  construction: 0x9aa3b5,
+  // (A sketch's construction lines: an orange that stands out on a body's grey, a plane's blue and the dark floor
+  // alike. They were a thin grey - the body's own colour, all but - and could hardly be seen drawn on a face.)
+  construction: 0xf26b00,
   linked: 0xc79bff,
   profile: 0x4d8dff,
   plane: 0x8fb4ff,
@@ -840,10 +842,12 @@ export class Viewport {
         this.sketchGroup.add(l);
       }
       if (dashed.length) {
-        const mat = this.lineMaterial(COLORS.construction, 1.4, !onTop);
+        // As wide as the sketch's other lines (asked for: "should be more visible, like the normal line"): told
+        // from them by its dashes and its colour, not by being faint.
+        const mat = this.lineMaterial(COLORS.construction, active ? 2.2 : 1.6, !onTop);
         mat.dashed = true;
-        mat.dashSize = wpp * 6;
-        mat.gapSize = wpp * 4;
+        mat.dashSize = wpp * 9;
+        mat.gapSize = wpp * 5;
         this.sketchMats.push(mat);
         const l = new LineSegments2(new LineSegmentsGeometry().setPositions(dashed), mat);
         l.computeLineDistances();
