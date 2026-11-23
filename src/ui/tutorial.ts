@@ -129,18 +129,32 @@ export class Tutorial {
     ends.append(fresh, exit);
     foot.append(this.count, ends);
     this.card.append(this.text, foot);
-    // The dimmed screen takes every tap that is not on the lit spot (which it has a hole over), and does nothing.
-    for (const type of ["pointerdown", "pointerup", "pointermove", "click", "dblclick", "contextmenu", "wheel", "touchstart", "touchmove"]) {
-      this.shade.addEventListener(
-        type,
-        (e) => {
-          e.stopPropagation();
-          if (type !== "pointermove" && e.cancelable) e.preventDefault();
-        },
-        { passive: false },
-      );
-    }
+    // (A browser that can't cut the openings in the dimmed screen - an older one: the screen is dimmed less, so what
+    // is lit, under it, is still plain to see.)
+    if (!CSS.supports?.("clip-path", 'path(evenodd, "M0 0 H1 V1 H0 Z")')) this.shade.classList.add("tut-plain");
   }
+
+  /** What is lit now, on the screen: a tap there goes through, one anywhere else does nothing. */
+  private open: Box[] = [];
+  private static readonly GATED = ["pointerdown", "pointerup", "pointermove", "pointercancel", "mousedown", "mouseup", "click", "dblclick", "contextmenu", "wheel", "touchstart", "touchmove", "touchend"] as const;
+  /**
+   * Every tap, before the app has it: on a lit spot or on the card it goes on, anywhere else it stops here. Told by
+   * where the tap is, not by what is under it - the dimmed screen is only looked at. (It took the taps itself, an
+   * opening cut in it over each lit spot: a browser that doesn't cut such openings had a screen with nothing to tap
+   * - reported: "nu poate da tap pe DRAW la step 1. Pur si simplu nu functioneaza".)
+   */
+  private gate = (e: Event): void => {
+    const t = e.target;
+    if (t instanceof Node && this.card.contains(t)) return;
+    const te = e as TouchEvent;
+    const at = (te.touches?.[0] ?? te.changedTouches?.[0] ?? e) as { clientX?: number; clientY?: number };
+    const x = at.clientX;
+    const y = at.clientY;
+    const lit = e.type !== "wheel" && x !== undefined && y !== undefined && this.open.some((b) => x >= b.left && x <= b.right && y >= b.top && y <= b.bottom);
+    if (lit) return;
+    e.stopImmediatePropagation();
+    if (e.type !== "pointermove" && e.cancelable) e.preventDefault();
+  };
 
   get running(): boolean {
     return this.on;
@@ -164,6 +178,7 @@ export class Tutorial {
     document.body.append(this.shade, this.ring, this.card);
     document.body.classList.add("tut-on");
     window.addEventListener("keydown", this.onKey, true);
+    for (const type of Tutorial.GATED) window.addEventListener(type, this.gate, { capture: true, passive: false });
     const loop = () => {
       if (!this.on) return;
       this.frame();
@@ -185,6 +200,8 @@ export class Tutorial {
     cancelAnimationFrame(this.raf);
     clearInterval(this.tick);
     window.removeEventListener("keydown", this.onKey, true);
+    for (const type of Tutorial.GATED) window.removeEventListener(type, this.gate, { capture: true });
+    this.open = [];
     this.shade.remove();
     this.ring.remove();
     this.card.remove();
@@ -444,6 +461,7 @@ export class Tutorial {
         this.shade.remove();
         this.ring.remove();
         window.removeEventListener("keydown", this.onKey, true);
+        for (const type of Tutorial.GATED) window.removeEventListener(type, this.gate, { capture: true });
         this.show("An M10 bolt and its nut, in their real sizes and ready to print: the nut's thread is 0.2 mm bigger all round, so it turns. Drag to look at them, pinch or use the wheel to zoom. You can export them now, from File.", "Done", [], "Finish");
       }
       return;
@@ -487,6 +505,8 @@ export class Tutorial {
       }
       if (m) boxes.push(m);
     }
+    // (A little over each: a finger on the rim of a lit spot is on it.)
+    this.open = finish ? [{ left: 0, top: 0, right: W, bottom: H }] : boxes.map((b) => ({ left: b.left - 3, top: b.top - 3, right: b.right + 3, bottom: b.bottom + 3 }));
     const sig = `${text}|${count}|${finish}|${W}x${H}|${boxes.map((b) => [b.left, b.top, b.right, b.bottom].map(Math.round).join()).join(";")}`;
     if (sig === this.drawn) return;
     this.drawn = sig;
