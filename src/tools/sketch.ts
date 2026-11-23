@@ -2,7 +2,7 @@ import { QuickActions } from "./quickActions";
 import { isTouchDevice } from "../device";
 import { simplifyStroke } from "../sketch/freehand";
 import { Box3, BufferGeometry, Line, LineBasicMaterial, LineDashedMaterial, Points, PointsMaterial, Vector3 } from "three";
-import type { EdgeLink, FaceRef, OutlineOffset, PlaneDef, PointRef, SketchConstraint, SketchEntity, SketchFeature, SketchFill, SketchRepeat, Vec2, Vec3 } from "../doc/types";
+import type { EdgeLink, FaceRef, OutlineOffset, PlaneDef, PointRef, SketchConstraint, SketchEntity, SketchFeature, SketchFill, SketchRef, SketchRepeat, Vec2, Vec3 } from "../doc/types";
 import { add as add3, dot, GROUND, niceStep as niceStepOf, originOnPlane, patternSpacing, planeY, roundSig, scale as scale3, sub as sub3, toPlane } from "../geom";
 import { addForUser, addStrict, constraintError, constraintName, LINKED, pointOf, pointsOf, refsOf, setValueStrict, sizeOf as sizeOfFn, solve, touchingEnds } from "../sketch/constraints";
 import { isExpression } from "../ui/ui";
@@ -4242,7 +4242,11 @@ export class SketchTool implements Tool {
       log.push({ op, n: 1, ids: keep(touched) });
       this.lastMade = made;
     }
-    const patch = { entities, constraints: cs.length ? cs : undefined, log, links: links.length ? links : undefined, fills: fills?.length ? fills : undefined, repeats: repeats?.length ? repeats : undefined };
+    // Curves that follow another sketch's: kept while they are as they were put (one reshaped here is its own curve).
+    const wasNow = new Map(this.entities.map((e) => [e.id, e]));
+    const refs = [...(this.sketch?.refs ?? []).filter((r) => wasNow.get(r.id) === entities.find((e) => e.id === r.id) || JSON.stringify(wasNow.get(r.id)) === JSON.stringify(entities.find((e) => e.id === r.id))), ...this.newRefs].filter((r) => entities.some((e) => e.id === r.id));
+    this.newRefs = [];
+    const patch = { entities, constraints: cs.length ? cs : undefined, log, links: links.length ? links : undefined, fills: fills?.length ? fills : undefined, repeats: repeats?.length ? repeats : undefined, refs: refs.length ? refs : undefined };
     if (this.sketchId && this.sketch) {
       store.update(this.sketchId, patch);
     } else {
@@ -4936,6 +4940,18 @@ export class SketchTool implements Tool {
     }
     // A pattern's copies stay linked to their originals: change one, and the copies follow.
     const links = this.patternLinks(results);
+    // So do mirrored copies: each stays its original's mirror image across the line it was flipped over.
+    if (this.kind === "mirror" && keepOriginals && ml) {
+      const sel = this.entities.filter((e) => this.selected.has(e.id));
+      const all = this.transformed(false);
+      const sig = (e: SketchEntity) => JSON.stringify({ ...e, id: undefined });
+      const kept = new Map(results.map((e) => [sig(e), e.id]));
+      all.forEach((e, i) => {
+        const id = kept.get(sig(e));
+        const src = sel[i];
+        if (id && src && e.kind === src.kind && e.kind !== "spline" && e.kind !== "polyline") links.push({ id: uid(), type: "follow", curves: [src.id, id], how: { mirror: [[ml[0][0], ml[0][1]], [ml[1][0], ml[1][1]]] } });
+      });
+    }
     const base = keepOriginals ? this.entities : this.entities.filter((e) => !this.selected.has(e.id));
     // Moved (not copied): ties between what moves and what stays let go, and
     // so do pins holding the moved curves in place - an arch's circle snapped
@@ -5280,6 +5296,48 @@ export class SketchTool implements Tool {
 
     // Chain pieces stay joined to each other.
     const cs: SketchConstraint[] = [];
+    // An offset follows what it was made from: the original given another size or place (a dimension typed, a
+    // variable, a step changed in History), the offset is its offset still. (Asked for: "that second sketch should
+    // change according to the changes made to the first ... somehow linked".) One curve: wholly its offset. An
+    // outline's pieces: each on its original's offset, trimmed to its neighbours as they were made.
+    {
+      const d = memory.offset;
+      const srcId = this.edit.offsetOf;
+      const src = this.entities.find((e) => e.id === srcId);
+      const linkable = (e: SketchEntity) => e.kind === "line" || e.kind === "arc" || e.kind === "circle" || e.kind === "rect" || e.kind === "polygon" || e.kind === "ellipse";
+      if (made.length === 1 && src && linkable(src) && made[0].kind === src.kind && JSON.stringify({ ...offsetEntity(src, d), id: "" }) === JSON.stringify({ ...made[0], id: "", construction: src.construction })) {
+        cs.push({ id: uid(), type: "follow", curves: [src.id, made[0].id], how: { offset: d } });
+      } else {
+        const tol = 1e-6 * Math.max(1, Math.abs(d));
+        const mid = (e: SketchEntity): Vec2 | null => (e.kind === "line" ? [(e.a[0] + e.b[0]) / 2, (e.a[1] + e.b[1]) / 2] : e.kind === "arc" ? e.m : null);
+        const pool = this.entities.filter((e) => e.kind === "line" || e.kind === "arc");
+        for (const piece of made) {
+          const m = mid(piece);
+          if (!m) continue;
+          let found: { id: string; d: number } | null = null;
+          for (const s of pool) {
+            if (s.kind !== piece.kind) continue;
+            for (const sign of [1, -1]) {
+              const want = offsetEntity(s, sign * Math.abs(d));
+              if (!want) continue;
+              const on =
+                want.kind === "line" && piece.kind === "line"
+                  ? Math.abs(closestOnPrim(entityPrims({ ...want, a: [2 * want.a[0] - want.b[0], 2 * want.a[1] - want.b[1]], b: [2 * want.b[0] - want.a[0], 2 * want.b[1] - want.a[1]] })[0], m).d) < tol && Math.abs((piece.b[0] - piece.a[0]) * (want.b[1] - want.a[1]) - (piece.b[1] - piece.a[1]) * (want.b[0] - want.a[0])) < tol * Math.max(1, Math.hypot(want.b[0] - want.a[0], want.b[1] - want.a[1]) * Math.hypot(piece.b[0] - piece.a[0], piece.b[1] - piece.a[1]))
+                  : want.kind === "arc" && piece.kind === "arc"
+                    ? (() => {
+                        const [w, q] = [arcFrom3(want.a, want.m, want.b), arcFrom3(piece.a, piece.m, piece.b)];
+                        return !!w && !!q && Math.hypot(w.c[0] - q.c[0], w.c[1] - q.c[1]) < tol && Math.abs(w.r - q.r) < tol;
+                      })()
+                    : false;
+              if (on) found = { id: s.id, d: sign * Math.abs(d) };
+              if (found) break;
+            }
+            if (found) break;
+          }
+          if (found) cs.push({ id: uid(), type: "follow", curves: [found.id, piece.id], how: { offset: found.d, loose: true } });
+        }
+      }
+    }
     for (let i = 0; i < made.length; i++) {
       const a = made[i];
       const b = made[(i + 1) % made.length];
@@ -5489,13 +5547,19 @@ export class SketchTool implements Tool {
   private projectedFrom: { sketch: string; entity: string; at: number } | null = null;
 
   /** Curves of another sketch → this sketch's plane (straight across, or squashed if tilted). */
-  private projectCurves(sketch: string, entities: SketchEntity[]): SketchEntity[] {
+  /** Curves projected from another sketch, to be kept as following it (taken with the next commit). */
+  private newRefs: SketchRef[] = [];
+
+  private projectCurves(sketch: string, entities: SketchEntity[], follow = false): SketchEntity[] {
     const from = this.app.sketchPlane(sketch);
     const to = this.plane!;
     if (!from) return [];
     if (Math.abs(dot(from.normal, to.normal)) > 1 - 1e-9) {
-      // Parallel planes: the same shapes, moved (and turned) into this plane.
-      return entities.map((e) => transformEntity(e, (uv) => toPlane(to, sketchToWorld(from, uv).toArray() as Vec3), true));
+      // Parallel planes: the same shapes, moved (and turned) into this plane. They follow the sketch they come
+      // from: that one changed (from History, by a variable), these are put where its curves are now.
+      const made = entities.map((e) => transformEntity(e, (uv) => toPlane(to, sketchToWorld(from, uv).toArray() as Vec3), true));
+      if (follow && sketch !== this.sketchId) made.forEach((e, i) => this.newRefs.push({ id: e.id, sketch, entity: entities[i].id }));
+      return made;
     }
     return entities.flatMap((e) =>
       entityPolylines(e).flatMap((pl) => {
@@ -5558,13 +5622,13 @@ export class SketchTool implements Tool {
       if (last && last.sketch === hit.sketch && Date.now() - last.at < 450) {
         // Double tap: the rest of that sketch too (e.g. a whole text).
         this.projectedFrom = null;
-        this.commitAdd(this.projectCurves(hit.sketch, all.filter((e) => e.id !== last.entity)));
+        this.commitAdd(this.projectCurves(hit.sketch, all.filter((e) => e.id !== last.entity), true));
         return this.app.ui.toast("Projected the whole sketch");
       }
       const one = all.filter((e) => e.id === hit.entity);
       if (!one.length) return;
       this.projectedFrom = { sketch: hit.sketch, entity: hit.entity, at: Date.now() };
-      this.commitAdd(this.projectCurves(hit.sketch, one));
+      this.commitAdd(this.projectCurves(hit.sketch, one, true));
       return this.app.ui.toast("Double-tap a curve to project its whole sketch");
     }
     if (hit?.kind !== "edge") return this.app.ui.toast("Tap a body edge or a curve of another sketch");

@@ -1686,6 +1686,9 @@ export function carryConstraints(before: SketchEntity[], after: SketchEntity[], 
   };
   const out: SketchConstraint[] = [];
   for (const c of cs) {
+    // A copy that follows its original (an offset, a mirror image), one of the two cut or reshaped here: it is its
+    // own curve from now on - held to being the copy, a trimmed offset would be pulled back to its whole length.
+    if (c.type === "follow" && (c.curves ?? []).some((id) => old.get(id) !== now.get(id))) continue;
     let ok = true;
     const pts = c.pts?.map((r) => {
       const was = old.get(r.e);

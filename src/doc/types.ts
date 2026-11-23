@@ -129,7 +129,8 @@ export type ConstraintType =
   | "fix"
   | "distance"
   | "dim"
-  | "pattern";
+  | "pattern"
+  | "follow";
 
 /**
  * Sketch constraint. Geometry refs: `pts` (points) and `curves` (entity ids).
@@ -152,6 +153,12 @@ export interface SketchConstraint {
   turn?: boolean;
   /** dim: put on by Lock (a locked circle keeps its size) - Unlock takes it off with the lock. */
   held?: boolean;
+  /**
+   * follow: how the second curve is made from the first - its offset by so much, or its mirror image across a line.
+   * The copy stays that as the original changes. `loose`: a piece of an offset outline, trimmed to meet its
+   * neighbours - it stays on the original's offset, its ends where its neighbours put them.
+   */
+  how?: { offset?: number; mirror?: [Vec2, Vec2]; loose?: boolean };
 }
 
 export interface SketchFeature extends FeatureBase {
@@ -192,6 +199,20 @@ export interface SketchFeature extends FeatureBase {
    * "rp-<pattern>-<copy>-<curve>" - are made again when the count comes to another number.
    */
   repeats?: SketchRepeat[];
+  /**
+   * Curves projected from another sketch: each is that sketch's curve, seen from this one's plane, and is put there
+   * again whenever that sketch changes (the two planes parallel).
+   */
+  refs?: SketchRef[];
+}
+
+/** A curve of a sketch that is a curve of an earlier sketch, projected (see SketchFeature.refs). */
+export interface SketchRef {
+  /** The curve here. */
+  id: string;
+  /** The sketch it comes from, and its curve there. */
+  sketch: string;
+  entity: string;
 }
 
 /** A sketch pattern that follows its count (a pattern made with a plain number is only its copies). */

@@ -5,6 +5,7 @@
 
 import type { ConstraintType, PointRef, SketchConstraint, SketchEntity, Vec2 } from "../doc/types";
 import { arcFrom3, entityCorners, entityPolylines } from "./curves";
+import { mirrorXf, offsetEntity, transformEntity } from "./edit";
 
 // ------------------------------------------------------------- parameters
 
@@ -293,6 +294,37 @@ function residuals(c: SketchConstraint, get: Lookup): number[] {
       }
       if ((o.kind === "circle" || o.kind === "polygon") && (k.kind === "circle" || k.kind === "polygon")) out.push(k.radius - o.radius);
       if (o.kind === "ellipse" && k.kind === "ellipse") out.push(k.rx - o.rx, k.ry - o.ry);
+      return out;
+    }
+    case "follow": {
+      // A copy made from another curve - its offset, its mirror image: it is that, of the original as it is now.
+      // (An offset or a mirrored copy was a curve of its own from the moment it was made: the original given
+      // another size - a dimension typed, a variable changed - the copy stayed as it had been.)
+      const o = E(0);
+      const k = E(1);
+      const how = c.how;
+      if (!o || !k || !how) return [];
+      const want = how.mirror ? transformEntity(o, mirrorXf(how.mirror[0], how.mirror[1])) : how.offset !== undefined ? offsetEntity(o, how.offset) : null;
+      if (!want) return [];
+      if (how.loose) {
+        // A piece of an offset outline: on the original's offset (its ends are its neighbours' business).
+        if (want.kind === "line" && k.kind === "line") return [distPointLineSigned(k.a, want.a, want.b), distPointLineSigned(k.b, want.a, want.b)];
+        if (want.kind === "arc" && k.kind === "arc") {
+          const w = arcFrom3(want.a, want.m, want.b);
+          return w ? [k.a, k.m, k.b].map((p) => Math.hypot(p[0] - w.c[0], p[1] - w.c[1]) - w.r) : [];
+        }
+        return [];
+      }
+      if (want.kind !== k.kind) return [];
+      const out: number[] = [];
+      for (const q of pointsOf(want)) {
+        const w = pointOf(k, q.p);
+        if (!w) return [];
+        out.push(w[0] - q.at[0], w[1] - q.at[1]);
+      }
+      if (want.kind === "arc" && k.kind === "arc") out.push(k.m[0] - want.m[0], k.m[1] - want.m[1]);
+      if ((want.kind === "circle" || want.kind === "polygon") && (k.kind === "circle" || k.kind === "polygon")) out.push(k.radius - want.radius);
+      if (want.kind === "ellipse" && k.kind === "ellipse") out.push(k.rx - want.rx, k.ry - want.ry, wrap(k.rotation - want.rotation) * Math.max(want.rx, want.ry));
       return out;
     }
     case "distance": {
@@ -1282,6 +1314,7 @@ export function constraintName(c: SketchConstraint): string {
   if (c.type === "dim") return `${c.prop === "angle" ? "angle" : (c.prop ?? "size")} dimension`;
   if (c.type === "fix") return "lock";
   if (c.type === "pattern") return "pattern link";
+  if (c.type === "follow") return c.how?.mirror ? "mirror link" : "offset link";
   return c.type;
 }
 

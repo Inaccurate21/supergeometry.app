@@ -189,7 +189,7 @@ export class ConstraintGlyphs {
     const counts = new Map<string, number>();
     for (const c of constraints) {
       // (A pattern's copies have no badge each: there'd be one on every copy.)
-      if (c.type === "pattern") continue;
+      if (c.type === "pattern" || c.type === "follow") continue;
       // A mark only while everything it ties together is still drawn.
       if (![...(c.pts ?? []).map((p) => p.e), ...(c.curves ?? [])].every((id) => get(id))) continue;
       let at: Vec2 | null = null;

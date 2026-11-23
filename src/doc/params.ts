@@ -1,11 +1,13 @@
 // Parametric document: evaluate expressions (variables) into feature values and
 // re-solve sketch constraints, so the document's numbers are always consistent.
 
+import { transformEntity } from "../sketch/edit";
+import { dot, toPlane, toWorld } from "../geom";
 import { applyRepeats } from "../sketch/repeat";
 import { refill } from "../sketch/fill";
 import { solveFine } from "../sketch/constraints";
 import { evaluate, setUnits, setVariables } from "../units";
-import type { Feature, ProjectDoc } from "./types";
+import type { Feature, ProjectDoc, SketchEntity } from "./types";
 
 /** Kind of value stored at a path (for units: lengths are mm, angles degrees). */
 export function kindOfPath(path: string): "length" | "angle" | "number" {
@@ -46,6 +48,12 @@ export function resolveDoc(doc: ProjectDoc): string[] {
       if (v === null) problems.push(`${f.name}: "${expr}" can't be evaluated`);
       else setPath(f, path, v);
     }
+    // Curves projected from an earlier sketch: put where that sketch's curves are now (it was changed in History,
+    // or by a variable - a step before this one, already worked out above).
+    if (f.type === "sketch" && f.refs?.length) {
+      const next = refreshRefs(f, doc.features as Feature[]);
+      if (next && !sameNumbers(f.entities, next, 1e-9)) f.entities = next;
+    }
     // A sketch's patterns that follow a count: the count worked out, their copies made again if it is another number.
     if (f.type === "sketch" && f.repeats?.length) {
       for (const r of f.repeats) {
@@ -73,7 +81,9 @@ export function resolveDoc(doc: ProjectDoc): string[] {
         if (v === null) problems.push(`${f.name}: "${c.expr}" can't be evaluated`);
         else c.value = v;
       }
-      const r = solveFine(f.entities, f.constraints);
+      // (Curves that are another sketch's stay where that sketch has them: the rest is solved round them.)
+      const held = new Set((f.refs ?? []).map((x) => x.id));
+      const r = solveFine(f.entities, f.constraints, held.size ? { fixed: held } : {});
       // Can't all be met: the sketch stays as it was rather than being bent out of shape.
       // Met already (only rounding noise in the 14th digit): kept exactly as it
       // was - the noise changed the step, and every change anywhere (a colour,
@@ -90,6 +100,25 @@ export function resolveDoc(doc: ProjectDoc): string[] {
     }
   }
   return problems;
+}
+
+/**
+ * A sketch's curves with those it has from an earlier sketch as that sketch has them now, seen from this one's plane
+ * (the two parallel: the same shapes, moved and turned into it). Null: none could be found again.
+ */
+function refreshRefs(f: Extract<Feature, { type: "sketch" }>, all: Feature[]): SketchEntity[] | null {
+  let changed = false;
+  const out = f.entities.map((e) => {
+    const ref = f.refs!.find((r) => r.id === e.id);
+    if (!ref) return e;
+    const from = all.find((x) => x.id === ref.sketch);
+    if (!from || from.type !== "sketch" || from === f) return e;
+    const src = from.entities.find((x) => x.id === ref.entity);
+    if (!src || Math.abs(dot(from.plane.normal, f.plane.normal)) < 1 - 1e-9) return e;
+    changed = true;
+    return { ...transformEntity(src, (uv) => toPlane(f.plane, toWorld(from.plane, uv))), id: e.id, ...(e.construction ? { construction: true } : { construction: undefined }) } as SketchEntity;
+  });
+  return changed ? out : null;
 }
 
 /** The same structure with every number within `tol` of the other's. */
