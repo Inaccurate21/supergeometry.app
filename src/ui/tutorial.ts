@@ -118,7 +118,16 @@ export class Tutorial {
     exit.addEventListener("click", () => this.stop());
     const foot = document.createElement("div");
     foot.className = "tut-foot";
-    foot.append(this.count, exit);
+    // At the end, beside Finish: straight on to a project of their own (this one is saved, in the list of projects).
+    const fresh = document.createElement("button");
+    fresh.className = "tut-new";
+    fresh.textContent = "New project";
+    fresh.hidden = true;
+    fresh.addEventListener("click", () => (this.stop(), void this.host.newProject()));
+    const ends = document.createElement("div");
+    ends.className = "tut-ends";
+    ends.append(fresh, exit);
+    foot.append(this.count, ends);
     this.card.append(this.text, foot);
     // The dimmed screen takes every tap that is not on the lit spot (which it has a hole over), and does nothing.
     for (const type of ["pointerdown", "pointerup", "pointermove", "click", "dblclick", "contextmenu", "wheel", "touchstart", "touchmove"]) {
@@ -435,7 +444,7 @@ export class Tutorial {
         this.shade.remove();
         this.ring.remove();
         window.removeEventListener("keydown", this.onKey, true);
-        this.show("An M10 bolt and its nut, in their real sizes and ready to print: the nut's thread is 0.2 mm bigger all round, so it turns. Drag to look at them, pinch or use the wheel to zoom. File has Export STL and 3MF.", "Done", [], "Finish");
+        this.show("An M10 bolt and its nut, in their real sizes and ready to print: the nut's thread is 0.2 mm bigger all round, so it turns. Drag to look at them, pinch or use the wheel to zoom. You can export them now, from File.", "Done", [], "Finish");
       }
       return;
     }
@@ -483,6 +492,7 @@ export class Tutorial {
     this.drawn = sig;
     this.text.textContent = text;
     this.count.textContent = count;
+    this.card.querySelector<HTMLElement>(".tut-new")!.hidden = !finish;
     const exit = this.card.querySelector<HTMLElement>(".tut-exit")!;
     exit.textContent = finish || "Exit tutorial";
     exit.classList.toggle("primary", !!finish);

@@ -7312,6 +7312,25 @@ body.sentence-ui #undo-dock .dock-btn {
   font-size: 14px;
   padding: 8px 16px;
 }
+/* The end: New project beside Finish. */
+.tut-ends {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.tut-new {
+  font-size: 14px;
+  padding: 8px 14px;
+  border-radius: 7px;
+  color: #fff;
+  background: rgba(255, 255, 255, 0.1);
+}
+.tut-new:hover {
+  background: rgba(255, 255, 255, 0.18);
+}
+.tut-new[hidden] {
+  display: none;
+}
 /* (The app's own guide text is not shown with it: one voice at a time.) */
 body.tut-on #hint {
   visibility: hidden;
