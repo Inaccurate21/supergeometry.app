@@ -2,7 +2,7 @@
 // Assemblies: where bodies are when their joints move. A joint's value is how far it is from where the bodies were
 // modelled; all at 0 is the model as built.
 import type { Vec3 } from "../src/doc/types";
-import { apply, driverOf, effective, propose, solve, tree, type Joint } from "../src/assembly/joints";
+import { apply, driverOf, effective, propose, solve, tree, turnAxis, type Joint } from "../src/assembly/joints";
 
 let failed = 0;
 const check = (name: string, ok: boolean, info: unknown = "") => {
@@ -100,6 +100,43 @@ const J = (id: string, type: Joint["type"], a: string, b: string, origin: Vec3, 
   check("two round faces on different axes: fixed", propose({ origin: [0, 0, 0], dir: z, round: true }, { origin: [30, 0, 0], dir: z, round: true }).type === "fixed");
   check("faces that lean against each other: fixed", propose({ origin: [0, 0, 0], dir: z, round: false }, { origin: [0, 0, 5], dir: [0, 1, 0], round: false }).type === "fixed");
   check("a face that gives no line (a freeform one): fixed", propose(null, null).type === "fixed");
+}
+
+// ---- the line a face is turned round, from its points and normals
+{
+  // A thread's flank: a helicoid round the line through (3, -2, 0) along a slanted direction, its normal leaning 30 degrees.
+  const dir: Vec3 = [0.36, 0.48, 0.8];
+  const ex: Vec3 = [0.8, -0.6, 0];
+  const ey: Vec3 = [dir[1] * ex[2] - dir[2] * ex[1], dir[2] * ex[0] - dir[0] * ex[2], dir[0] * ex[1] - dir[1] * ex[0]];
+  const o: Vec3 = [3, -2, 0];
+  const pts: Vec3[] = [];
+  const nrm: Vec3[] = [];
+  for (let i = 0; i < 60; i++) {
+    const a = i * 0.21;
+    const r = 4 + (i % 5) * 0.2;
+    const h = (1.5 * a) / (2 * Math.PI) + (i % 5) * 0.1;
+    const rad: Vec3 = [ex[0] * Math.cos(a) + ey[0] * Math.sin(a), ex[1] * Math.cos(a) + ey[1] * Math.sin(a), ex[2] * Math.cos(a) + ey[2] * Math.sin(a)];
+    pts.push([o[0] + rad[0] * r + dir[0] * h, o[1] + rad[1] * r + dir[1] * h, o[2] + rad[2] * r + dir[2] * h]);
+    nrm.push([rad[0] * 0.866 + dir[0] * 0.5, rad[1] * 0.866 + dir[1] * 0.5, rad[2] * 0.866 + dir[2] * 0.5]);
+  }
+  const ax = turnAxis(pts, nrm);
+  const along = ax ? Math.abs(ax.dir[0] * dir[0] + ax.dir[1] * dir[1] + ax.dir[2] * dir[2]) : 0;
+  const w: Vec3 = ax ? [ax.origin[0] - o[0], ax.origin[1] - o[1], ax.origin[2] - o[2]] : [9, 9, 9];
+  const t = w[0] * dir[0] + w[1] * dir[1] + w[2] * dir[2];
+  const off = Math.hypot(w[0] - dir[0] * t, w[1] - dir[1] * t, w[2] - dir[2] * t);
+  check("a thread's flank: its line found, direction and place", !!ax && along > 1 - 1e-9 && off < 1e-6, { along, off });
+  // A flat face, a ball, a face bent one way only: no such line.
+  const flat = Array.from({ length: 20 }, (_, i): Vec3 => [i % 5, Math.floor(i / 5), 0]);
+  check("a flat face has none", turnAxis(flat, flat.map((): Vec3 => [0, 0, 1])) === null);
+  const ball = Array.from({ length: 40 }, (_, i): Vec3 => {
+    const u = Math.acos(1 - (2 * (i + 0.5)) / 40);
+    const v = i * 2.399963;
+    return [Math.sin(u) * Math.cos(v), Math.sin(u) * Math.sin(v), Math.cos(u)];
+  });
+  check("a ball has none (it turns round every line through its middle)", turnAxis(ball, ball) === null);
+  const cyl = Array.from({ length: 40 }, (_, i): { p: Vec3; n: Vec3 } => ({ p: [5 * Math.cos(i * 0.4), 5 * Math.sin(i * 0.4), i % 4], n: [Math.cos(i * 0.4), Math.sin(i * 0.4), 0] }));
+  const c = turnAxis(cyl.map((q) => q.p), cyl.map((q) => q.n));
+  check("a cylinder's wall: its own axis", !!c && Math.abs(c.dir[2]) > 1 - 1e-9 && Math.hypot(c.origin[0], c.origin[1]) < 1e-6, c);
 }
 
 console.log(failed ? `${failed} FAILED` : "all passed");

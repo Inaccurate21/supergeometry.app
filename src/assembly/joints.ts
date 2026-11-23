@@ -195,6 +195,8 @@ export interface PickLine {
   origin: Vec3;
   dir: Vec3;
   round: boolean;
+  /** Found from the face's drawn points (a thread's flank), not known exactly: good to a twentieth of a millimetre. */
+  rough?: boolean;
 }
 
 /**
@@ -203,21 +205,108 @@ export interface PickLine {
  * the first's normal; anything else - fixed. Its line is the first pick's.
  */
 export function propose(a: PickLine | null, b: PickLine | null, pitch?: number): { type: JointType; origin: Vec3; axis: Vec3; pitch?: number } {
-  const line = a ?? b;
+  // (The joint's line is the first pick's - or the second's, where only that one is known exactly.)
+  const line = a && b && a.rough && !b.rough ? b : (a ?? b);
   if (!line) return { type: "fixed", origin: [0, 0, 0], axis: [0, 0, 1] };
   const axis = unit(line.dir);
   const base = { origin: line.origin, axis };
   if (!a || !b) return { type: "fixed", ...base };
+  const da = unit(a.dir);
   const d = unit(b.dir);
-  const parallel = Math.abs(axis[0] * d[0] + axis[1] * d[1] + axis[2] * d[2]) > 0.999;
+  const parallel = Math.abs(da[0] * d[0] + da[1] * d[1] + da[2] * d[2]) > (a.rough || b.rough ? 0.995 : 0.999);
   if (!parallel) return { type: "fixed", ...base };
   const w: Vec3 = [b.origin[0] - a.origin[0], b.origin[1] - a.origin[1], b.origin[2] - a.origin[2]];
   const along = w[0] * axis[0] + w[1] * axis[1] + w[2] * axis[2];
   const off = Math.hypot(w[0] - axis[0] * along, w[1] - axis[1] * along, w[2] - axis[2] * along);
   const size = Math.max(1, Math.hypot(...w));
   // (To a hundredth of a millimetre and a thousandth of how far apart they are: faces are found by their drawn points.)
-  if (off < 1e-3 * size + 1e-2) return pitch ? { type: "screw", ...base, pitch } : { type: "hinge", ...base };
+  if (off < 1e-3 * size + (a.rough || b.rough ? 0.15 : 1e-2)) return pitch ? { type: "screw", ...base, pitch } : { type: "hinge", ...base };
   return a.round || b.round ? { type: "fixed", ...base } : { type: "slide", ...base };
+}
+
+/**
+ * The line a face is turned round, from its points and the way it faces at each: a thread's flank, a cone, any
+ * face made by turning a curve round a line (or screwing it along one). Along that line the face's normals all
+ * lean the same - so it is the direction their leaning varies least in - and seen along it they all point at it.
+ * Null where there is no such line (a flat face, a ball, a freeform face).
+ */
+export function turnAxis(points: Vec3[], normals: Vec3[]): { origin: Vec3; dir: Vec3 } | null {
+  const n = Math.min(points.length, normals.length);
+  if (n < 6) return null;
+  const mean: Vec3 = [0, 0, 0];
+  for (let i = 0; i < n; i++) for (let k = 0; k < 3; k++) mean[k] += normals[i][k] / n;
+  // How the normals spread, as a symmetric 3 x 3; its axes by Jacobi turns.
+  const a = [[0, 0, 0], [0, 0, 0], [0, 0, 0]];
+  for (let i = 0; i < n; i++) for (let r = 0; r < 3; r++) for (let c = 0; c < 3; c++) a[r][c] += ((normals[i][r] - mean[r]) * (normals[i][c] - mean[c])) / n;
+  const v = [[1, 0, 0], [0, 1, 0], [0, 0, 1]];
+  for (let sweep = 0; sweep < 24; sweep++) {
+    for (const [p, q] of [[0, 1], [0, 2], [1, 2]] as const) {
+      if (Math.abs(a[p][q]) < 1e-15) continue;
+      const th = (a[q][q] - a[p][p]) / (2 * a[p][q]);
+      const tt = Math.sign(th || 1) / (Math.abs(th) + Math.sqrt(th * th + 1));
+      const c = 1 / Math.sqrt(tt * tt + 1);
+      const s = tt * c;
+      for (let k = 0; k < 3; k++) {
+        const akp = a[k][p];
+        const akq = a[k][q];
+        a[k][p] = c * akp - s * akq;
+        a[k][q] = s * akp + c * akq;
+      }
+      for (let k = 0; k < 3; k++) {
+        const apk = a[p][k];
+        const aqk = a[q][k];
+        a[p][k] = c * apk - s * aqk;
+        a[q][k] = s * apk + c * aqk;
+      }
+      for (let k = 0; k < 3; k++) {
+        const vkp = v[k][p];
+        const vkq = v[k][q];
+        v[k][p] = c * vkp - s * vkq;
+        v[k][q] = s * vkp + c * vkq;
+      }
+    }
+  }
+  const ev = [a[0][0], a[1][1], a[2][2]];
+  const lo = ev.indexOf(Math.min(...ev));
+  const hi = Math.max(...ev);
+  const mid = ev.filter((_, i) => i !== lo).reduce((p, q) => Math.min(p, q));
+  // Round a line: no spread along it, and a spread both ways across it (a face that only bends one way has none).
+  if (!(hi > 1e-6) || ev[lo] > 0.02 * hi || mid < 0.05 * hi) return null;
+  const dir = unit([v[0][lo], v[1][lo], v[2][lo]]);
+  // Across the line: each normal's part there points along a line through the axis. Where those lines meet.
+  const x = unit(Math.abs(dir[0]) < 0.9 ? [0, -dir[2], dir[1]] : [-dir[2], 0, dir[0]]);
+  const y: Vec3 = [dir[1] * x[2] - dir[2] * x[1], dir[2] * x[0] - dir[0] * x[2], dir[0] * x[1] - dir[1] * x[0]];
+  const d3 = (p: Vec3, q: Vec3) => p[0] * q[0] + p[1] * q[1] + p[2] * q[2];
+  let m00 = 0;
+  let m01 = 0;
+  let m11 = 0;
+  let b0 = 0;
+  let b1 = 0;
+  let used = 0;
+  for (let i = 0; i < n; i++) {
+    const nx = d3(normals[i], x);
+    const ny = d3(normals[i], y);
+    const l = Math.hypot(nx, ny);
+    if (l < 0.2) continue;
+    // (The line through the point along its normal: every point c of it has u.c = u.p, u across the normal.)
+    const ux = -ny / l;
+    const uy = nx / l;
+    const k = ux * d3(points[i], x) + uy * d3(points[i], y);
+    m00 += ux * ux;
+    m01 += ux * uy;
+    m11 += uy * uy;
+    b0 += ux * k;
+    b1 += uy * k;
+    used++;
+  }
+  const det = m00 * m11 - m01 * m01;
+  if (used < 6 || Math.abs(det) < 1e-9 * used * used) return null;
+  const cx = (b0 * m11 - b1 * m01) / det;
+  const cy = (m00 * b1 - m01 * b0) / det;
+  // (A point of the line, level with the face's points.)
+  let along = 0;
+  for (let i = 0; i < n; i++) along += d3(points[i], dir) / n;
+  return { origin: [x[0] * cx + y[0] * cy + dir[0] * along, x[1] * cx + y[1] * cy + dir[1] * along, x[2] * cx + y[2] * cy + dir[2] * along], dir };
 }
 
 export const JOINT_NAMES: Record<JointType, string> = { fixed: "Fixed", hinge: "Hinge", slide: "Slide", screw: "Screw" };

@@ -14,7 +14,7 @@ import type { ToolPointer } from "../view/input";
 import { axisDrag } from "../tools/handles";
 import { roundAxis } from "../tools/select";
 import { faceIndexOf, faceRefOf, type AppContext, type Tool } from "../tools/tool";
-import { apply, driverOf, effective, JOINT_NAMES, propose, solve, tree, turn, type Joint, type JointType, type Mat4, type PickLine } from "./joints";
+import { apply, driverOf, effective, JOINT_NAMES, propose, solve, tree, turn, turnAxis, type Joint, type JointType, type Mat4, type PickLine } from "./joints";
 
 interface Pick {
   body: string;
@@ -255,6 +255,25 @@ export class AssemblyTool implements Tool {
       const ax = roundAxis(this.app, body, face);
       if (ax) line = { origin: ax.origin, dir: ax.dir, round: true };
     } else if (f?.plane) line = { origin: this.centroid(body, face) ?? f.center, dir: f.normal, round: false };
+    // Any other face that is turned round a line - a thread's flank, a cone: that line, found from its points.
+    else if (f) {
+      const b = this.app.view.body(body)!;
+      const g = b.faceGroups.find((x) => x.face === face);
+      if (g) {
+        const seen = new Set<number>();
+        const pts: Vec3[] = [];
+        const nrm: Vec3[] = [];
+        for (let k = g.start; k < g.start + g.count; k++) {
+          const i = b.indices[k];
+          if (seen.has(i)) continue;
+          seen.add(i);
+          pts.push([b.positions[3 * i], b.positions[3 * i + 1], b.positions[3 * i + 2]]);
+          nrm.push([b.normals[3 * i], b.normals[3 * i + 1], b.normals[3 * i + 2]]);
+        }
+        const ax = turnAxis(pts, nrm);
+        if (ax) line = { origin: ax.origin, dir: ax.dir, round: true, rough: true };
+      }
+    }
     return { body, face, line };
   }
 
