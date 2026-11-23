@@ -1670,6 +1670,24 @@ export class App implements AppContext {
         this.view.cam.zoom(want / now);
         this.view.requestRender();
       },
+      chamferAt: (z) => {
+        const t = this.tool as unknown as { id: string; feature?: { edges: EdgeRef[] }; edgeSels?(): Sel[]; update?(): void };
+        const body = t.feature?.edges[0]?.body;
+        if (t.id !== "chamfer" || !t.feature || !body) return;
+        const flat = (p: Vec3) => Math.abs(p[2] - z) < 1e-6;
+        // (Once: with them chamfered, the body as it is shown has new edges at that height - the cuts' own.)
+        if (t.feature.edges.some((e) => flat(e.mid))) return;
+        const have = (m: Vec3) => t.feature!.edges.some((e) => e.body === body && Math.hypot(e.mid[0] - m[0], e.mid[1] - m[1], e.mid[2] - m[2]) < 1e-6);
+        let added = false;
+        (this.view.body(body)?.edges ?? []).forEach((e, i) => {
+          if (e.type !== "LINE" || !flat(e.start) || !flat(e.end) || have(e.mid)) return;
+          const ref = edgeRefOf(this, { body, edge: i });
+          if (ref) (t.feature!.edges.push(ref), (added = true));
+        });
+        if (!added) return;
+        if (t.edgeSels) this.setSelection(t.edgeSels());
+        t.update?.();
+      },
       exact: (kind, centre, edge) => void (this.tool instanceof SketchTool && this.tool.exact(kind, centre, edge)),
       setNumber: (field, mm) => {
         const t = this.tool as unknown as { id: string; feature?: Record<string, unknown>; render?(): void; update?(): void; setPitch?(v: number): void };

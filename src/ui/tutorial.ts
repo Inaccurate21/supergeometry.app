@@ -45,6 +45,8 @@ export interface TutorialHost {
   zoomTo(mm: number, px: number): void;
   /** A size of the tool that is open set (Extrude's distance, Subtract's clearance, Thread's pitch), and shown. */
   setNumber(field: "distance" | "clearance" | "pitch", mm: number): void;
+  /** Chamfer open: the straight edges of its body that lie at the height `z` are chamfered with the rest. */
+  chamferAt(z: number): void;
   /** The circle or polygon drawn last in the sketch that is open, put exactly: its middle and a point of its rim. */
   exact(kind: "circle" | "polygon", centre: Vec3, edge: Vec3): void;
 }
@@ -289,8 +291,13 @@ export class Tutorial {
     };
 
     // A body's flat top given a chamfer all round: its top tapped, Modify, Chamfer, Done.
-    const bevelling = (ids: { face: StepId; modify: StepId; tool: StepId; done: StepId }, body: string | undefined, top: Vec3, say: { face: string; done: string }): Step => {
-      if (tool.id === "chamfer") return lit(ids.done, say.done, [this.done()]);
+    const bevelling = (ids: { face: StepId; modify: StepId; tool: StepId; done: StepId }, body: string | undefined, top: Vec3, under: number, say: { face: string; done: string }): Step => {
+      // (The hexagon's other side - the one that can't be seen to tap - is chamfered with it: asked for: "chamfer the
+      // other sides also".)
+      if (tool.id === "chamfer") {
+        h.chamferAt(under);
+        return lit(ids.done, say.done, [this.done()]);
+      }
       const isTop = (f: { center: Vec3; normal: Vec3; type: string } | undefined): boolean =>
         f?.type === "PLANE" && f.normal[2] > 0.9 && Math.abs(f.center[2] - top[2]) < 1e-3 * Math.max(1, Math.abs(top[2]));
       const all = body ? h.faces(body) : [];
@@ -346,7 +353,7 @@ export class Tutorial {
 
     // ---- the nut's top edges chamfered (Modify)
     if (extrudes.length >= 3 && bevels < 2 && (tool.id === "select" || tool.id === "chamfer")) {
-      return bevelling({ face: "bevel2-face", modify: "bevel2-modify", tool: "bevel2-tool", done: "bevel2-done" }, nut, towardsEye(1.35 * R, nutH), { face: "A hexagon block round the bolt. Chamfer it too: tap its flat top.", done: "Tap Done." });
+      return bevelling({ face: "bevel2-face", modify: "bevel2-modify", tool: "bevel2-tool", done: "bevel2-done" }, nut, towardsEye(1.35 * R, nutH), 0, { face: "A hexagon block round the bolt. Chamfer it too: tap its flat top.", done: "Its underside is chamfered with it. Tap Done." });
     }
 
     // ---- the nut (a hexagon on the floor, pulled up round the rod)
@@ -365,7 +372,7 @@ export class Tutorial {
 
     // ---- the head's top edges chamfered (Modify)
     if (extrudes.length === 2 && !bevels && !threaded && (tool.id === "select" || tool.id === "chamfer")) {
-      return bevelling({ face: "bevel1-face", modify: "bevel1-modify", tool: "bevel1-tool", done: "bevel1-done" }, bolt, towardsEye(1.2 * R, H + headH), { face: "The bolt has its head. Give it a finished look: tap the head's flat top.", done: "Tap Done: the head's edges are chamfered." });
+      return bevelling({ face: "bevel1-face", modify: "bevel1-modify", tool: "bevel1-tool", done: "bevel1-done" }, bolt, towardsEye(1.2 * R, H + headH), H, { face: "The bolt has its head. Give it a finished look: tap the head's flat top.", done: "The head's underside is chamfered with it. Tap Done." });
     }
 
     // ---- the thread (Modify)
