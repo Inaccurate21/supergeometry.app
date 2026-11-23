@@ -67,10 +67,13 @@ export class AssemblyTool implements Tool {
   }
 
   enter(): void {
-    this.app.ui.setTools([{ id: "exit", label: "Exit Assemblies", icon: "exit", shortcut: "Esc", run: () => this.app.setTool(null) }]);
+    this.app.ui.setTools([{ id: "exit", label: "Exit Assemblies", icon: "exit", shortcut: "Esc", run: () => this.leave() }]);
     this.app.ui.setBottom(this.app.bottomTools());
     this.app.setSelection([]);
     this.app.setHover(null);
+    // Where the parts were left (asked for: "if i click on assembly again ... it doesnt show what i made before").
+    this.values = { ...(this.app.store.doc.pose?.values ?? {}) };
+    this.exploded = this.app.store.doc.pose?.exploded ?? 0;
     const s = this.start;
     this.start = undefined;
     if (s && s.a.body !== s.b.body) this.make(this.pickOf(s.a.body, s.a.face), this.pickOf(s.b.body, s.b.face));
@@ -78,8 +81,25 @@ export class AssemblyTool implements Tool {
     this.show();
   }
 
+  /** The pose as it is, kept in the project: what is shown after Assemblies is left, and when it is opened again. */
+  private save(): void {
+    const values: Record<string, number> = {};
+    for (const j of this.joints) if (Math.abs(this.values[j.id] ?? 0) > 1e-9) values[j.id] = this.values[j.id];
+    const pose = Object.keys(values).length || this.exploded > 0 ? { values, ...(this.exploded > 0 ? { exploded: this.exploded } : {}) } : undefined;
+    if (JSON.stringify(pose) === JSON.stringify(this.app.store.doc.pose)) return;
+    this.app.store.commit((d) => {
+      if (pose) d.pose = pose;
+      else delete d.pose;
+    });
+  }
+
+  private leave(): void {
+    this.save();
+    this.app.setTool(null);
+  }
+
   exit(): void {
-    this.app.view.setPoses(null);
+    // (The parts stay as they were left: the app shows the project's pose while nothing is being worked on.)
     this.dropAxis();
     this.app.ui.showPanel(null);
     this.app.ui.setHint(null);
@@ -90,15 +110,27 @@ export class AssemblyTool implements Tool {
 
   key(e: KeyboardEvent): boolean {
     if (e.key !== "Escape") return false;
-    if (this.mode === "list") this.app.setTool(null);
+    if (this.mode === "list") this.leave();
     else this.toList();
     return true;
   }
 
   /** The model was made again: the bodies are shown at their joints' values still. */
   refresh(): void {
+    // (A pose undone or redone: the parts go where the project has them.)
+    if (!this.dragging) this.values = { ...(this.app.store.doc.pose?.values ?? {}) };
     this.show();
     this.render();
+  }
+
+  /** The project's pose, for the app to show when Assemblies is not open (null: all as modelled). */
+  static posesOf(app: AppContext): Map<string, Mat4> | null {
+    const pose = app.store.doc.pose;
+    if (!pose || !app.store.doc.joints?.length) return null;
+    const t = new AssemblyTool(app);
+    t.values = { ...pose.values };
+    t.exploded = pose.exploded ?? 0;
+    return t.poses();
   }
 
   // ------------------------------------------------------------------ what is shown
@@ -303,6 +335,7 @@ export class AssemblyTool implements Tool {
   }
 
   private toList(): void {
+    this.save();
     this.mode = "list";
     this.editing = null;
     this.first = null;
@@ -315,6 +348,7 @@ export class AssemblyTool implements Tool {
     this.values = {};
     this.exploded = 0;
     this.show();
+    this.save();
     this.render();
   }
 
@@ -398,6 +432,7 @@ export class AssemblyTool implements Tool {
     if (!this.dragging) return;
     this.dragging = null;
     this.app.ui.setLabel(0, 0, null);
+    this.save();
     this.render();
   }
 
@@ -436,7 +471,7 @@ export class AssemblyTool implements Tool {
       const others = joints.filter((x) => x.id !== j.id && x.type !== "fixed" && x.drive?.joint !== j.id);
       const items: PanelItem[] = [{ type: "choice", label: "Type", list: true, options: (Object.keys(JOINT_NAMES) as JointType[]).map((id) => ({ id, label: JOINT_NAMES[id] })), value: j.type, onChange: (id) => this.setType(j, id as JointType) }];
       if (j.type !== "fixed") {
-        items.push({ type: "number", label: turns ? "Angle" : "Distance", value: now, kind: turns ? "angle" : "length", onInput: (v) => (this.setValue(j, v), this.render()) });
+        items.push({ type: "number", label: turns ? "Angle" : "Distance", value: now, kind: turns ? "angle" : "length", onInput: (v) => (this.setValue(j, v), this.save(), this.render()) });
         if (j.type === "screw") items.push({ type: "number", label: "Pitch", value: j.pitch ?? 1.5, kind: "length", min: 0.01, onInput: (v) => v > 0 && this.patch(j.id, { pitch: v }) });
         items.push({ type: "toggle", label: "Limits", value: limited, onChange: (on) => this.patch(j.id, on ? { min: turns ? 0 : 0, max: turns ? 90 : 20 } : { min: undefined, max: undefined }) });
         if (limited) {
@@ -488,6 +523,6 @@ export class AssemblyTool implements Tool {
       if (moved) items.push({ type: "button", label: "Home", onClick: () => this.home() });
     }
     ui.setHint(joints.length ? "Drag a part to move it by its joint. Tap a part to change its joint." : "The parts stay where you modelled them. Add a joint to say how two of them move.");
-    ui.showPanel({ title: "Assemblies", beta: true, items, onDone: () => this.app.setTool(null) });
+    ui.showPanel({ title: "Assemblies", beta: true, items, onDone: () => this.leave() });
   }
 }

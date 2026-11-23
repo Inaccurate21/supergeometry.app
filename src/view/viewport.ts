@@ -506,7 +506,11 @@ export class Viewport {
    * where the model has them), so a tool that shows bodies moved picks by `facesAt`.
    */
   setPoses(poses: Map<string, number[]> | null): void {
-    this.poses = poses && poses.size ? poses : null;
+    // (Only the bodies that are moved: one whose move is none is as it was modelled.)
+    const still = (m: number[]) => m.every((v, i) => Math.abs(v - (i % 5 === 0 ? 1 : 0)) < 1e-12);
+    const moved = poses ? new Map([...poses].filter(([, m]) => !still(m))) : null;
+    if (!this.poses && !moved?.size) return;
+    this.poses = moved?.size ? moved : null;
     this.applyPoses();
     this.requestRender();
   }
@@ -1175,7 +1179,7 @@ export class Viewport {
       line.renderOrder = 4;
       this.highlightGroup.add(line);
     };
-    const add = (h: Highlight, color: number, opacity: number) => {
+    const add0 = (h: Highlight, color: number, opacity: number) => {
       if (h.kind === "profile") {
         const src = this.profileMeshes.find((m) => m.userData.sketch === h.sketch && m.userData.region === h.region);
         if (!src) return;
@@ -1272,6 +1276,18 @@ export class Viewport {
       } else {
         const g = b.data.edgeGroups.find((e) => e.edge === h.edge);
         if (g) fatLines(Array.from(b.data.edgePositions.slice(g.start * 3, (g.start + g.count) * 3)), color);
+      }
+    };
+    // (A body shown moved - an assembly's pose: what is lit of it is moved with it.)
+    const add = (h: Highlight, color: number, opacity: number) => {
+      const n0 = this.highlightGroup.children.length;
+      add0(h, color, opacity);
+      const m = "body" in h ? this.poses?.get(h.body) : undefined;
+      if (!m) return;
+      for (const o of this.highlightGroup.children.slice(n0)) {
+        o.matrixAutoUpdate = false;
+        o.matrix.fromArray(m);
+        o.matrixWorldNeedsUpdate = true;
       }
     };
     width = 5;
@@ -1643,7 +1659,8 @@ export class Viewport {
     const proj = this.projector();
     const s = new Float64Array(2);
     for (const [id, b] of this.bodies) {
-      if (this.hiddenIds.has(id)) continue;
+      // (A body shown moved is picked by its faces only: its corners and edges are known where it was modelled.)
+      if (this.hiddenIds.has(id) || this.poses?.has(id)) continue;
       b.vertices.forEach((v, i) => {
         if (this.clip && this.clip.distanceToPoint(v) < 0) return;
         if (!proj(v.x, v.y, v.z, s)) return;
@@ -1676,7 +1693,7 @@ export class Viewport {
     const sa: [number, number] = [0, 0];
     const sb: [number, number] = [0, 0];
     for (const [id, { data }] of this.bodies) {
-      if (this.hiddenIds.has(id)) continue;
+      if (this.hiddenIds.has(id) || this.poses?.has(id)) continue;
       const p = data.edgePositions;
       for (const g of data.edgeGroups) {
         for (let i = g.start; i < g.start + g.count; i += 2) {

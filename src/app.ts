@@ -339,8 +339,20 @@ export class App implements AppContext {
 
   // ------------------------------------------------------------ state
 
+  /**
+   * An assembly's pose - where its parts were left - is on the screen while nothing is being worked on: no tool
+   * open, nothing picked. With something picked or a tool open the parts are where they were modelled (a tool's
+   * arrows and sizes are there). Assemblies itself shows its own. (Asked for: "when i click OK, it resets to the
+   * original stance".)
+   */
+  private showPose(): void {
+    if (this.tool instanceof AssemblyTool) return;
+    this.view.setPoses(this.tool === this.selectTool && !this.selection.length ? AssemblyTool.posesOf(this) : null);
+  }
+
   setSelection(sel: Sel[]): void {
     this.selection = sel;
+    this.showPose();
     this.refreshHighlights();
     // Selected bodies, planes, axes and images light up in Items too.
     this.items?.markSelected(sel.flatMap((s) => (s.kind === "body" ? [s.body] : s.kind === "plane" || s.kind === "axis" || s.kind === "image" ? [s.id] : [])));
@@ -458,6 +470,7 @@ export class App implements AppContext {
     this.tool.exit?.();
     this.tool = next;
     this.input.handler = next;
+    this.showPose();
     this.hover = null;
     this.ui.closeFlyout();
     this.ui.unfoldPanel();
@@ -776,6 +789,7 @@ export class App implements AppContext {
     this.refreshHighlights();
     // (Once: the selection tool's own refresh was run a second time after this.)
     this.tool.refresh?.();
+    this.showPose();
     this.renderHistory();
     this.items.render(r);
     this.showVariableTags();

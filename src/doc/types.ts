@@ -790,6 +790,8 @@ export interface ProjectDoc {
   joints?: import("../assembly/joints").Joint[];
   /** Assemblies: the body that stands still (missing: the first of each group of joined bodies). */
   ground?: string;
+  /** Assemblies: where the parts were left - each joint's value by its id (0, or missing: as modelled), and how far they are pulled apart (0 to 1). */
+  pose?: { values: Record<string, number>; exploded?: number };
 }
 
 /** The drawing sheet: paper size, projection method, scale (missing: the largest that fits), what it shows. */
