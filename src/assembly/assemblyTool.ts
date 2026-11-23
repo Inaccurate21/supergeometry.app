@@ -14,13 +14,19 @@ import type { ToolPointer } from "../view/input";
 import { axisDrag } from "../tools/handles";
 import { roundAxis } from "../tools/select";
 import { faceIndexOf, faceRefOf, type AppContext, type Tool } from "../tools/tool";
-import { apply, driverOf, effective, JOINT_NAMES, propose, solve, tree, turn, turnAxis, type Joint, type JointType, type Mat4, type PickLine } from "./joints";
+import { inverse, penetrates, Solid } from "./contact";
+import { apply, driverOf, effective, JOINT_NAMES, propose, solve, tree, mul, turn, turnAxis, type Joint, type JointType, type Mat4, type PickLine } from "./joints";
 
 interface Pick {
   body: string;
   face: number;
   line: PickLine | null;
 }
+
+/** Stop on contact, as it was last set (for this visit to the page). */
+let stopOnContact = false;
+/** How far into each other two parts may be shown before they count as run into each other (mm): what touches, or sits with a hair of play, is not. */
+const CONTACT_TOL = 0.25;
 
 const uid = () => `joint-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`;
 const AXIS_COLOR = 0xff9d2e;
@@ -50,7 +56,12 @@ export class AssemblyTool implements Tool {
     /** Round the line: the turn so far, and where the pointer was on the last move. */
     turned: number;
     last: Vec3 | null;
+    /** Stop on contact: the pairs of bodies in each other as the drag began (left alone), how each pair stood then, and the last value nothing ran into anything at. */
+    inEachOther: Set<string>;
+    stood: Map<string, Mat4>;
+    free: number;
   } | null = null;
+  private solids = new Map<string, { key: unknown; solid: Solid }>();
   /** Each body's middle and size, by its mesh (measured once for each). */
   private measured = new Map<string, { key: unknown; center: Vec3; size: number }>();
 
@@ -174,6 +185,45 @@ export class AssemblyTool implements Tool {
       }
     }
     return solve(this.liveJoints(), bodies, this.values, this.app.store.doc.ground, this.exploded > 0 ? { factor: this.exploded * 0.8, centers, sizes } : undefined);
+  }
+
+  private solid(body: string): Solid | null {
+    const b = this.app.view.body(body);
+    if (!b) return null;
+    const was = this.solids.get(body);
+    if (was && was.key === b.key) return was.solid;
+    const solid = new Solid(b.positions, b.indices);
+    this.solids.set(body, { key: b.key, solid });
+    return solid;
+  }
+
+  /** Each pair of bodies shown: how the second stands against the first (the second's move, seen from the first). */
+  private standing(poses: Map<string, Mat4>): Map<string, Mat4> {
+    const ids = this.bodies.filter((b) => !this.app.view.isHidden(b));
+    const out = new Map<string, Mat4>();
+    const I: Mat4 = [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1];
+    for (let i = 0; i < ids.length; i++)
+      for (let j = i + 1; j < ids.length; j++) {
+        const a = poses.get(ids[i]);
+        const b = poses.get(ids[j]);
+        out.set(`${ids[i]}|${ids[j]}`, a || b ? mul(inverse(a ?? I), b ?? I) : I);
+      }
+    return out;
+  }
+
+  /** The pairs of bodies run into each other, of those in `pairs` (all of them; or only those that stand otherwise than in `than`). */
+  private clashes(pairs: Map<string, Mat4>, than?: Map<string, Mat4>, skip?: Set<string>): Set<string> {
+    const out = new Set<string>();
+    for (const [key, m] of pairs) {
+      if (skip?.has(key)) continue;
+      const was = than?.get(key);
+      if (was && was.every((v, i) => Math.abs(v - m[i]) < 1e-9)) continue;
+      const [a, b] = key.split("|");
+      const sa = this.solid(a);
+      const sb = this.solid(b);
+      if (sa && sb && penetrates(sa, sb, m, CONTACT_TOL)) out.add(key);
+    }
+    return out;
   }
 
   private show(): void {
@@ -409,7 +459,10 @@ export class AssemblyTool implements Tool {
     const m = poses.get(up.parent) ?? null;
     const origin = m ? apply(m, up.joint.origin) : up.joint.origin;
     const axis = norm(m ? turn(m, up.joint.axis) : up.joint.axis);
-    this.dragging = { from, joint: up.joint, driver: d.joint, ratio: d.ratio, sign: up.joint.b === body ? 1 : -1, v0: effective(joints, this.values)[up.joint.id] ?? 0, grab: h.point, origin, axis, turned: 0, last: null };
+    // Stop on contact: what is in each other already is left to be (parts modelled into each other, or touching).
+    const stood = stopOnContact ? this.standing(poses) : new Map<string, Mat4>();
+    const inEachOther = stopOnContact ? this.clashes(stood) : new Set<string>();
+    this.dragging = { from, joint: up.joint, driver: d.joint, ratio: d.ratio, sign: up.joint.b === body ? 1 : -1, v0: effective(joints, this.values)[up.joint.id] ?? 0, grab: h.point, origin, axis, turned: 0, last: null, inEachOther, stood, free: this.values[d.joint.id] ?? 0 };
     return true;
   }
 
@@ -440,11 +493,47 @@ export class AssemblyTool implements Tool {
     const want = g.v0 + g.sign * moved;
     this.values[g.driver.id] = want / g.ratio;
     // (Kept in the limits: what is stored is what it is, so the next drag starts from there.)
-    const v = effective(this.liveJoints(), this.values);
+    let v = effective(this.liveJoints(), this.values);
     this.values[g.driver.id] = v[g.driver.id];
+    // Stop on contact: a move that runs a part into another goes only as far as it can - found by halving, between
+    // the last value nothing was run into at and the one asked for.
+    let stopped = false;
+    if (stopOnContact) {
+      const hits = (value: number): boolean => {
+        this.values[g.driver.id] = value;
+        return this.clashes(this.standing(this.poses()), g.stood, g.inEachOther).size > 0;
+      };
+      const asked = this.values[g.driver.id];
+      // (The way there is gone in steps - a millimetre, or three degrees, of the dragged joint - so a part is not
+      // carried through another and out of its far side by one long move.)
+      const pace = (g.joint.type === "slide" ? 1 : 3) / Math.abs(g.ratio || 1);
+      const steps = Math.min(40, Math.max(1, Math.ceil(Math.abs(asked - g.free) / pace)));
+      let lo = g.free;
+      let hi: number | null = null;
+      for (let i = 1; i <= steps; i++) {
+        const at = g.free + ((asked - g.free) * i) / steps;
+        if (hits(at)) {
+          hi = at;
+          break;
+        }
+        lo = at;
+      }
+      if (hi !== null) {
+        stopped = true;
+        let top: number = hi;
+        for (let i = 0; i < 7; i++) {
+          const mid: number = (lo + top) / 2;
+          if (hits(mid)) top = mid;
+          else lo = mid;
+        }
+      }
+      this.values[g.driver.id] = lo;
+      g.free = this.values[g.driver.id];
+      v = effective(this.liveJoints(), this.values);
+    }
     this.show();
     const now = v[g.joint.id] ?? 0;
-    this.app.ui.setLabel(p.x, p.y, g.joint.type === "slide" ? fmtLen(now) : `${+now.toFixed(1)}°`);
+    this.app.ui.setLabel(p.x, p.y, `${g.joint.type === "slide" ? fmtLen(now) : `${+now.toFixed(1)}°`}${stopped ? " · contact" : ""}`);
   }
 
   up(): void {
@@ -539,6 +628,7 @@ export class AssemblyTool implements Tool {
     if (joints.length) {
       items.push({ type: "slider", label: "Explode", value: Math.round(this.exploded * 100), min: 0, max: 100, step: 1, show: (v) => `${v}%`, onInput: (v) => ((this.exploded = v / 100), this.show()) });
       if (held.length > 1) items.push({ type: "choice", label: "Stands still", list: true, options: held.map((b) => ({ id: b, label: this.nameOf(b) })), value: ground, onChange: (id) => (this.app.store.commit((d) => void (d.ground = id)), this.show(), this.render()) });
+      items.push({ type: "toggle", label: "Stop on contact", value: stopOnContact, onChange: (on) => ((stopOnContact = on), this.render()) });
       if (moved) items.push({ type: "button", label: "Home", onClick: () => this.home() });
     }
     ui.setHint(joints.length ? "Drag a part to move it by its joint. Tap a part to change its joint." : "The parts stay where you modelled them. Add a joint to say how two of them move.");

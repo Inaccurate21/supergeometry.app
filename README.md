@@ -347,8 +347,8 @@ sketch. A sketch stays in view until every region of it is used.
   angle or distance; **Limits** keep it between two values; **Follows** makes
   one joint go with another by a ratio (gears); **Explode** pulls the parts
   apart. The pose is kept with the project and shown after OK; **Home** puts
-  every part back where it was modelled. No weight or forces, and parts pass
-  through each other.
+  every part back where it was modelled. **Stop on contact** keeps a dragged
+  part from running into another. No weight or forces.
 
 ---
 
