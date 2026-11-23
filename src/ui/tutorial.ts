@@ -136,7 +136,12 @@ export class Tutorial {
 
   /** What is lit now, on the screen: a tap there goes through, one anywhere else does nothing. */
   private open: Box[] = [];
-  private static readonly GATED = ["pointerdown", "pointerup", "pointermove", "pointercancel", "mousedown", "mouseup", "click", "dblclick", "contextmenu", "wheel", "touchstart", "touchmove", "touchend"] as const;
+  private static readonly GATED = ["pointerdown", "pointerup", "pointermove", "pointercancel", "mousedown", "mouseup", "click", "dblclick", "contextmenu", "wheel", "touchstart", "touchmove", "touchend", "touchcancel"] as const;
+  /** Touches that began on a lit spot (by their pointer's id): the rest of each goes through wherever it ends. */
+  private through = new Set<number>();
+  private touching = false;
+  private pressing = false;
+  private clickable = false;
   /**
    * Every tap, before the app has it: on a lit spot or on the card it goes on, anywhere else it stops here. Told by
    * where the tap is, not by what is under it - the dimmed screen is only looked at. (It took the taps itself, an
@@ -151,6 +156,50 @@ export class Tutorial {
     const x = at.clientX;
     const y = at.clientY;
     const lit = e.type !== "wheel" && x !== undefined && y !== undefined && this.open.some((b) => x >= b.left && x <= b.right && y >= b.top && y <= b.bottom);
+    // A touch that began on a lit spot is let finish, wherever what is lit has gone by then. (A point of a sketch is
+    // placed as the finger comes down: the next spot was lit at once, the finger's lifting - at the old one - was
+    // stopped, and the app was left with a finger it thought still down: no tap did anything from then on, not
+    // even after the tutorial was left. Reported: "I cant go past step 3 on mobile ... if i exit tutorial, it goes
+    // into a mode that doesnt let me do anything".)
+    const id = (e as PointerEvent).pointerId;
+    switch (e.type) {
+      case "pointerdown":
+        this.clickable = lit;
+        if (lit) this.through.add(id);
+        break;
+      case "pointermove":
+        if (this.through.has(id)) return;
+        break;
+      case "pointerup":
+      case "pointercancel":
+        if (this.through.delete(id)) return;
+        break;
+      case "touchstart":
+        if (lit) this.touching = true;
+        break;
+      case "touchmove":
+        if (this.touching) return;
+        break;
+      case "touchend":
+      case "touchcancel": {
+        const was = this.touching;
+        if (!te.touches?.length) this.touching = false;
+        if (was) return;
+        break;
+      }
+      case "mousedown":
+        this.pressing = lit;
+        break;
+      case "mouseup": {
+        const was = this.pressing;
+        this.pressing = false;
+        if (was) return;
+        break;
+      }
+      case "click":
+        if (this.clickable) return;
+        break;
+    }
     if (lit) return;
     e.stopImmediatePropagation();
     if (e.type !== "pointermove" && e.cancelable) e.preventDefault();
@@ -201,6 +250,8 @@ export class Tutorial {
     clearInterval(this.tick);
     window.removeEventListener("keydown", this.onKey, true);
     for (const type of Tutorial.GATED) window.removeEventListener(type, this.gate, { capture: true });
+    this.through.clear();
+    this.touching = this.pressing = this.clickable = false;
     this.open = [];
     this.shade.remove();
     this.ring.remove();

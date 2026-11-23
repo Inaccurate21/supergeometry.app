@@ -103,6 +103,8 @@ export class App implements AppContext {
   private tool: Tool;
   /** The tutorial begun (More > Tutorial, and the welcome window's button). */
   private startTutorial: () => void = () => {};
+  /** The tutorial (for the debug handle: a test steps it by hand where the browser draws seldom). */
+  tutorial: Tutorial | null = null;
   private shownErrors = "";
   private pinLayer: PinLayer;
   private items: ItemsPanel;
@@ -1719,6 +1721,7 @@ export class App implements AppContext {
         t.update?.();
       },
     });
+    this.tutorial = tutorial;
     moreItem("m-tutorial", () => void tutorial.start());
     this.startTutorial = () => void tutorial.start();
     // About: the README, in the app. Support links open in a new tab (no access back to this page).
