@@ -1388,7 +1388,7 @@ export class App implements AppContext {
               { id: "bimMaterials", label: "Materials", icon: "bim", sub: "a real material for each body", run: () => this.setTool(new BimTool(this)) },
               { id: "bimSheet", label: "Technical Sheet", icon: "sheet", sub: "parts list, masses, data", run: () => void openSheet(this) },
               { id: "bimDrawings", label: "Drawings", icon: "drawing", sub: "views with dimensions", run: () => void openDrawing(this) },
-              { id: "bimAssemblies", label: "Assemblies", icon: "assembly", sub: "parts placed and joined", run: () => this.ui.toast("Assemblies are being built - after Drawings") },
+              { id: "bimAssemblies", label: "Assemblies", icon: "assembly", sub: "parts placed and joined", soon: true },
             ],
           },
         ],

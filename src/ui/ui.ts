@@ -25,6 +25,8 @@ export interface ToolItem {
   disabled?: boolean;
   /** Reason shown when disabled. */
   why?: string;
+  /** Not made yet: dimmed in its place with a "soon" tag, and a tap does nothing. */
+  soon?: boolean;
   /** Opens a flyout with variants / sub-tools instead of running. */
   children?: ToolItem[];
   /**

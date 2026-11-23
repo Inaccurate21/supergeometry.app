@@ -104,6 +104,8 @@ interface Word {
   lets?: boolean;
   /** In its place, with nothing for what is picked now: dimmed, and a tap says this. */
   off?: string;
+  /** Not made yet: dimmed, tagged "soon", and a tap does nothing. */
+  soon?: boolean;
   /** A tool with kinds that starts as it was used last on a tap (a sketch's Rectangle); its kinds on a second tap or a held press. */
   first?: boolean;
 }
@@ -398,8 +400,9 @@ export class Sentence {
       on: it.active,
       pulse: it.pulse,
       kbd: it.shortcut,
-      run: it.run ? () => it.run!() : undefined,
+      run: it.run && !it.soon ? () => it.run!() : undefined,
       kids: kids.length ? kids : undefined,
+      soon: it.soon,
       peek: it.peek,
       first: !!it.variantsWhenActive && !!it.run,
       value: v ? { now: Number(v.now) || 0, text: v.now, kind: v.int ? "int" : "number", put: (n) => v.put(n), min: v.min, max: v.max } : undefined,
@@ -815,7 +818,7 @@ export class Sentence {
     let at: Element | null = box.firstElementChild;
     for (const w of words) {
       let d = fresh ? undefined : old.get(w.key);
-      const sig = `${w.kind}|${w.label}|${w.cap ?? ""}|${w.on ? 1 : 0}|${w.blank ? 1 : 0}|${w.pulse ? 1 : 0}|${w.kids?.length ?? 0}|${w.swatch ?? ""}|${w.off ? 1 : 0}`;
+      const sig = `${w.kind}|${w.label}|${w.cap ?? ""}|${w.on ? 1 : 0}|${w.blank ? 1 : 0}|${w.pulse ? 1 : 0}|${w.kids?.length ?? 0}|${w.swatch ?? ""}|${w.off ? 1 : 0}|${w.soon ? 1 : 0}`;
       if (!d) {
         d = this.wordEl(w);
         if (!calm()) {
@@ -904,9 +907,9 @@ export class Sentence {
     d.classList.toggle("pulse", !!w.pulse);
     d.classList.toggle("quiet", !!w.quiet);
     d.classList.toggle("capped", !!w.cap);
-    d.classList.toggle("off", !!w.off);
+    d.classList.toggle("off", !!w.off || !!w.soon);
     d.classList.toggle("opened", w.key === this.openTop);
-    (d as HTMLButtonElement).disabled = !!w.quiet && !w.run && !w.kids;
+    (d as HTMLButtonElement).disabled = (!!w.quiet && !w.run && !w.kids) || !!w.soon;
     d.replaceChildren();
     if (w.cap) d.append(el("span", "sn-cap", w.cap));
     const body = el("span", "sn-body");
@@ -922,6 +925,7 @@ export class Sentence {
     body.append(el("span", "sn-text", w.label));
     if (w.kids?.length && !w.first) body.append(el("span", "sn-more", "▾"));
     if (w.lets) body.append(el("span", "sn-x", "×"));
+    if (w.soon) body.append(el("span", "sn-kbd sn-soon", "soon"));
     if (w.kbd && matchMedia("(hover: hover) and (pointer: fine)").matches) body.append(el("kbd", "sn-kbd", w.kbd));
     d.append(body);
     d.title = w.key === "s-add" ? "Pick more: each tap adds to the pick" : w.lets ? "Let go of it" : w.value ? `${w.cap ?? w.label}: tap to type, drag sideways to change` : (w.cap ?? "");
@@ -929,6 +933,7 @@ export class Sentence {
 
   /** A word tapped: it opens what it holds, takes a number, or does what it says. */
   private tap(w: Word, d: HTMLElement): void {
+    if (w.soon) return;
     if (w.off) return void (buzz(), this.host.ui.toast(w.off));
     if (w.value) return void this.toggle({ kind: "type", key: w.key });
     // A tool with kinds starts as it was used last; while it is the one in use, a tap shows its kinds.

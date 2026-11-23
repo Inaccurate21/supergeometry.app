@@ -6048,6 +6048,14 @@ body.sentence-ui #panel:not(:has(.text-input)) {
   background: rgba(255, 255, 255, 0.09);
   color: var(--muted);
 }
+/* Not made yet: its "soon" tag is shown on every screen (a shortcut's is not, on a narrow one). */
+.sn-word .sn-soon,
+.sn-compact .sn-row .sn-soon {
+  display: inline-block;
+}
+.sn-word:disabled {
+  cursor: default;
+}
 /* The subject: what the sentence is about. */
 .sn-word.sn-subject {
   background: none;
