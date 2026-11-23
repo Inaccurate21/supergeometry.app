@@ -2,7 +2,7 @@ import { QuickActions } from "./quickActions";
 import { isTouchDevice } from "../device";
 import { simplifyStroke } from "../sketch/freehand";
 import { Box3, BufferGeometry, Line, LineBasicMaterial, LineDashedMaterial, Points, PointsMaterial, Vector3 } from "three";
-import type { EdgeLink, FaceRef, PlaneDef, PointRef, SketchConstraint, SketchEntity, SketchFeature, SketchFill, SketchRepeat, Vec2, Vec3 } from "../doc/types";
+import type { EdgeLink, FaceRef, OutlineOffset, PlaneDef, PointRef, SketchConstraint, SketchEntity, SketchFeature, SketchFill, SketchRepeat, Vec2, Vec3 } from "../doc/types";
 import { add as add3, dot, GROUND, niceStep as niceStepOf, originOnPlane, patternSpacing, planeY, roundSig, scale as scale3, sub as sub3, toPlane } from "../geom";
 import { addForUser, addStrict, constraintError, constraintName, LINKED, pointOf, pointsOf, refsOf, setValueStrict, sizeOf as sizeOfFn, solve, touchingEnds } from "../sketch/constraints";
 import { isExpression } from "../ui/ui";
@@ -340,6 +340,8 @@ export class SketchTool implements Tool {
     refA?: Vec2;
     refB?: Vec2;
     offsetOf?: string;
+    /** Offset of a curve that is itself an offset of the face's edge: that first offset. */
+    offsetLink?: OutlineOffset;
     /** Where the face's outline was tapped (an offset of it is linked to it). */
     offsetAt?: Vec2;
     /** Where a curve of the sketch was tapped for an offset (its drag handle sits there). */
@@ -2761,7 +2763,24 @@ export class SketchTool implements Tool {
           }
         }
         return this.tapCurve(p, (id, uv) => {
-          if (id.startsWith("lnk-")) return this.app.ui.toast("That's an offset of the face's edge already - tap it in Select to change its distance");
+          // An offset of the face's edge, offset again: another offset of that same edge, this much further from it
+          // - it follows the face too. (Asked for: "I should be able to offset any line whenever I want". It was
+          // refused: "an offset of the face's edge already".)
+          if (id.startsWith("lnk-")) {
+            const link = this.sketch?.outlineOffsets?.find((l) => id.startsWith(`lnk-${l.id}-`));
+            const e = this.boundary.find((x) => x.id === id);
+            if (!link || !e) return this.app.ui.toast("That line can't be offset here");
+            this.edit.offsetLink = link;
+            this.edit.offsetOf = id;
+            this.edit.offsetAt = uv;
+            this.edit.offsetEdge = this.edit.offsetGrip = undefined;
+            // (Further from the edge, the way the first offset went.)
+            memory.offset = (link.distance < 0 ? -1 : 1) * Math.abs(defaultOffset(e));
+            this.lightEdges(null);
+            this.updatePanel();
+            this.refreshPreview();
+            return this.setHint("Another offset of the same edge: set how much further, then Apply. Flip puts it on the other side of this line.");
+          }
           // The face's own edge: its whole outline, offset inward to start, and
           // linked - it's made again from the face when the face changes.
           if (id.startsWith("bnd-")) {
@@ -5006,6 +5025,11 @@ export class SketchTool implements Tool {
     const id = this.edit.offsetOf;
     // (Of the face's own outline: Edge is just the edge tapped, Chain the whole loop it is part of.)
     if (id?.startsWith("bnd-") && this.edit.offsetAt) return outlineOffsetCurves(this.outline, [{ id: "new", distance: memory.offset, at: this.edit.offsetAt, ...(memory.offsetMode === "edge" ? { single: true } : {}) }]);
+    // (Of an offset of the face's edge: that edge offset again, this much further than the first.)
+    if (id?.startsWith("lnk-") && this.edit.offsetLink) {
+      const first = this.edit.offsetLink;
+      return outlineOffsetCurves(this.outline, [{ ...first, id: "new", distance: first.distance + memory.offset }]);
+    }
     const src = this.entities.find((e) => e.id === id);
     if (!id || !src) return [];
     // (From a body's edge: the guide it is made from is dashed, the offset is a curve like any other.)
@@ -5040,7 +5064,7 @@ export class SketchTool implements Tool {
   /** The curve an offset is being made from (of the sketch, or the face's outline). */
   private offsetSource(): SketchEntity | undefined {
     const id = this.edit.offsetOf;
-    return id ? (id.startsWith("bnd-") ? this.outline.find((e) => e.id === id) : this.entities.find((e) => e.id === id)) : undefined;
+    return id ? (id.startsWith("bnd-") ? this.outline.find((e) => e.id === id) : id.startsWith("lnk-") ? this.boundary.find((e) => e.id === id) : this.entities.find((e) => e.id === id)) : undefined;
   }
 
   /** Put the handle where the offset is now (made when an offset starts, gone when it ends). */
@@ -5220,6 +5244,19 @@ export class SketchTool implements Tool {
   private applyOffset(): void {
     const made = this.offsetResult();
     if (!made.length) return this.app.ui.toast("That offset would collapse the curve");
+    // Of an offset of the face's edge: one more offset of that edge, kept as a link to it like the first.
+    if (this.edit.offsetOf?.startsWith("lnk-") && this.edit.offsetLink && this.sketchId) {
+      const first = this.edit.offsetLink;
+      const link: OutlineOffset = { id: uid(), distance: first.distance + memory.offset, at: first.at, ...(first.single ? { single: true } : {}) };
+      const sid = this.sketchId;
+      this.app.store.commit((d) => {
+        const f = d.features.find((x) => x.id === sid);
+        if (f?.type === "sketch") f.outlineOffsets = [...(f.outlineOffsets ?? []), link];
+      });
+      this.app.ui.toast("Offset again: it follows the face too");
+      this.edit.offsetOf = this.edit.offsetAt = this.edit.offsetEdge = this.edit.offsetLink = undefined;
+      return this.resetDrawing();
+    }
     // Of the face's outline: kept as a link to it, not as curves of their own.
     if (this.edit.offsetOf?.startsWith("bnd-") && this.edit.offsetAt) {
       const link = { id: uid(), distance: memory.offset, at: this.edit.offsetAt, ...(memory.offsetMode === "edge" ? { single: true } : {}) };
