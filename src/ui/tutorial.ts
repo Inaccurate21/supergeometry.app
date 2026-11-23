@@ -23,7 +23,7 @@ export interface TutorialHost {
     phase?: string;
     pts?: unknown[];
     entities?: SketchEntity[];
-    feature?: { distance?: number; source?: { regions?: unknown[] }; target?: string; tools?: string[]; keepTools?: boolean; clearance?: number; pitch?: number; left?: boolean; starts?: number };
+    feature?: { start?: number; distance?: number; source?: { regions?: unknown[] }; target?: string; tools?: string[]; keepTools?: boolean; clearance?: number; pitch?: number; left?: boolean; starts?: number };
   };
   selection(): Sel[];
   setSelection(sel: Sel[]): void;
@@ -44,7 +44,7 @@ export interface TutorialHost {
   /** The view brought as near as shows `mm` of the model in `px` of the screen. */
   zoomTo(mm: number, px: number): void;
   /** A size of the tool that is open set (Extrude's distance, Subtract's clearance, Thread's pitch), and shown. */
-  setNumber(field: "distance" | "clearance" | "pitch", mm: number): void;
+  setNumber(field: "distance" | "start" | "clearance" | "pitch", mm: number): void;
   /** Chamfer open: the straight edges of its body that lie at the height `z` are chamfered with the rest. */
   chamferAt(z: number): void;
   /** A press however long is a tap (on), or press-and-hold is itself again (off). */
@@ -92,6 +92,11 @@ const ROD_L = 20;
 const HEX_R = 16 / Math.sqrt(3);
 const HEAD_H = 6.4;
 const NUT_H = 8.4;
+// The nut is made a little way up the rod, not at its end. The bolt's thread begins just above the rod's end, a
+// partial turn first: a nut cut round the bolt there has, below where the thread begins, a plain bore the thread
+// cannot pass - it could be turned a third of a turn towards the head and no further (found with Stop on contact).
+// Up here the thread runs through the whole nut, and the nut turns both ways.
+const NUT_UP = 4;
 const PITCH = 1.5;
 
 const overlap = (a: Box, b: Box) => a.left < b.right && b.left < a.right && a.top < b.bottom && b.top < a.bottom;
@@ -356,7 +361,7 @@ export class Tutorial {
     // A shape pulled up: Extrude beside it, its height typed, Done.
     // (No `distance` step: the height is set for them - asked for: "make the thickness of the bolt head and nut a
     // default because they can type a ridiculous value and it will break".)
-    const pulling = (ids: { extrude: StepId; all?: StepId; distance?: StepId; type?: StepId; done: StepId }, pick: Vec3, mm: number, say: { extrude: string; done: string }): Step => {
+    const pulling = (ids: { extrude: StepId; all?: StepId; distance?: StepId; type?: StepId; done: StepId }, pick: Vec3, mm: number, say: { extrude: string; done: string }, from = 0): Step => {
       if (tool.id === "extrude") {
         const typing = document.querySelector<HTMLElement>(".sn-sheet.sn-typing:not([hidden])");
         if (typing && ids.type) return lit(ids.type, `Type ${mm}, then press Enter.`, [typing, document.querySelector(".numpad:not([hidden])")], true);
@@ -366,6 +371,7 @@ export class Tutorial {
         }
         if (!ids.distance) {
           if (Math.abs((tool.feature?.distance ?? 0) - mm) > 1e-9) h.setNumber("distance", mm);
+          if (Math.abs((tool.feature?.start ?? 0) - from) > 1e-9) h.setNumber("start", from);
           return lit(ids.done, say.done, [this.done()]);
         }
         if (!tool.feature?.distance) return lit(ids.distance, "How tall? Tap Distance.", [this.word("p-number-Distance")]);
@@ -417,6 +423,7 @@ export class Tutorial {
     };
     const headH = Math.abs((extrudes[1] as { distance?: number } | undefined)?.distance ?? HEAD_H);
     const nutH = Math.abs((extrudes[2] as { distance?: number } | undefined)?.distance ?? NUT_H);
+    const nutUp = (extrudes[2] as { start?: number } | undefined)?.start ?? 0;
 
     // ---- the nut fits the bolt: done.
     if (fitted && tool.id === "select") return null;
@@ -443,7 +450,7 @@ export class Tutorial {
 
     // ---- the nut's top edges chamfered (Modify)
     if (extrudes.length >= 3 && bevels < 2 && (tool.id === "select" || tool.id === "chamfer")) {
-      return bevelling({ face: "bevel2-face", modify: "bevel2-modify", tool: "bevel2-tool", done: "bevel2-done" }, nut, towardsEye(1.35 * R, nutH), 0, { face: "A hexagon block round the bolt. Chamfer it too: tap its flat top.", done: "Its underside is chamfered with it. Tap Done." });
+      return bevelling({ face: "bevel2-face", modify: "bevel2-modify", tool: "bevel2-tool", done: "bevel2-done" }, nut, towardsEye(1.35 * R, nutUp + nutH), nutUp, { face: "A hexagon block round the bolt. Chamfer it too: tap its flat top.", done: "Its underside is chamfered with it. Tap Done." });
     }
 
     // ---- the nut (a hexagon on the floor, pulled up round the rod)
@@ -453,7 +460,7 @@ export class Tutorial {
         return drawing({ draw: "nut-draw", shape: "nut-polygon", centre: "nut-centre", edge: "nut-corner", exit: "nut-exit" }, "polygon", "Polygon", [0, 0, 0], [HEX_R, 0, 0], { draw: "Tap Draw.", centre: "Tap the middle of the bolt.", edge: "Tap here: a corner of the nut.", exit: "Tap Exit." });
       }
       const nutSketch = sketches[2];
-      if (nutSketch?.entities.length || tool.id === "extrude") return pulling({ extrude: "nut-extrude", done: "nut-done" }, [1.3 * R, 0, 0], NUT_H, { extrude: "Tap Extrude.", done: `It is set ${NUT_H} mm thick for you, as an M10 nut is. Tap Done.` });
+      if (nutSketch?.entities.length || tool.id === "extrude") return pulling({ extrude: "nut-extrude", done: "nut-done" }, [1.3 * R, 0, 0], NUT_H, { extrude: "Tap Extrude.", done: `It is set ${NUT_H} mm thick for you, as an M10 nut is, and ${NUT_UP} mm up the thread. Tap Done.` }, NUT_UP);
       if (tool.id === "select") {
         if (sel.length) h.setSelection([]);
         return lit("nut-sketch", "The bolt is done. Now its nut: tap Sketch.", [this.word("g-sketch")]);

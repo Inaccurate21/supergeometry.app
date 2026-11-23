@@ -1729,7 +1729,7 @@ export class App implements AppContext {
       exact: (kind, centre, edge) => void (this.tool instanceof SketchTool && this.tool.exact(kind, centre, edge)),
       setNumber: (field, mm) => {
         const t = this.tool as unknown as { id: string; feature?: Record<string, unknown>; render?(): void; update?(): void; setPitch?(v: number): void };
-        if (!t.feature || t.id !== { clearance: "boolean", distance: "extrude", pitch: "thread" }[field]) return;
+        if (!t.feature || t.id !== { clearance: "boolean", distance: "extrude", start: "extrude", pitch: "thread" }[field]) return;
         // (A thread: a plain right-hand one of one start, whatever the thread made last on a rod this size was.)
         if (field === "pitch") {
           t.feature.left = undefined;
