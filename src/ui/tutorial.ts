@@ -23,7 +23,7 @@ export interface TutorialHost {
     phase?: string;
     pts?: unknown[];
     entities?: SketchEntity[];
-    feature?: { distance?: number; source?: { regions?: unknown[] }; target?: string; tools?: string[]; keepTools?: boolean; clearance?: number };
+    feature?: { distance?: number; source?: { regions?: unknown[] }; target?: string; tools?: string[]; keepTools?: boolean; clearance?: number; pitch?: number; left?: boolean; starts?: number };
   };
   selection(): Sel[];
   setSelection(sel: Sel[]): void;
@@ -43,8 +43,10 @@ export interface TutorialHost {
   closePanels(): void;
   /** The view brought as near as shows `mm` of the model in `px` of the screen. */
   zoomTo(mm: number, px: number): void;
-  /** A size of the tool that is open set (Extrude's distance, Subtract's clearance), and shown. */
-  setNumber(field: "distance" | "clearance", mm: number): void;
+  /** A size of the tool that is open set (Extrude's distance, Subtract's clearance, Thread's pitch), and shown. */
+  setNumber(field: "distance" | "clearance" | "pitch", mm: number): void;
+  /** The circle or polygon drawn last in the sketch that is open, put exactly: its middle and a point of its rim. */
+  exact(kind: "circle" | "polygon", centre: Vec3, edge: Vec3): void;
 }
 
 type Box = { left: number; top: number; right: number; bottom: number };
@@ -62,13 +64,13 @@ const ORDER = [
   // The rod
   "rod-draw", "rod-circle", "rod-centre", "rod-rim", "rod-exit", "rod-extrude", "rod-distance", "rod-type", "rod-done",
   // Its head
-  "head-face", "head-sketch", "head-draw", "head-polygon", "head-centre", "head-corner", "head-exit", "head-extrude", "head-all", "head-distance", "head-type", "head-done",
+  "head-face", "head-sketch", "head-draw", "head-polygon", "head-centre", "head-corner", "head-exit", "head-extrude", "head-all", "head-done",
   // The head's edges chamfered
   "bevel1-face", "bevel1-modify", "bevel1-tool", "bevel1-done",
   // Its thread
   "thread-wall", "thread-tool", "thread-done",
   // The nut
-  "nut-sketch", "nut-plane", "nut-draw", "nut-polygon", "nut-centre", "nut-corner", "nut-exit", "nut-extrude", "nut-distance", "nut-type", "nut-done",
+  "nut-sketch", "nut-plane", "nut-draw", "nut-polygon", "nut-centre", "nut-corner", "nut-exit", "nut-extrude", "nut-done",
   // The nut's edges chamfered
   "bevel2-face", "bevel2-modify", "bevel2-tool", "bevel2-done",
   // The two made to fit, with room to turn
@@ -78,6 +80,16 @@ type StepId = (typeof ORDER)[number];
 const STEPS = ORDER.length;
 
 const box = (x: number, y: number, half: number): Box => ({ left: x - half, top: y - half, right: x + half, bottom: y + half });
+// The sizes: an M10 bolt and nut as the standard has them. The rod 10 across; the hexagons 16 across their flats
+// (18.48 corner to corner); the head 6.4 thick, the nut 8.4; the thread's pitch 1.5. (Asked for: "the dimensions
+// should be exactly like from a real bolt and nut".)
+const ROD_R = 5;
+const ROD_L = 20;
+const HEX_R = 16 / Math.sqrt(3);
+const HEAD_H = 6.4;
+const NUT_H = 8.4;
+const PITCH = 1.5;
+
 const overlap = (a: Box, b: Box) => a.left < b.right && b.left < a.right && a.top < b.bottom && b.top < a.bottom;
 
 export class Tutorial {
@@ -235,12 +247,14 @@ export class Tutorial {
     // The rod as it was made: its radius, and how high its top is.
     const rodSketch = sketches[0];
     const rod = rodSketch?.entities.find((e) => e.kind === "circle") as Extract<SketchEntity, { kind: "circle" }> | undefined;
-    const R = rod?.radius ?? 5;
-    const H = Math.abs((extrudes[0] as { distance?: number } | undefined)?.distance ?? 20);
+    const R = rod?.radius ?? ROD_R;
+    const H = Math.abs((extrudes[0] as { distance?: number } | undefined)?.distance ?? ROD_L);
 
     // A shape being drawn in the sketch that is open: Draw, the shape, its two taps, Exit.
     const drawing = (ids: { draw: StepId; shape: StepId; centre: StepId; edge: StepId; exit: StepId }, kind: "circle" | "polygon", name: string, centre: Vec3, edge: Vec3, say: { draw: string; centre: string; edge: string; exit: string }): Step => {
       const made = (tool.entities ?? []).some((e) => e.kind === kind);
+      // (Drawn: put exactly where the two spots were, whatever the finger found inside them.)
+      if (made) h.exact(kind, centre, edge);
       if (made) return lit(ids.exit, say.exit, [document.querySelector("#sentence .sn-exit")]);
       if (tool.kind === kind) return (tool.pts?.length ?? 0) === 0 ? lit(ids.centre, say.centre, [this.at(centre, 22)]) : lit(ids.edge, say.edge, [this.at(edge, 22)]);
       const inList = this.listed(name);
@@ -248,13 +262,19 @@ export class Tutorial {
       return lit(ids.draw, say.draw, [this.word("g-draw")]);
     };
     // A shape pulled up: Extrude beside it, its height typed, Done.
-    const pulling = (ids: { extrude: StepId; all?: StepId; distance: StepId; type: StepId; done: StepId }, pick: Vec3, mm: number, say: { extrude: string; done: string }): Step => {
+    // (No `distance` step: the height is set for them - asked for: "make the thickness of the bolt head and nut a
+    // default because they can type a ridiculous value and it will break".)
+    const pulling = (ids: { extrude: StepId; all?: StepId; distance?: StepId; type?: StepId; done: StepId }, pick: Vec3, mm: number, say: { extrude: string; done: string }): Step => {
       if (tool.id === "extrude") {
         const typing = document.querySelector<HTMLElement>(".sn-sheet.sn-typing:not([hidden])");
-        if (typing) return lit(ids.type, `Type ${mm}, then press Enter.`, [typing, document.querySelector(".numpad:not([hidden])")], true);
+        if (typing && ids.type) return lit(ids.type, `Type ${mm}, then press Enter.`, [typing, document.querySelector(".numpad:not([hidden])")], true);
         if (ids.all && (tool.feature?.source?.regions?.length ?? 0) < 2) {
           const all = this.option("p-button-All shapes", "All shapes");
           return lit(ids.all, all.opened ? "Tap All shapes: the whole hexagon, not only its rim." : "Tap Options.", [all.el]);
+        }
+        if (!ids.distance) {
+          if (Math.abs((tool.feature?.distance ?? 0) - mm) > 1e-9) h.setNumber("distance", mm);
+          return lit(ids.done, say.done, [this.done()]);
         }
         if (!tool.feature?.distance) return lit(ids.distance, "How tall? Tap Distance.", [this.word("p-number-Distance")]);
         // Another size typed (a slip of the finger, a key too many): put right - the rest of the build goes by it.
@@ -298,8 +318,8 @@ export class Tutorial {
       const a = Math.atan2(eye.y, eye.x);
       return [r * Math.cos(a), r * Math.sin(a), z];
     };
-    const headH = Math.abs((extrudes[1] as { distance?: number } | undefined)?.distance ?? 5);
-    const nutH = Math.abs((extrudes[2] as { distance?: number } | undefined)?.distance ?? 6);
+    const headH = Math.abs((extrudes[1] as { distance?: number } | undefined)?.distance ?? HEAD_H);
+    const nutH = Math.abs((extrudes[2] as { distance?: number } | undefined)?.distance ?? NUT_H);
 
     // ---- the nut fits the bolt: done.
     if (fitted && tool.id === "select") return null;
@@ -326,17 +346,17 @@ export class Tutorial {
 
     // ---- the nut's top edges chamfered (Modify)
     if (extrudes.length >= 3 && bevels < 2 && (tool.id === "select" || tool.id === "chamfer")) {
-      return bevelling({ face: "bevel2-face", modify: "bevel2-modify", tool: "bevel2-tool", done: "bevel2-done" }, nut, towardsEye(1.55 * R, nutH), { face: "A hexagon block round the bolt. Chamfer it too: tap its flat top.", done: "Tap Done." });
+      return bevelling({ face: "bevel2-face", modify: "bevel2-modify", tool: "bevel2-tool", done: "bevel2-done" }, nut, towardsEye(1.35 * R, nutH), { face: "A hexagon block round the bolt. Chamfer it too: tap its flat top.", done: "Tap Done." });
     }
 
     // ---- the nut (a hexagon on the floor, pulled up round the rod)
     if (threaded && extrudes.length === 2) {
       if (tool.id === "sketch") {
         if (tool.phase === "plane") return lit("nut-plane", "Tap XY: the nut is drawn on the floor.", [Array.from(document.querySelectorAll("#sentence .sn-word")).find((w) => (w.textContent ?? "").trim().startsWith("XY"))]);
-        return drawing({ draw: "nut-draw", shape: "nut-polygon", centre: "nut-centre", edge: "nut-corner", exit: "nut-exit" }, "polygon", "Polygon", [0, 0, 0], [2 * R, 0, 0], { draw: "Tap Draw.", centre: "Tap the middle of the bolt.", edge: "Tap here: a corner of the nut.", exit: "Tap Exit." });
+        return drawing({ draw: "nut-draw", shape: "nut-polygon", centre: "nut-centre", edge: "nut-corner", exit: "nut-exit" }, "polygon", "Polygon", [0, 0, 0], [HEX_R, 0, 0], { draw: "Tap Draw.", centre: "Tap the middle of the bolt.", edge: "Tap here: a corner of the nut.", exit: "Tap Exit." });
       }
       const nutSketch = sketches[2];
-      if (nutSketch?.entities.length || tool.id === "extrude") return pulling({ extrude: "nut-extrude", distance: "nut-distance", type: "nut-type", done: "nut-done" }, [1.5 * R, 0, 0], 6, { extrude: "Tap Extrude.", done: "Tap Done: a hexagon block, round the bolt." });
+      if (nutSketch?.entities.length || tool.id === "extrude") return pulling({ extrude: "nut-extrude", done: "nut-done" }, [1.3 * R, 0, 0], NUT_H, { extrude: "Tap Extrude.", done: `It is set ${NUT_H} mm thick for you, as an M10 nut is. Tap Done.` });
       if (tool.id === "select") {
         if (sel.length) h.setSelection([]);
         return lit("nut-sketch", "The bolt is done. Now its nut: tap Sketch.", [this.word("g-sketch")]);
@@ -350,7 +370,11 @@ export class Tutorial {
 
     // ---- the thread (Modify)
     if (extrudes.length === 2 && bevels >= 1 && !threaded && (tool.id === "select" || tool.id === "thread")) {
-      if (tool.id === "thread") return lit("thread-done", "Tap Done. Cutting the thread takes a moment.", [this.done()]);
+      if (tool.id === "thread") {
+        const f = tool.feature ?? {};
+        if (Math.abs((f.pitch ?? 0) - PITCH) > 1e-9 || f.left || f.starts) h.setNumber("pitch", PITCH);
+        return lit("thread-done", "An M10 thread, 1.5 mm from turn to turn. Tap Done: cutting it takes a moment.", [this.done()]);
+      }
       const face = sel.length === 1 && sel[0].kind === "face" ? h.faces(sel[0].body)[sel[0].face] : null;
       if (face?.type === "CYLINDRE") return lit("thread-tool", "Tap Thread.", [this.quick("Thread")]);
       if (sel.length) h.setSelection([]);
@@ -362,9 +386,9 @@ export class Tutorial {
 
     // ---- the head (a hexagon on the rod's top, pulled up)
     if (extrudes.length === 1 || (extrudes.length === 2 && tool.id === "extrude" && !threaded)) {
-      if (tool.id === "sketch") return drawing({ draw: "head-draw", shape: "head-polygon", centre: "head-centre", edge: "head-corner", exit: "head-exit" }, "polygon", "Polygon", [0, 0, H], [2 * R, 0, H], { draw: "Tap Draw.", centre: "Tap the middle of the rod.", edge: "Tap here: a corner of the head.", exit: "A hexagon. Tap Exit." });
+      if (tool.id === "sketch") return drawing({ draw: "head-draw", shape: "head-polygon", centre: "head-centre", edge: "head-corner", exit: "head-exit" }, "polygon", "Polygon", [0, 0, H], [HEX_R, 0, H], { draw: "Tap Draw.", centre: "Tap the middle of the rod.", edge: "Tap here: a corner of the head.", exit: "A hexagon. Tap Exit." });
       const headSketch = sketches[1];
-      if (headSketch?.entities.length || tool.id === "extrude") return pulling({ extrude: "head-extrude", all: "head-all", distance: "head-distance", type: "head-type", done: "head-done" }, [1.5 * R, 0, H], 5, { extrude: "Tap Extrude.", done: "Tap Done." });
+      if (headSketch?.entities.length || tool.id === "extrude") return pulling({ extrude: "head-extrude", all: "head-all", done: "head-done" }, [1.3 * R, 0, H], HEAD_H, { extrude: "Tap Extrude.", done: `It is set ${HEAD_H} mm thick for you, as an M10 bolt's head is. Tap Done.` });
       if (tool.id === "select") {
         const top = sel.length === 1 && sel[0].kind === "face" ? h.faces(sel[0].body)[sel[0].face] : null;
         if (top?.type === "PLANE" && top.normal[2] > 0.9) return lit("head-sketch", "Tap Sketch: you can draw on a face.", [this.quick("Sketch")]);
@@ -377,9 +401,9 @@ export class Tutorial {
     if (!extrudes.length) {
       if (tool.id === "sketch") {
         if (tool.phase === "plane") return lit("rod-draw", "Tap XY: you will draw on the floor.", [Array.from(document.querySelectorAll("#sentence .sn-word")).find((w) => (w.textContent ?? "").trim().startsWith("XY"))]);
-        return drawing({ draw: "rod-draw", shape: "rod-circle", centre: "rod-centre", edge: "rod-rim", exit: "rod-exit" }, "circle", "Circle", [0, 0, 0], [5, 0, 0], { draw: "You will build a bolt and its nut. A part starts as a flat drawing: tap Draw.", centre: "Tap here: the middle of the circle.", edge: "Now tap here: how big it is.", exit: "That is the rod's outline. Tap Exit." });
+        return drawing({ draw: "rod-draw", shape: "rod-circle", centre: "rod-centre", edge: "rod-rim", exit: "rod-exit" }, "circle", "Circle", [0, 0, 0], [ROD_R, 0, 0], { draw: "You will build a bolt and its nut. A part starts as a flat drawing: tap Draw.", centre: "Tap here: the middle of the circle.", edge: "Now tap here: how big it is.", exit: "That is the rod's outline. Tap Exit." });
       }
-      if (rodSketch?.entities.length || tool.id === "extrude") return pulling({ extrude: "rod-extrude", distance: "rod-distance", type: "rod-type", done: "rod-done" }, [R * 0.5, 0, 0], 20, { extrude: "Tap Extrude: it pulls a flat shape up into a solid.", done: "Tap Done to keep it." });
+      if (rodSketch?.entities.length || tool.id === "extrude") return pulling({ extrude: "rod-extrude", distance: "rod-distance", type: "rod-type", done: "rod-done" }, [R * 0.5, 0, 0], ROD_L, { extrude: "Tap Extrude: it pulls a flat shape up into a solid.", done: "Tap Done to keep it." });
       if (tool.id === "select") return lit("rod-draw", "A part starts as a flat drawing. Tap Sketch.", [this.word("g-sketch")]);
     }
     // (Something else is open - a tool the tutorial has no use for: nothing lit, and the card says so after a moment.)
@@ -404,7 +428,7 @@ export class Tutorial {
         this.shade.remove();
         this.ring.remove();
         window.removeEventListener("keydown", this.onKey, true);
-        this.show("A bolt and its nut, ready to print: the nut's thread is 0.2 mm bigger all round, so it turns. Drag to look at them, pinch or use the wheel to zoom. File has Export STL and 3MF.", "Done", [], "Finish");
+        this.show("An M10 bolt and its nut, in their real sizes and ready to print: the nut's thread is 0.2 mm bigger all round, so it turns. Drag to look at them, pinch or use the wheel to zoom. File has Export STL and 3MF.", "Done", [], "Finish");
       }
       return;
     }

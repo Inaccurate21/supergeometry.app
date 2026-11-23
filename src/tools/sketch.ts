@@ -4176,6 +4176,29 @@ export class SketchTool implements Tool {
     return titleOf(k);
   }
 
+  /**
+   * The tutorial's: the circle or polygon drawn last put exactly where it was meant - its middle at `centre`, its
+   * rim (a corner, of a polygon) at `edge`, both in the model's space. What the taps tied it to is let go: it is
+   * where it is by its numbers. (Asked for: "you can place it slightly off the project center or different
+   * distances ... make it so its placed exactly where its supposed to be".)
+   */
+  exact(kind: "circle" | "polygon", centre: Vec3, edge: Vec3): void {
+    if (!this.plane) return;
+    const e = [...this.entities].reverse().find((x) => x.kind === kind);
+    if (!e || (e.kind !== "circle" && e.kind !== "polygon")) return;
+    const c = toPlane(this.plane, centre);
+    const b = toPlane(this.plane, edge);
+    const radius = Math.hypot(b[0] - c[0], b[1] - c[1]);
+    const angle = Math.atan2(b[1] - c[1], b[0] - c[0]);
+    const turn = e.kind === "polygon" ? Math.abs(Math.sin((e.angle - angle) * e.sides * 0.5)) : 0;
+    if (Math.hypot(e.center[0] - c[0], e.center[1] - c[1]) < 1e-9 && Math.abs(e.radius - radius) < 1e-9 && turn < 1e-9) return;
+    const next: SketchEntity = e.kind === "polygon" ? { ...e, center: c, radius, angle } : { ...e, center: c, radius };
+    this.commit(
+      this.entities.map((x) => (x.id === e.id ? next : x)),
+      this.constraints.filter((k) => !JSON.stringify(k).includes(e.id)),
+    );
+  }
+
   /** An edit that changed curves: their constraints follow (or go, where they no longer hold). */
   private commitEdit(entities: SketchEntity[]): void {
     this.commit(entities, carryConstraints(this.entities, entities, this.constraints));
