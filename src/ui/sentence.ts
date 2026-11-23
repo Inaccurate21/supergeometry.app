@@ -1123,20 +1123,22 @@ export class Sentence {
     {
       const d = o.kind === "all" ? this.end.querySelector<HTMLElement>(".sn-all") : this.row.querySelector<HTMLElement>(`[data-key="${CSS.escape((o as { key: string }).key)}"]`);
       const lr = this.line.getBoundingClientRect();
+      // (The line's own width: with a list standing past its end, the line is as wide as the two together.)
+      const room = this.sheet.querySelector(".sn-group-words") && this.lineWidth ? this.lineWidth : lr.width;
       if (d) {
         const r = d.getBoundingClientRect();
         this.sheet.style.setProperty("--sn-at", `${Math.round(Math.min(lr.width - 20, Math.max(20, r.left + r.width / 2 - lr.left)))}px`);
         // Right over its word: its middle on the word's middle, as far as the line's ends allow. (By its own width as
         // drawn - the stylesheet's guess at it left a wide list off to one side. A phone held upright: the stylesheet's.)
         const w = this.sheet.offsetWidth;
-        this.sheet.style.marginLeft = getComputedStyle(this.sheet).alignSelf === "stretch" ? "" : `${Math.round(Math.max(0, Math.min(lr.width - w, r.left + r.width / 2 - lr.left - w / 2)))}px`;
+        this.sheet.style.marginLeft = getComputedStyle(this.sheet).alignSelf === "stretch" ? "" : `${Math.round(Math.max(0, Math.min(room - w, r.left + r.width / 2 - lr.left - w / 2)))}px`;
       } else {
         // A list opened from inside another (Construct > Axis): it has no word on the line to stand over - where
         // the one before it stood, as far as its own width allows. (It kept that one's place whatever its width: a
         // wider list then ran off the edge of the screen, its last buttons with it.)
         const w = this.sheet.offsetWidth;
         const was = parseFloat(this.sheet.style.marginLeft) || 0;
-        this.sheet.style.marginLeft = `${Math.round(Math.max(0, Math.min(lr.width - w, was)))}px`;
+        this.sheet.style.marginLeft = `${Math.round(Math.max(0, Math.min(room - w, was)))}px`;
       }
     }
     this.lift();
@@ -1149,11 +1151,25 @@ export class Sentence {
    * wider, so no row ends in a gap. The list is then just as wide as its rows. (It was one width for any number of
    * buttons, each row ending where its words happened to.)
    */
+  /** The line's own width, as last measured with the list out of the way (0: not measured). */
+  private lineWidth = 0;
+
   private fit(): void {
     const sheet = this.sheet;
     const groups = Array.from(sheet.querySelectorAll<HTMLElement>(".sn-group-words"));
     if (!groups.length) return;
     const phone = document.documentElement.dataset.screen === "phone";
+    // How wide the line is by itself, the list out of the way: left as it comes, the list is as wide as all its
+    // buttons in one row, and the box the two share - and the line with it - widened to that. (The line may be as
+    // wide as there is room for now: a list opened from More stretched it right across the screen.)
+    // (Nor where the list before it stood: a list opened from inside another keeps that place for now, and a wider
+    // one there reached past the line's end.)
+    const stood = sheet.style.marginLeft;
+    sheet.style.maxWidth = "";
+    sheet.style.width = "0px";
+    sheet.style.marginLeft = "0px";
+    const lineWidth = (this.lineWidth = this.line.getBoundingClientRect().width);
+    sheet.style.marginLeft = stood;
     // As they come, to see how wide the widest is.
     sheet.style.width = sheet.style.maxWidth = sheet.style.alignSelf = "";
     for (const g of groups) {
@@ -1171,7 +1187,7 @@ export class Sentence {
     const gap = parseFloat(getComputedStyle(groups[0]).columnGap) || 5;
     const cs = getComputedStyle(sheet);
     const frame = parseFloat(cs.paddingLeft) + parseFloat(cs.paddingRight) + parseFloat(cs.borderLeftWidth) + parseFloat(cs.borderRightWidth);
-    const room = this.line.getBoundingClientRect().width - frame;
+    const room = lineWidth - frame;
     const cell = Math.min(room, Math.max(widest, phone ? 92 : 84));
     // (Up to five in one row; more than that, four across - a card, not a strip.)
     const fits = Math.max(1, Math.min(most <= 5 ? 5 : 4, Math.floor((room + gap) / (cell + gap))));
