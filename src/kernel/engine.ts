@@ -81,7 +81,7 @@ import { cylinderOf, deleteFace,
  deleteFaces as deleteBodyFaces, editNotes, freeformFace, sameSizesAgain, sheetFace, sheetFaces, hasBlends, inFlatFace, looseBox, offsetFace, onFace as pointOnFace, planeOf, replaceFacePlane, SIDES_MEET, sizeOf, unify } from "./faceEdit";
 import { threadDepth } from "./threads";
 import { faceMiddle, holeCutter, holeFault, roundCentre } from "./hole";
-import { meshFlatFaces, meshModel, meshParts, stlTriangles, type MeshCylinder, type MeshFace, type MeshStandIn } from "./meshRound";
+import { meshFlatFaces, meshModel, meshParts, stlTriangles, type MeshModel, type MeshCylinder, type MeshFace, type MeshStandIn } from "./meshRound";
 import { holeFromLines } from "../doc/holeSizes";
 import { anchorOf, freeformFaces, meshViews, viewEdge } from "./viewLines";
 import { entitiesWire, pathOf, regionFaces, regionHoleWires, regionWire, withFittedSplines } from "./sketchGeom";
@@ -5786,21 +5786,25 @@ function meshBodyOf(bytes: Uint8Array): { shape: Shape3D; made: number } | null 
   // a body each (see "import"). A part inside another (a hollow's inner skin) is not a part of its own: the old way.
   const parts = meshParts(all);
   if (!parts) return null;
-  if (parts.length === 1) return meshPartBody(all);
-  const made = parts.map((p) => meshPartBody(p));
+  // Read first, all of it, which is quick; built only if it is worth building.
+  const models = parts.map((p) => meshModel(p));
+  if (models.some((m) => !m)) return null;
+  // (A mesh with little flat in it - a figure, a scan, a bowl whose curves are cut into four-sided flats, two
+  // triangles each: nearly a face a triangle, or a face to two. Building that face by face took as long again as
+  // the kernel's own reader, for nothing - 11 s more on a bowl of 62,000 triangles, in one part or in four. Counted
+  // after the round parts' strips are taken out, so a part that is mostly holes and bosses is not taken for one.)
+  const count = all.length / 9;
+  if (count > 5000 && models.reduce((s, m) => s + m!.faces.length, 0) > count * 0.4) return null;
+  const made = parts.map((p, i) => meshPartBody(p, models[i]!));
   if (made.some((m) => !m)) return null;
+  if (made.length === 1) return made[0];
   return { shape: makeCompound(made.map((m) => m!.shape.clone())) as unknown as Shape3D, made: made.reduce((s, m) => s + m!.made, 0) };
 }
 
-function meshPartBody(tris: Float64Array): { shape: Shape3D; made: number } | null {
-  const count = tris.length / 9;
-  // Round parts stood in for by a few flats each, then made round with one ring each: quick. Should any of that
-  // not come out sound, the plain way: every strip a face, the round parts made round one after another.
-  const model = meshModel(tris);
-  if (!model) return null;
-  // (A mesh with nothing flat to speak of - a figure, a scan: a face a triangle either way, and the kernel's own
-  // reader is quicker at that.)
-  if (count > 5000 && model.faces.length > count * 0.8) return null;
+/** One part of a mesh, read (see meshModel), as a body: round parts stood in for and made round with a ring each. */
+function meshPartBody(tris: Float64Array, model: MeshModel): { shape: Shape3D; made: number } | null {
+  // Should any of the quick way not come out sound, the plain way: every strip a face, the round parts made round
+  // one after another.
   const quick = model.rounds.length ? facesSolid(model.faces) : null;
   const rounded = quick && ringsOn(quick, model.rounds);
   if (rounded) {
