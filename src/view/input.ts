@@ -1,4 +1,4 @@
-import { mouseDrag, settings } from "../settings";
+import { mouseChord, mouseDrag, settings } from "../settings";
 import { isHeadset, pickTolerance } from "../device";
 // One input model for mouse, touch and pen (see docs/ARCHITECTURE.md §5).
 
@@ -150,6 +150,7 @@ export class InputRouter {
     if (nav) {
       // Right button: a drag orbits, a click is a "context" action (decided on move/up).
       this.mode = nav === "right" ? "rpending" : nav;
+      this.navBase = nav === "right" ? null : nav;
       return;
     }
     this.modifiers = e.ctrlKey || e.metaKey || e.shiftKey;
@@ -218,6 +219,11 @@ export class InputRouter {
     t.y = y;
     t.shift = e.shiftKey;
 
+    // A middle drag with another button held too (some programs' way to turn or zoom): what the preset says for
+    // it, and back to the middle button's own once that button is let go.
+    if (t.type === "mouse" && t.button === 1 && this.navBase && (this.mode === "orbit" || this.mode === "pan" || this.mode === "zoom")) {
+      this.mode = mouseChord(settings.value.mouse, e.buttons) ?? this.navBase;
+    }
     switch (this.mode) {
       case "rpending":
         if (Math.hypot(x - t.x0, y - t.y0) >= TAP_SLOP.mouse) this.mode = "orbit";
@@ -316,6 +322,8 @@ export class InputRouter {
     }
   }
 
+  /** What the press that began this drag of the view does by itself (see the chord above). */
+  private navBase: "orbit" | "pan" | "zoom" | null = null;
   private hoverAt: ToolPointer | null = null;
   private hoverFrame = 0;
 

@@ -7,7 +7,7 @@
 
 import type { SavedView, Units, Vec3 } from "../doc/types";
 import type { DocStore } from "../doc/store";
-import { settings, type MouseStyle, type Settings } from "../settings";
+import { MOUSE_PRESETS, mousePreset, settings, type Settings } from "../settings";
 import { fmtLen as lenText, UNIT_LABEL, units } from "../units";
 import type { Viewport } from "../view/viewport";
 import type { UI } from "./ui";
@@ -105,20 +105,22 @@ export function setupRightColumn(ui: UI, view: Viewport, store: DocStore, onUnit
     );
   }), undefined, stash);
 
-  // Mouse: which drags turn and move the view - for hands used to another program (asked for by many: "a setting
-  // menu with a list", "in Fusion I have to use shift+middle"). Only where there is a mouse.
+  // Mouse: which drags turn, move and zoom the view - the app's own way or another CAD program's, for hands used
+  // to it (asked for by many: "a setting menu with a list: default, Autodesk, onshape, etc", then "it should have
+  // controls presets from all major CAD apps"). Only where there is a mouse.
   lists.mouse = (host) => {
     const s = settings.value;
-    host.append(heading("Turn and move the view"));
-    for (const [id, label, more] of MOUSE_STYLES) {
-      const row = choiceRow(label, s.mouse === id, () => (settings.set("mouse", id), ui.refreshPopover()));
-      row.title = more;
+    const now = mousePreset(s.mouse);
+    host.append(heading("Mouse like in"));
+    for (const m of MOUSE_PRESETS) {
+      const row = choiceRow(m.apps, now.id === m.id, () => (settings.set("mouse", m.id), ui.refreshPopover()));
+      row.title = m.text;
       host.append(row);
     }
-    host.append(el("div", "pop-note", MOUSE_STYLES.find((m) => m[0] === s.mouse)![2]));
+    host.append(el("div", "pop-note", now.text));
     host.append(heading("Wheel"));
     host.append(toggleRow("Forward zooms out", s.wheelReverse, (v) => settings.set("wheelReverse", v)));
-    host.append(el("div", "pop-note", "Always: the wheel zooms where the pointer is, a right drag turns the view, Alt + left drag turns it too (a trackpad), and a left drag on empty space draws a box to select with."));
+    host.append(el("div", "pop-note", "Always: the wheel zooms where the pointer is, a plain right drag turns the view, Alt + left drag turns it too (a trackpad), and a left drag on empty space draws a box to select with."));
   };
 
   // Views (standard and saved): the button at the view cube's bottom right.
@@ -236,7 +238,7 @@ export function setupRightColumn(ui: UI, view: Viewport, store: DocStore, onUnit
         toggleRow("Number pad on screen", s.numpad, (v) => settings.set("numpad", v)),
         nav("Appearance", `${s.ortho ? "Orthographic" : "Perspective"}${s.showGrid ? "" : " · no grid"}`, "appearance"),
       );
-      if (matchMedia("(any-pointer: fine)").matches) host.append(nav("Mouse", MOUSE_STYLES.find((m) => m[0] === s.mouse)![3], "mouse"));
+      if (matchMedia("(any-pointer: fine)").matches) host.append(nav("Mouse", mousePreset(s.mouse).apps.split(",")[0], "mouse"));
     },
     () => UNIT_LABEL[units()],
   );
@@ -250,14 +252,6 @@ export function setupRightColumn(ui: UI, view: Viewport, store: DocStore, onUnit
   mark();
   settings.onChange(() => ui.refreshRight());
 }
-
-/** The mouse styles: id, the row, what it does in full, and in a word (for the Settings row). */
-const MOUSE_STYLES: [MouseStyle, string, string, string][] = [
-  ["right", "Right drag turns", "Right drag turns the view. Middle drag (or Shift + right drag) moves it.", "Right turns"],
-  ["middle", "Middle drag turns, Shift moves", "Middle drag turns the view. Shift + middle drag moves it, Ctrl + middle drag zooms.", "Middle turns"],
-  ["shiftMiddle", "Shift + middle turns, middle moves", "Shift + middle drag turns the view. Middle drag moves it, Ctrl + middle drag zooms.", "Shift + middle turns"],
-  ["ctrlMiddle", "Middle drag turns, Ctrl moves", "Middle drag turns the view. Ctrl + middle drag moves it, Shift + middle drag zooms.", "Middle turns, Ctrl moves"],
-];
 
 function heading(text: string): HTMLElement {
   return el("div", "pop-heading", text);

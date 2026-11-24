@@ -64,36 +64,113 @@ export interface Settings {
    */
   direct: boolean;
   /**
-   * Which mouse drags turn and move the view (Settings > Mouse), for hands used to another program:
-   *   right        right drag turns; middle drag (or Shift + right) moves
-   *   middle       middle drag turns; Shift + middle moves; Ctrl + middle zooms
-   *   shiftMiddle  Shift + middle drag turns; middle drag moves; Ctrl + middle zooms
-   *   ctrlMiddle   middle drag turns; Ctrl + middle moves; Shift + middle zooms
-   * In all of them the wheel zooms, Alt + left drag turns, and a right drag turns too.
+   * Which mouse drags turn, move and zoom the view (Settings > Mouse): the app's own way, or the way of another
+   * CAD program, for hands used to it (see MOUSE_PRESETS). In all of them the wheel zooms, Alt + left drag turns,
+   * and a right drag turns too unless the preset uses it for something else.
    */
-  mouse: MouseStyle;
+  mouse: string;
   /** The wheel rolled forward zooms out (it zooms in otherwise). */
   wheelReverse: boolean;
 }
 
-export type MouseStyle = "right" | "middle" | "shiftMiddle" | "ctrlMiddle";
+export type MouseNav = "orbit" | "pan" | "zoom";
 
-/** What a mouse press on the view does to the view, in a style: null, nothing (the press is for the tools). */
-export function mouseDrag(style: MouseStyle, button: number, keys: { shift: boolean; ctrl: boolean; alt: boolean }): "orbit" | "pan" | "zoom" | "right" | null {
+/**
+ * A way of working the view with a mouse. `middle` and `right`: what a drag with that button does, by the keys
+ * held (`plain`, `shift`, `ctrl`, `both` for Ctrl + Shift; one not given falls back to `plain`). `chord`: what
+ * the middle button's drag becomes while another button is held with it (CATIA, NX, FreeCAD).
+ */
+export interface MousePreset {
+  id: string;
+  /** The programs that work this way (the row in Settings). */
+  apps: string;
+  /** What it does, in words. */
+  text: string;
+  middle: { plain: MouseNav; shift?: MouseNav; ctrl?: MouseNav; both?: MouseNav };
+  right?: { shift?: MouseNav; ctrl?: MouseNav };
+  chord?: { left?: MouseNav; right?: MouseNav };
+}
+
+/**
+ * The presets. Asked for: "it should have controls presets from all major CAD apps". Each as its program's own
+ * help gives it (2026-11); programs that work the same way share a row. The wheel's way round is its own switch
+ * (programs differ, and each lets it be turned over).
+ */
+export const MOUSE_PRESETS: MousePreset[] = [
+  {
+    id: "default",
+    apps: "superGeometry, Onshape, Tinkercad",
+    text: "Right drag turns the view. Middle drag moves it (also Shift or Ctrl + right drag).",
+    middle: { plain: "pan" },
+    right: { shift: "pan", ctrl: "pan" },
+  },
+  {
+    id: "fusion",
+    apps: "Fusion, Inventor, Revit, AutoCAD",
+    text: "Shift + middle drag turns the view. Middle drag moves it. Ctrl + Shift + middle drag zooms.",
+    middle: { plain: "pan", shift: "orbit", both: "zoom" },
+    right: { shift: "pan" },
+  },
+  {
+    id: "solidworks",
+    apps: "SolidWorks",
+    text: "Middle drag turns the view. Ctrl + middle drag moves it. Shift + middle drag zooms.",
+    middle: { plain: "orbit", ctrl: "pan", shift: "zoom" },
+    right: { shift: "pan" },
+  },
+  {
+    id: "creo",
+    apps: "Creo, Solid Edge, Blender, SketchUp",
+    text: "Middle drag turns the view. Shift + middle drag moves it. Ctrl + middle drag zooms.",
+    middle: { plain: "orbit", shift: "pan", ctrl: "zoom" },
+    right: { shift: "pan" },
+  },
+  {
+    id: "nx",
+    apps: "NX",
+    text: "Middle drag turns the view. Middle + right drag (or Shift + middle) moves it. Middle + left drag (or Ctrl + middle) zooms.",
+    middle: { plain: "orbit", shift: "pan", ctrl: "zoom" },
+    right: { shift: "pan" },
+    chord: { right: "pan", left: "zoom" },
+  },
+  {
+    id: "catia",
+    apps: "CATIA, FreeCAD",
+    text: "Middle drag moves the view. Hold the middle button and press the left or right one too: the drag turns it. Ctrl + middle drag zooms.",
+    middle: { plain: "pan", ctrl: "zoom" },
+    right: { shift: "pan" },
+    chord: { left: "orbit", right: "orbit" },
+  },
+  {
+    id: "rhino",
+    apps: "Rhino",
+    text: "Right drag turns the view. Shift + right drag moves it. Ctrl + right drag zooms. Middle drag moves it too.",
+    middle: { plain: "pan" },
+    right: { shift: "pan", ctrl: "zoom" },
+  },
+];
+
+/** The preset in use (one not known - an older setting - is the app's own). */
+export function mousePreset(id: string): MousePreset {
+  return MOUSE_PRESETS.find((m) => m.id === id) ?? MOUSE_PRESETS[0];
+}
+
+/** What a mouse press on the view does to the view, in a preset: null, nothing (the press is for the tools). */
+export function mouseDrag(id: string, button: number, keys: { shift: boolean; ctrl: boolean; alt: boolean }): MouseNav | "right" | null {
+  const preset = mousePreset(id);
   if (button === 0) return keys.alt ? "orbit" : null;
-  // The right button: a drag turns the view, a click is the right-click (told apart as it moves). Shift: moves.
-  if (button === 2) return keys.shift ? "pan" : "right";
+  // The right button: a drag turns the view, a click is the right-click (told apart as it moves) - with a key, what the preset says.
+  if (button === 2) return (keys.ctrl ? preset.right?.ctrl : keys.shift ? preset.right?.shift : undefined) ?? "right";
   if (button !== 1) return null;
-  switch (style) {
-    case "middle":
-      return keys.shift ? "pan" : keys.ctrl ? "zoom" : "orbit";
-    case "shiftMiddle":
-      return keys.shift ? "orbit" : keys.ctrl ? "zoom" : "pan";
-    case "ctrlMiddle":
-      return keys.ctrl ? "pan" : keys.shift ? "zoom" : "orbit";
-    default:
-      return "pan";
-  }
+  const m = preset.middle;
+  return (keys.ctrl && keys.shift ? (m.both ?? m.ctrl ?? m.shift) : keys.ctrl ? m.ctrl : keys.shift ? m.shift : undefined) ?? m.plain;
+}
+
+/** A middle drag while other buttons are held with it (`buttons` as a pointer event gives them): what it becomes, or null. */
+export function mouseChord(id: string, buttons: number): MouseNav | null {
+  const chord = mousePreset(id).chord;
+  if (!chord || !(buttons & 4)) return null;
+  return (buttons & 1 ? chord.left : undefined) ?? (buttons & 2 ? chord.right : undefined) ?? null;
 }
 
 const DEFAULTS: Settings = {
@@ -127,7 +204,7 @@ const DEFAULTS: Settings = {
   offline: false,
   sentence: true,
   direct: true,
-  mouse: "right",
+  mouse: "default",
   wheelReverse: false,
   version: 5,
 };

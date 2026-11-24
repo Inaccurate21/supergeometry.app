@@ -106,10 +106,11 @@ There's no wrong order. Undo (bottom left) is always one tap away.
 | Deselect | Esc or click empty space | tap empty space | tap empty space |
 | Step back | right-click or Esc | - | - |
 
-- **Used to another program's mouse?** Settings → Mouse has four styles for
-  which drag turns and which moves the view (right drag turns; middle drag
-  turns with Shift to move; Shift + middle turns with middle to move; middle
-  turns with Ctrl to move), and which way the wheel zooms.
+- **Used to another program's mouse?** Settings → Mouse makes the buttons
+  turn, move and zoom the view as they do there: Onshape and Tinkercad (the
+  way the app comes), Fusion / Inventor / Revit / AutoCAD, SolidWorks,
+  Creo / Solid Edge / Blender / SketchUp, NX, CATIA / FreeCAD, or Rhino -
+  and sets which way the wheel zooms.
 - **Right-click steps back**: first what's half done or picked, then the
   drawing tool, then out of the sketch; in other tools it backs out. With
   something selected, right-click shows its tools by the pointer.
