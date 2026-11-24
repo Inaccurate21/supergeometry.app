@@ -118,6 +118,18 @@ export function showAbout(): void {
   head.append(closeBtn);
   const body = el("div", "about-body");
   body.innerHTML = render(aboutText());
+  // The name at the top opens the project's page on GitHub (asked for: "make the top text superGeometry.app
+  // clickable and should take you to the Github page").
+  const name = body.querySelector("h1");
+  if (name) {
+    const link = document.createElement("a");
+    link.href = REPO;
+    link.target = "_blank";
+    link.rel = "noopener";
+    link.title = "Open the project on GitHub";
+    link.append(...name.childNodes);
+    name.append(link);
+  }
   // The Contents links scroll within the window.
   body.addEventListener("click", (e) => {
     const a = (e.target as HTMLElement).closest<HTMLAnchorElement>("a[data-anchor]");

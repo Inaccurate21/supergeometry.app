@@ -2214,6 +2214,19 @@ form.dialog {
   font-size: 22px;
   margin: 8px 0 6px;
 }
+/* The name: a link to the project's page, looking like the name (underlined under the pointer). */
+.about-body h1 a {
+  color: inherit;
+  text-decoration: none;
+}
+.about-body h1 a:hover {
+  text-decoration: underline;
+}
+.about-body h1 a::after {
+  content: " ↗";
+  font-size: 14px;
+  color: var(--muted);
+}
 .about-body h2 {
   font-size: 18px;
   margin: 22px 0 6px;
