@@ -419,6 +419,32 @@ body.update-pending #more-btn::after,
   color: var(--muted);
   font-size: 12px;
 }
+/* The version line is a button: it opens What's new. */
+button.menu-note {
+  padding: 8px 10px;
+  color: var(--muted);
+  font-size: 12px;
+}
+.dialog.whats-new {
+  width: min(560px, calc(100vw - 24px));
+}
+.whats-new-tag {
+  margin-left: 8px;
+  padding: 1px 7px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 600;
+  color: #fff;
+  background: rgba(61, 139, 255, 0.85);
+  vertical-align: middle;
+}
+.whats-new-kind {
+  margin-top: 6px;
+  font-size: 11px;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
 /* Undo / redo dock: bottom-left corner, always; the section/measure buttons sit above it. */
 #undo-dock {
   position: fixed;

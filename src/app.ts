@@ -8,6 +8,7 @@ import { SUPPORT, openSupport } from "./ui/support";
 import { currentProjectId, forgetProject, keepProject, libraryEntries, newProjectId, projectText, renameProject, setCurrentProject } from "./doc/library";
 import { showLibrary } from "./ui/library";
 import { showAbout } from "./ui/about";
+import { showWhatsNew } from "./ui/whatsNew";
 import { findAction, openCommandSearch, showShortcuts } from "./ui/commands";
 import type { EdgeFeature, EdgeRef, ExtrudeFeature, ExtrudeSource, Feature, FillToPlaneFeature, ImageFeature, LoftFeature, PathRef, PinDef, PlaneDef, PlaneFeature, ProjectDoc, RevolveFeature, ShellFeature, SketchEntity, SketchFeature, SplitFeature, SweepFeature, TransformFeature, Units, Vec3 } from "./doc/types";
 import { emptyDoc } from "./doc/types";
@@ -1646,7 +1647,9 @@ export class App implements AppContext {
     on("file-btn", () => ((more.hidden = true), menu.toggleAttribute("hidden"), !menu.hidden && phoneItemsAway()));
     on("more-btn", () => ((menu.hidden = true), more.toggleAttribute("hidden"), !more.hidden && phoneItemsAway()));
     on("history-btn", () => ((menu.hidden = more.hidden = true), this.ui.toggleHistory()));
-    document.getElementById("m-version")!.textContent = `Version ${__APP_VERSION__}`;
+    // Version: a tap shows what is new (asked for: "when we click on More>Version, it pops up a window that shows whats new").
+    document.getElementById("m-version")!.textContent = `Version ${__APP_VERSION__} · What's new`;
+    on("m-version", () => ((more.hidden = true), showWhatsNew(__APP_VERSION__)));
     const moreItem = (id: string, fn: () => void) => on(id, () => ((more.hidden = true), fn()));
     // Fullscreen (the label follows the state; Esc also leaves it).
     const fs = document.getElementById("m-fullscreen")!;
