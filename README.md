@@ -561,8 +561,18 @@ and `supergeometry.result` holds the last rebuild (`bodies`, `errors`).
 npm install
 npm run dev      # local dev server (add --host to open it from a tablet)
 npm run build    # static site in dist/ - host it anywhere
+npm run package  # the build as an update package: supergeometry-update-<version>.zip
 npx tsx tests/engine.test.ts   # one of the test suites in tests/
 ```
+
+- **Language.** The app is in Polish by default, English in Settings →
+  Language. Texts stay English in the code; `src/i18n/index.ts` puts the
+  Polish of each one (from `src/i18n/pl.json`) on screen as it appears.
+  `npx tsx scripts/i18n-extract.ts` lists texts that have no Polish yet, and
+  `sgUntranslated()` in the browser console lists those met while using it.
+- **Update package.** Settings → Updates → *Load your own update package*
+  takes the .zip `npm run package` makes and runs that version on the device
+  (installed app too, offline too) in place of the site's, until it is removed.
 
 - [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md): how it's built and why
 - [docs/FEATURES.md](docs/FEATURES.md): feature list

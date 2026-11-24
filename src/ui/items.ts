@@ -6,6 +6,7 @@ import type { Feature, ItemFolder } from "../doc/types";
 import type { RegenResult } from "../kernel/protocol";
 import { icons, type IconName } from "./icons";
 import { el, twoTap } from "./ui";
+import { tr } from "../i18n";
 
 export interface ItemsHandlers {
   selectBody(id: string): void;
@@ -120,7 +121,7 @@ export class ItemsPanel {
     const category = (title: string, count: number) => {
       const key = `cat:${title}`;
       const li = el("li", "items-heading items-category");
-      const b = el("button", "items-category-btn", `${this.collapsed.has(key) ? "▸" : "▾"} ${title} (${count})`);
+      const b = el("button", "items-category-btn", `${this.collapsed.has(key) ? "▸" : "▾"} ${tr(title)} (${count})`);
       b.title = this.collapsed.has(key) ? "Show" : "Fold away";
       b.addEventListener("click", () => {
         if (this.collapsed.has(key)) this.collapsed.delete(key);

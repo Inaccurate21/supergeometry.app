@@ -13,6 +13,7 @@
 import type { Vector3 } from "three";
 import type { Feature, SketchEntity, Vec3 } from "../doc/types";
 import type { Sel } from "../tools/tool";
+import { says } from "../i18n";
 
 /** What the tutorial reads of the app, and the little it does to it. */
 export interface TutorialHost {
@@ -293,10 +294,10 @@ export class Tutorial {
   }
   /** A tool in the list that is open over the line, by its name. */
   private listed(name: string): Element | null {
-    return Array.from(document.querySelectorAll<HTMLElement>(".sn-sheet:not([hidden]) .sn-word")).find((w) => (w.textContent ?? "").trim().startsWith(name)) ?? null;
+    return Array.from(document.querySelectorAll<HTMLElement>(".sn-sheet:not([hidden]) .sn-word")).find((w) => says(w.textContent, name, true)) ?? null;
   }
   private quick(name: string): Element | null {
-    return Array.from(document.querySelectorAll<HTMLElement>("button.quick-action")).find((b) => b.offsetParent && (b.title || b.textContent || "").startsWith(name)) ?? null;
+    return Array.from(document.querySelectorAll<HTMLElement>("button.quick-action")).find((b) => b.offsetParent && says(b.title || b.textContent, name, true)) ?? null;
   }
   /**
    * One of a tool's own settings: on the line where there is room for it, else in the list Options opens (a phone
@@ -456,7 +457,7 @@ export class Tutorial {
     // ---- the nut (a hexagon on the floor, pulled up round the rod)
     if (threaded && extrudes.length === 2) {
       if (tool.id === "sketch") {
-        if (tool.phase === "plane") return lit("nut-plane", "Tap XY: the nut is drawn on the floor.", [Array.from(document.querySelectorAll("#sentence .sn-word")).find((w) => (w.textContent ?? "").trim().startsWith("XY"))]);
+        if (tool.phase === "plane") return lit("nut-plane", "Tap XY: the nut is drawn on the floor.", [Array.from(document.querySelectorAll("#sentence .sn-word")).find((w) => says(w.textContent, "XY", true))]);
         return drawing({ draw: "nut-draw", shape: "nut-polygon", centre: "nut-centre", edge: "nut-corner", exit: "nut-exit" }, "polygon", "Polygon", [0, 0, 0], [HEX_R, 0, 0], { draw: "Tap Draw.", centre: "Tap the middle of the bolt.", edge: "Tap here: a corner of the nut.", exit: "Tap Exit." });
       }
       const nutSketch = sketches[2];
@@ -504,7 +505,7 @@ export class Tutorial {
     // ---- the rod (a circle on the floor, pulled up)
     if (!extrudes.length) {
       if (tool.id === "sketch") {
-        if (tool.phase === "plane") return lit("rod-draw", "Tap XY: you will draw on the floor.", [Array.from(document.querySelectorAll("#sentence .sn-word")).find((w) => (w.textContent ?? "").trim().startsWith("XY"))]);
+        if (tool.phase === "plane") return lit("rod-draw", "Tap XY: you will draw on the floor.", [Array.from(document.querySelectorAll("#sentence .sn-word")).find((w) => says(w.textContent, "XY", true))]);
         return drawing({ draw: "rod-draw", shape: "rod-circle", centre: "rod-centre", edge: "rod-rim", exit: "rod-exit" }, "circle", "Circle", [0, 0, 0], [ROD_R, 0, 0], { draw: "You will build a bolt and its nut. A part starts as a flat drawing: tap Draw.", centre: "Tap here: the middle of the circle.", edge: "Now tap here: how big it is.", exit: "That is the rod's outline. Tap Exit." });
       }
       if (rodSketch?.entities.length || tool.id === "extrude") return pulling({ extrude: "rod-extrude", distance: "rod-distance", type: "rod-type", done: "rod-done" }, [R * 0.5, 0, 0], ROD_L, { extrude: "Tap Extrude: it pulls a flat shape up into a solid.", done: "Tap Done to keep it." });

@@ -15,6 +15,7 @@
 // pinch to size it and twist to turn it. The scale sits at the left edge.
 import { BufferGeometry, CanvasTexture, Color, DoubleSide, Euler, Group, Line, LineBasicMaterial, Matrix4, Mesh, MeshBasicMaterial, PlaneGeometry, Quaternion, RingGeometry, Scene, SRGBColorSpace, Vector3, type WebGLRenderer, type XRTargetRaySpace } from "three";
 import { icons, type IconName } from "../ui/icons";
+import { tr } from "../i18n";
 
 type Vec3 = [number, number, number];
 
@@ -194,7 +195,7 @@ class Wheel {
 function wrap(g: CanvasRenderingContext2D, text: string, x: number, y: number, max: number, lh: number): void {
   const lines: string[] = [];
   let cur = "";
-  for (const w of text.split(" ")) {
+  for (const w of tr(text).split(" ")) {
     const next = cur ? `${cur} ${w}` : w;
     if (g.measureText(next).width > max && cur) {
       lines.push(cur);
@@ -236,7 +237,7 @@ class Tape {
     g.fillText(ratioText(ratio), 150, 72);
     g.fillStyle = "rgba(235,235,245,0.55)";
     g.font = `500 26px ${FONT}`;
-    g.fillText(Math.abs(v) < 0.005 ? "real size" : v > 0 ? "bigger" : "smaller", 150, 122);
+    g.fillText(tr(Math.abs(v) < 0.005 ? "real size" : v > 0 ? "bigger" : "smaller"), 150, 122);
     // The tape: one mark a doubling, 80 px apart, the pointer in the middle of the window.
     const top = 156;
     const bottom = 540;
@@ -910,7 +911,7 @@ export class VRMode {
   }
 
   private setHint(text: string): void {
-    if (this.hint && this.hint.textContent !== text) this.hint.textContent = text;
+    if (this.hint && this.hint.textContent !== tr(text)) this.hint.textContent = text;
   }
 
   /** The card: a short message for a moment. */

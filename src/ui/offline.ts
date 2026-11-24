@@ -6,6 +6,7 @@
 
 import { settings } from "../settings";
 import { loadedBuild } from "./update";
+import { PACKAGE } from "./package";
 
 type Paint = (state: string) => void;
 
@@ -105,7 +106,8 @@ export class Offline {
   /** Remove the stored files and the service worker. */
   private async remove(): Promise<void> {
     try {
-      for (const r of await navigator.serviceWorker.getRegistrations()) await r.unregister();
+      // (An own update package still needs the service worker.)
+      if (!(await caches.has(PACKAGE))) for (const r of await navigator.serviceWorker.getRegistrations()) await r.unregister();
       for (const k of await caches.keys()) if (k.startsWith("sg-offline-")) await caches.delete(k);
     } catch {
       // nothing stored

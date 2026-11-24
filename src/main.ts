@@ -1,3 +1,5 @@
+// First: the language (the page's texts are translated as they appear).
+import "./i18n";
 import "./style.css";
 import { App } from "./app";
 import { outerScrollbars } from "./ui/scrollbars";

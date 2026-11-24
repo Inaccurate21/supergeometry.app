@@ -13,6 +13,8 @@ import type { Viewport } from "../view/viewport";
 import type { UI } from "./ui";
 import { el } from "./ui";
 import { textField } from "./textField";
+import { lang, LANGS, saveLang, type Lang } from "../i18n";
+import { loadPackage, packageInUse, packagesSupported, removePackage, type PackageInfo } from "./package";
 
 export function setupRightColumn(ui: UI, view: Viewport, store: DocStore, onUnits: (u: Units) => void, isolatedNames: () => string[] = () => []): void {
   ui.addRight("fit", "fit", "Zoom to fit (F)", () => view.fitAll(), () => "Fit");
@@ -191,8 +193,66 @@ export function setupRightColumn(ui: UI, view: Viewport, store: DocStore, onUnit
   markPad();
   ui.addRight("history", "history", "History", () => ui.toggleHistory(), undefined, stash);
 
+  // Language: the app reloads in the one picked (the project is saved first).
+  kept("lang", (host) => {
+    host.append(heading("Language"));
+    for (const [l, label] of LANGS) host.append(choiceRow(label, lang === l, () => void switchLang(l)));
+  });
+  const switchLang = async (l: Lang) => {
+    if (l === lang) return;
+    saveLang(l);
+    await store.flush();
+    location.reload();
+  };
+
+  // Update: the version running, and an own update package (src/ui/package.ts) to load in its place.
+  let pkg: PackageInfo | null = null;
+  let pkgBusy = "";
+  void packageInUse().then((p) => ((pkg = p), ui.refreshRight()));
+  kept("update", (host) => {
+    host.append(heading("Updates"));
+    host.append(el("div", "pop-note", pkg ? `Running your own update package: ${pkg.name}, loaded ${new Date(pkg.loaded).toLocaleString()}.` : `Running the site's version ${__APP_VERSION__}.`));
+    if (pkg?.version) host.append(el("div", "pop-note", `Version in the package: ${pkg.version}`));
+    const pick = el("button", "pop-row", pkgBusy ? `Loading the package… ${pkgBusy}` : "Load your own update package (.zip)…");
+    pick.disabled = !!pkgBusy;
+    pick.addEventListener("click", () => {
+      if (!packagesSupported()) return ui.toast("This browser can't run an update package here (it needs the built app, over https or on localhost).", "error");
+      const input = document.createElement("input");
+      input.type = "file";
+      input.accept = ".zip,application/zip";
+      input.addEventListener("change", async () => {
+        const file = input.files?.[0];
+        if (!file) return;
+        pkgBusy = "0%";
+        ui.refreshPopover();
+        try {
+          await loadPackage(file, (t) => ((pkgBusy = t), ui.refreshPopover()));
+          ui.toast("Update package loaded: the app restarts in it.");
+          await store.flush();
+          setTimeout(() => location.reload(), 600);
+        } catch (e) {
+          pkgBusy = "";
+          ui.refreshPopover();
+          ui.toast(e instanceof Error ? e.message : String(e), "error");
+        }
+      });
+      input.click();
+    });
+    host.append(pick);
+    if (pkg) {
+      const back = el("button", "pop-row", "Remove the package (back to the site's version)");
+      back.addEventListener("click", async () => {
+        await removePackage(settings.value.offline);
+        await store.flush();
+        location.reload();
+      });
+      host.append(back);
+    }
+    host.append(el("div", "pop-note", "A package is the app's built folder (dist) in a .zip - npm run package makes one. It replaces the version from the site on this device, in the installed app too, until it is removed (More → Update also goes back to the site's)."));
+  });
+
   // Settings: one row for each thing set now and then, saying how it is set; a tap opens its list (and back).
-  let page: "units" | "snap" | "appearance" | null = null;
+  let page: "units" | "snap" | "appearance" | "lang" | "update" | null = null;
   const gear = ui.addRight(
     "settings",
     "settings",
@@ -219,6 +279,8 @@ export function setupRightColumn(ui: UI, view: Viewport, store: DocStore, onUnit
         nav("Snapping", snaps ? `${snaps} of ${Object.keys(s.snap).length} on` : "Off", "snap"),
         toggleRow("Number pad on screen", s.numpad, (v) => settings.set("numpad", v)),
         nav("Appearance", `${s.ortho ? "Orthographic" : "Perspective"}${s.showGrid ? "" : " · no grid"}`, "appearance"),
+        nav("Language", LANGS.find(([l]) => l === lang)![1], "lang"),
+        nav("Updates", pkg ? "Own package" : `v${__APP_VERSION__}`, "update"),
       );
     },
     () => UNIT_LABEL[units()],

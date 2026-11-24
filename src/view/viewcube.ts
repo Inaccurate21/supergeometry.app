@@ -20,6 +20,7 @@ import {
 } from "three";
 import type { Vec3 } from "../doc/types";
 import type { Viewport } from "./viewport";
+import { tr } from "../i18n";
 
 const PX = 143;
 
@@ -248,10 +249,10 @@ function labelTexture(text: string): CanvasTexture {
   g.lineWidth = S * 0.012;
   g.strokeRect(g.lineWidth / 2, g.lineWidth / 2, S - g.lineWidth, S - g.lineWidth);
   g.fillStyle = "#e8e9ec";
-  g.font = `650 ${Math.round(S * (text.length > 5 ? 0.15 : 0.17))}px system-ui, -apple-system, "Segoe UI", Roboto, sans-serif`;
+  g.font = `650 ${Math.round(S * (tr(text).length > 5 ? 0.15 : 0.17))}px system-ui, -apple-system, "Segoe UI", Roboto, sans-serif`;
   g.textAlign = "center";
   g.textBaseline = "middle";
-  g.fillText(text, S / 2, S * 0.515);
+  g.fillText(tr(text), S / 2, S * 0.515);
   const t = new CanvasTexture(c);
   t.colorSpace = SRGBColorSpace;
   return t;

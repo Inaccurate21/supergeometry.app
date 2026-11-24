@@ -5,6 +5,7 @@
 // the app's files and reloads. Your project is saved first and stays.
 
 import { el } from "./ui";
+import { PACKAGE, packageInUse } from "./package";
 
 /** The app's main script of this page (its name changes with every build). */
 export function loadedBuild(): string | null {
@@ -30,11 +31,14 @@ interface OfflineStore {
 
 export class Updates {
   offline: OfflineStore | null = null;
+  /** An own update package is in use (Settings → Update): the site's newer builds aren't offered over it. */
+  packaged = false;
 
   /** `beforeReload` saves the project before the page is reloaded. */
   constructor(private beforeReload: () => Promise<void>) {
     // Only a built site has a build to compare (not the dev server).
     if (!loadedBuild()) return;
+    void packageInUse().then((p) => (this.packaged = !!p));
     setTimeout(() => void this.check(), 20_000);
     setInterval(() => void this.check(), 10 * 60_000);
     document.addEventListener("visibilitychange", () => document.visibilityState === "visible" && void this.check());
@@ -49,6 +53,7 @@ export class Updates {
 
   /** Is a newer build out? Marks More if so. Returns whether it is. */
   async check(): Promise<boolean> {
+    if (this.packaged) return false;
     const mine = loadedBuild();
     const live = await liveBuild();
     if (!mine || !live || live === mine) return false;
@@ -64,6 +69,12 @@ export class Updates {
    */
   async reset(): Promise<void> {
     await this.beforeReload();
+    // An own update package: given up, the site's version is the one loaded.
+    try {
+      if ("caches" in window) await caches.delete(PACKAGE);
+    } catch {
+      // none
+    }
     // Offline mode: the stored copy is downloaded again (the newest version), not removed.
     if (this.offline?.on && navigator.onLine) {
       await this.offline.download(true);

@@ -69,6 +69,7 @@ import { sketchToSVG } from "./io/svg";
 import { isHeadset, screenClass } from "./device";
 import { Viewport } from "./view/viewport";
 import { VRMode, vrSupported } from "./view/xr";
+import { tr } from "./i18n";
 
 /** The page's own title, from index.html (it names the app for search results). */
 const PAGE_TITLE = document.title;
@@ -1836,15 +1837,17 @@ export class App implements AppContext {
     name.contentEditable = "plaintext-only";
     if (name.contentEditable !== "plaintext-only") name.contentEditable = "true";
     const typed = () => (name.textContent ?? "").replace(/\s+/g, " ").trim();
+    // (A new project's name is said in the app's language; left as it is, it stays the same name.)
+    const shown = () => tr(this.store.doc.name === "Untitled" ? "Untitled" : "") || this.store.doc.name;
     const show = () => {
-      if (document.activeElement !== name) name.textContent = this.store.doc.name;
+      if (document.activeElement !== name) name.textContent = shown();
       // A new, unnamed project keeps the page's own title (what search results show).
       document.title = this.store.doc.name === "Untitled" ? PAGE_TITLE : `${this.store.doc.name} – superGeometry.app`;
     };
     const rename = () => {
       const v = typed();
-      if (v && v !== this.store.doc.name) this.store.commit((d) => (d.name = v));
-      name.textContent = this.store.doc.name;
+      if (v && v !== this.store.doc.name && v !== shown()) this.store.commit((d) => (d.name = v));
+      name.textContent = shown();
       name.scrollLeft = 0;
     };
     name.addEventListener("blur", rename);
@@ -1873,7 +1876,7 @@ export class App implements AppContext {
     name.addEventListener("keydown", (e) => {
       e.stopPropagation();
       if (e.key === "Enter") e.preventDefault(), name.blur();
-      if (e.key === "Escape") (name.textContent = this.store.doc.name), name.blur();
+      if (e.key === "Escape") (name.textContent = shown()), name.blur();
     });
     // Pasted: as plain text on one line.
     name.addEventListener("paste", (e) => {

@@ -9,6 +9,7 @@ import { DIALOG_ACTION } from "./dialogAction";
 import { numpadInput, typingInto } from "./numpad";
 import { selectAll, textField } from "./textField";
 import { settings } from "../settings";
+import { says } from "../i18n";
 
 export interface ToolItem {
   id: string;
@@ -1000,7 +1001,7 @@ export class UI {
     const it = spec.items?.find((x) => (x.type === "number" || x.type === "slider") && x.label === item.label);
     if (it && (it.type === "number" || it.type === "slider")) it.value = v;
     for (const box of Array.from(this.panel.querySelectorAll<HTMLElement>(".field"))) {
-      if (box.querySelector(".field-label")?.textContent !== item.label) continue;
+      if (item.label === undefined || !says(box.querySelector(".field-label")?.textContent, item.label)) continue;
       const input = box.querySelector("input");
       if (!input) continue;
       if (input.type === "range") input.value = String(v);
