@@ -20,6 +20,7 @@ export const UPDATES: Update[] = [
   {
     date: "2026-11-24",
     added: [
+      "A mesh you can edit: an STL, OBJ or 3MF mesh now comes in with real faces. Flat sides are one face each and holes, bosses, pins and rounded corners are truly round, so Hole, Thread, Fillet and push/pull work on it. A mesh already in a project: tap its body, then Make Faces.",
       "Hole (Create → Hole): tap a flat face where a screw goes and choose the screw, M2 to M12, and its head: none, counterbore or countersink. The hole gets the right sizes, and each can be typed over. Drag its dot to move it, or type its distances from the edges.",
       "This window: More → Version shows what is new.",
       "More → About: the app's name at the top opens the project's page on GitHub.",

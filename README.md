@@ -440,6 +440,14 @@ can't be rebuilt after a change, it's marked and the reason is shown.
 - **More → Insert** brings in files (STEP, STL, OBJ, 3MF, DXF, SVG), another
   project's parts (**Project**), and pictures to trace over (**Image on
   plane**: on the floor, front or side, its middle at the X / Y you type).
+- A mesh (**STL**, OBJ, the meshes in a 3MF) comes in as a solid with real
+  faces, so it can be worked on: every flat side is one face, whichever way
+  it leans, and the round parts are truly round - a hole, a boss, a pin, a
+  rounded upright corner each become one round face, at its exact size. Then
+  Hole, Thread, Fillet, push/pull, Measure and joints work on it as on a part
+  drawn here. Left as they came: cones (a countersink), balls, rounded rims,
+  rounds of fewer than 12 sides, and sculpted or scanned shapes. A mesh put in
+  before this has **Make Faces** on its body.
 - A **.super** file is the whole project: every step and sketch, variables,
   saved views, names, colours, and the BIM side - materials, drawings, joints
   and the assembly's pose.

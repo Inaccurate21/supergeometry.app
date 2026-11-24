@@ -14,7 +14,7 @@ export const GROUP_OF: Record<string, string> = {
   editFreeform: "freeform", fillHole: "freeform", thicken: "freeform",
   planePerp: "construct", planeEdge: "construct", proje: "construct",
   moveBody: "transform", moveVertex: "transform", patl: "transform", patc: "transform", copySketch: "transform", align: "transform",
-  offsetFromEdge: "modify",
+  offsetFromEdge: "modify", meshFaces: "modify",
   drawing: "more", material: "more",
   deselect: OWN, wholePattern: OWN, color: OWN, opacity: OWN, delete: OWN, deleteBody: OWN,
 };

@@ -482,6 +482,12 @@ export interface ImportFeature extends FeatureBase {
    * Missing (files put in before this): all of them one body, as they were - what was built on that body stays.
    */
   apart?: boolean;
+  /**
+   * A mesh's round parts made truly round: the runs of flat strips that are a hole, a boss, a pin or a rounded
+   * upright corner become one round face each (see kernel/meshRound.ts). Set on files put in from now on; missing
+   * (files put in before): as they were - what was built on their strips stays.
+   */
+  round?: boolean;
 }
 
 /** A reference image placed on a plane (for tracing). */
