@@ -61,6 +61,59 @@ export function stlTriangles(bytes: Uint8Array): Float64Array | null {
   return nums.length && nums.length % 9 === 0 && nums.every(Number.isFinite) ? Float64Array.from(nums) : null;
 }
 
+/**
+ * A mesh's separate parts (triangles that share no corner with the others), each as its own triangles - a file may
+ * hold a box and its lid. Null when one of them is inside-out (the inner skin of a hollow: not a part of its own)
+ * or there are a great many (loose crumbs: not a file this reads part by part).
+ */
+export function meshParts(tris: Float64Array): Float64Array[] | null {
+  const nt = tris.length / 9;
+  let lo = Infinity;
+  let hi = -Infinity;
+  for (let i = 0; i < tris.length; i++) (lo = Math.min(lo, tris[i])), (hi = Math.max(hi, tris[i]));
+  const q = Math.max(1e-7, (hi - lo || 1) * 2e-7);
+  const ids = new Map<string, number>();
+  const parent: number[] = [];
+  const find = (i: number): number => {
+    while (parent[i] !== i) i = parent[i] = parent[parent[i]];
+    return i;
+  };
+  const corner = new Int32Array(nt * 3);
+  for (let i = 0; i < nt * 3; i++) {
+    const key = `${Math.round(tris[i * 3] / q)},${Math.round(tris[i * 3 + 1] / q)},${Math.round(tris[i * 3 + 2] / q)}`;
+    let id = ids.get(key);
+    if (id === undefined) (id = parent.length), ids.set(key, id), parent.push(id);
+    corner[i] = id;
+  }
+  for (let t = 0; t < nt; t++) {
+    const a = find(corner[t * 3]);
+    parent[find(corner[t * 3 + 1])] = a;
+    parent[find(corner[t * 3 + 2])] = a;
+  }
+  const groups = new Map<number, number[]>();
+  for (let t = 0; t < nt; t++) {
+    const g = find(corner[t * 3]);
+    const list = groups.get(g);
+    if (list) list.push(t);
+    else groups.set(g, [t]);
+  }
+  if (groups.size === 1) return [tris];
+  if (groups.size > 64) return null;
+  const out: Float64Array[] = [];
+  for (const list of groups.values()) {
+    const part = new Float64Array(list.length * 9);
+    let volume = 0;
+    list.forEach((t, k) => {
+      const p = tris.subarray(t * 9, t * 9 + 9);
+      part.set(p, k * 9);
+      volume += (p[0] * (p[4] * p[8] - p[5] * p[7]) - p[1] * (p[3] * p[8] - p[5] * p[6]) + p[2] * (p[3] * p[7] - p[4] * p[6])) / 6;
+    });
+    if (!(volume > 0)) return null;
+    out.push(part);
+  }
+  return out;
+}
+
 /** The widest turn between two strips of one cylinder: twelve sides and up. */
 const MAX_TURN = (30.5 * Math.PI) / 180;
 /** The least a part of a cylinder goes round. */

@@ -150,6 +150,23 @@ const faceRef = (body: string, f: any) => ({ body, center: f.center, normal: f.n
   }
 }
 
+// ---------------------------------------------------------------- a file of several parts
+{
+  // Two parts in one file (a plate with a hole, a pin beside it): a body each, each with its round face.
+  const s = sketch("s", XY(), [rect("r", 0, 0, 30, 20)]);
+  const hs = sketch("hs", XY(), [gon("a", 15, 10, 4, 24)]);
+  const p = sketch("p", XY(), [gon("p", 50, 10, 5, 32)]);
+  const fs: Feature[] = [s, extrude("E", s, 5), hs, extrude("H", hs, 5, "cut", { target: "E" }), p, extrude("P", p, 12)];
+  const bytes = await stlOf(fs);
+  const a: any = await regenerate([{ ...imp(bytes), apart: true } as Feature]);
+  const ids = a.bodies.map((b: any) => b.id).sort();
+  const roundsOf = (b: any) => b.faces.filter((f: any) => f.round).map((f: any) => +f.round.r.toFixed(6));
+  check("two parts in one file: two bodies", !a.errors.length && JSON.stringify(ids) === JSON.stringify(["I", "I:1"]), `${ids} ${a.errors.map((e: any) => e.message)}`);
+  check("... the plate's hole and the pin, each round", JSON.stringify(a.bodies.map(roundsOf).flat().sort()) === JSON.stringify([4, 5]) && a.bodies.map((b: any) => b.faces.length).sort().join() === "3,7", a.bodies.map((b: any) => [b.faces.length, roundsOf(b)]));
+  const old: any = await regenerate([{ ...imp(bytes, false), apart: true } as Feature]);
+  check("... not asked for: as it always came in, one body", old.bodies.length === 1, old.bodies.length);
+}
+
 // ---------------------------------------------------------------- the file itself
 {
   // A text STL reads the same as a binary one.

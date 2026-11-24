@@ -81,7 +81,7 @@ import { cylinderOf, deleteFace,
  deleteFaces as deleteBodyFaces, editNotes, freeformFace, sameSizesAgain, sheetFace, sheetFaces, hasBlends, inFlatFace, looseBox, offsetFace, onFace as pointOnFace, planeOf, replaceFacePlane, SIDES_MEET, sizeOf, unify } from "./faceEdit";
 import { threadDepth } from "./threads";
 import { faceMiddle, holeCutter, holeFault, roundCentre } from "./hole";
-import { meshFlatFaces, meshModel, stlTriangles, type MeshCylinder, type MeshFace, type MeshStandIn } from "./meshRound";
+import { meshFlatFaces, meshModel, meshParts, stlTriangles, type MeshCylinder, type MeshFace, type MeshStandIn } from "./meshRound";
 import { holeFromLines } from "../doc/holeSizes";
 import { anchorOf, freeformFaces, meshViews, viewEdge } from "./viewLines";
 import { entitiesWire, pathOf, regionFaces, regionHoleWires, regionWire, withFittedSplines } from "./sketchGeom";
@@ -1729,7 +1729,7 @@ async function apply(f: Feature, ctx: Ctx): Promise<void> {
       // A file of several solids (an assembly; this app's own STEP of two bodies): each a body of its own, to pick,
       // hide, move and cut by itself. (They came in as one body of several pieces: the two bodies of a project
       // saved as STEP and opened again were one, that nothing could take apart.)
-      const solids = f.apart && f.format === "step" ? subShapes(shape, "SOLID") : [];
+      const solids = f.apart && (f.format === "step" || rounding) ? subShapes(shape, "SOLID") : [];
       if (solids.length > 1) {
         solids.forEach((s, i) => bodies.set(i ? `${f.id}:${i}` : f.id, cast(s) as Shape3D));
         return;
@@ -5779,10 +5779,21 @@ function readSTL(bytes: Uint8Array): Shape3D {
  * comes in as the kernel reads it.
  */
 function meshBodyOf(bytes: Uint8Array): { shape: Shape3D; made: number } | null {
-  const tris = stlTriangles(bytes);
-  if (!tris) return null;
+  const all = stlTriangles(bytes);
+  if (!all) return null;
+  if (all.length / 9 > MESH_MAX) throw new TooBig(all.length / 9);
+  // A file of several separate parts (a box and its lid): each read by itself, and together again as its solids -
+  // a body each (see "import"). A part inside another (a hollow's inner skin) is not a part of its own: the old way.
+  const parts = meshParts(all);
+  if (!parts) return null;
+  if (parts.length === 1) return meshPartBody(all);
+  const made = parts.map((p) => meshPartBody(p));
+  if (made.some((m) => !m)) return null;
+  return { shape: makeCompound(made.map((m) => m!.shape.clone())) as unknown as Shape3D, made: made.reduce((s, m) => s + m!.made, 0) };
+}
+
+function meshPartBody(tris: Float64Array): { shape: Shape3D; made: number } | null {
   const count = tris.length / 9;
-  if (count > MESH_MAX) throw new TooBig(count);
   // Round parts stood in for by a few flats each, then made round with one ring each: quick. Should any of that
   // not come out sound, the plain way: every strip a face, the round parts made round one after another.
   const model = meshModel(tris);
@@ -5854,6 +5865,7 @@ function facesSolid(faces: MeshFace[]): Shape3D | null {
  */
 function ringsOn(solid: Shape3D, rounds: MeshStandIn[]): Shape3D | null {
   const size = sizeOf(solid);
+  let spare = 0;
   try {
     const tools = rounds.map((s) => {
       const cy = s.cy;
@@ -5866,7 +5878,10 @@ function ringsOn(solid: Shape3D, rounds: MeshStandIn[]): Shape3D | null {
       const ends: [number, number] = [...s.ends];
       [s.ends[0] - hair * 0.5, s.ends[1] + hair * 0.5].forEach((t, e) => {
         const inside = insideOf(solid, angs.map((ang) => at(rp, ang, t)));
-        if (inside.every((x) => x === !cy.concave)) ends[e] += e ? hair : -hair;
+        if (!inside.every((x) => x === !cy.concave)) return;
+        ends[e] += e ? hair : -hair;
+        // (The most that hair can take or add past the end, where the end is not as clean as a plate's face.)
+        spare += ((cy.r * cy.r - s.inner * s.inner) * cy.sweep * hair) / 2;
       });
       const outline = makePolygon([at(s.inner, 0, ends[0]), at(cy.r, 0, ends[0]), at(cy.r, 0, ends[1]), at(s.inner, 0, ends[1])]);
       return revolution(outline, cy.c, cy.a, Math.min(360, (cy.sweep * 180) / Math.PI)) as Shape3D;
@@ -5879,7 +5894,7 @@ function ringsOn(solid: Shape3D, rounds: MeshStandIn[]): Shape3D | null {
     const expect = rounds.reduce((sum, s) => sum + (s.cy.concave ? -s.volume : s.volume), 0);
     const most = rounds.reduce((sum, s) => sum + s.volume, 0);
     const change = measureVolume(out) - volumeOf(solid);
-    if (Math.abs(change - expect) > Math.max(most * 0.01, size ** 3 * 1e-10)) return null;
+    if (Math.abs(change - expect) > Math.max(most * 0.01, size ** 3 * 1e-10) + spare) return null;
     if (subShapes(out, "SOLID").length !== 1 || openEdges(out).length || !shapeValid(out)) return null;
     return out;
   } catch (err) {
@@ -5904,6 +5919,13 @@ function ringsOn(solid: Shape3D, rounds: MeshStandIn[]): Shape3D | null {
  * between the strips and the round faces, no more. If not, one at a time, each checked, those that fail left as
  * strips. Returns how many were made round.
  */
+const SLOW_ROUNDS_AT_ONCE = 24;
+/**
+ * How many round parts are tried one at a time the slow way: each try is two or three cuts of the whole body, and
+ * that takes as long as the body has faces - two seconds on one of two thousand. Eight on a small body, none
+ * on one of over 1500 faces. (By the body's size, not by the clock: the same file gives the same faces on a phone as on a desktop.)
+ */
+const slowRounds = (faces: number) => Math.min(8, Math.floor(1500 / Math.max(1, faces)));
 export function roundMeshSolid(solid: Shape3D, cyls: MeshCylinder[]): { shape: Shape3D; made: number } {
   const size = sizeOf(solid);
   interface Job {
@@ -5915,10 +5937,18 @@ export function roundMeshSolid(solid: Shape3D, cyls: MeshCylinder[]): { shape: S
     fine: () => Shape3D;
   }
   const jobs: Job[] = [];
-  for (const cy of cyls) {
-    // (Strips that end at different heights - on a slope, at another feature: a ring their whole length would add
-    // or take where there is nothing of them.)
-    if (!cy.even) continue;
+  // Which to try: all of them where they are few enough to do at once; else the biggest few, by how big the body
+  // is (see slowRounds) - chosen before anything is asked of the kernel about them (it was asked what lies past
+  // each end of a hundred and fifty rounds, of which it then tried one).
+  // (Strips that end at different heights - on a slope, at another feature - are not tried: a ring their whole
+  // length would add or take where there is nothing of them.)
+  // (A body too big for even one try: none - at once is a try like any other.)
+  if (!slowRounds(solid.faces.length)) return { shape: solid, made: 0 };
+  const even = cyls.filter((cy) => cy.even);
+  const worth = (cy: MeshCylinder) => (cy.sweep > 2 * Math.PI - 1e-9 ? 1e6 : 1) * cy.r * cy.sweep * (cy.t1 - cy.t0);
+  const atOnce = even.length <= SLOW_ROUNDS_AT_ONCE;
+  const chosen = atOnce ? even : [...even].sort((x, y) => worth(y) - worth(x)).slice(0, slowRounds(solid.faces.length));
+  for (const cy of chosen) {
     const half = cy.step / 2;
     const sag = cy.r * (1 - Math.cos(half));
     const room = Math.max(sag * 4, size * 2e-4);
@@ -5973,11 +6003,16 @@ export function roundMeshSolid(solid: Shape3D, cyls: MeshCylinder[]): { shape: S
     }
   };
   if (!jobs.length) return { shape: solid, made: 0 };
-  const all = apply(solid, jobs);
+  // All at once where there are few enough for that to be likely; else, and if that fails, one at a time - the
+  // biggest first, and no more than a handful: each try is two or three cuts of the whole body, and a part with
+  // lettering has a hundred and fifty rounds a fifth of a millimetre across (a guitar pick: 18 s, for 3 made).
+  // (By count, not by the clock: the same file gives the same faces on a phone as on a desktop.)
+  const all = atOnce ? apply(solid, jobs) : null;
   if (all) return { shape: all, made: jobs.length };
+  jobs.sort((x, y) => worth(y.cy) - worth(x.cy));
   let body = solid;
   let made = 0;
-  for (const job of jobs) {
+  for (const job of jobs.slice(0, slowRounds(solid.faces.length))) {
     const next = apply(body, [job]);
     if (next) (body = next), made++;
   }
