@@ -1,3 +1,4 @@
+import { acceptFor } from "../io/insert";
 import { QuickActions } from "./quickActions";
 import { isTouchDevice } from "../device";
 import { simplifyStroke } from "../sketch/freehand";
@@ -1727,7 +1728,7 @@ export class SketchTool implements Tool {
   private async importFontFile(): Promise<void> {
     const input = document.createElement("input");
     input.type = "file";
-    input.accept = ".ttf,.otf,.woff,font/ttf,font/otf,font/woff";
+    input.accept = acceptFor(".ttf,.otf,.woff,font/ttf,font/otf,font/woff");
     input.onchange = async () => {
       const file = input.files?.[0];
       if (!file) return;

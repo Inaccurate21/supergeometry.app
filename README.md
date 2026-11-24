@@ -342,7 +342,8 @@ sketch. A sketch stays in view until every region of it is used.
   them move against each other. **Add joint**, tap a face on each part, and
   the kind is read off the faces: two round faces on one axis, or two flat
   faces one above the other, make a **Hinge** (a **Screw** of the thread's
-  pitch when one part is threaded); two flat faces side by side, a **Slide**;
+  pitch when one part is threaded - a thread's own faces can be tapped too);
+  two flat faces side by side, a **Slide**;
   anything else, **Fixed**. Drag a part to move it by its joint, or type its
   angle or distance; **Limits** keep it between two values; **Follows** makes
   one joint go with another by a ratio (gears); **Explode** pulls the parts

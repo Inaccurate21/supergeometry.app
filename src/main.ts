@@ -2,6 +2,7 @@ import "./style.css";
 import { App } from "./app";
 import { outerScrollbars } from "./ui/scrollbars";
 import { installDebug } from "./debug";
+import { keepPageSteady } from "./ui/steady";
 
 // Update reloads with ?v=<time> so no stored copy is used; once loaded, the
 // address is plain again (it's what people copy to share the app).
@@ -12,6 +13,9 @@ import { installDebug } from "./debug";
     history.replaceState(history.state, "", url.pathname + url.search + url.hash);
   }
 }
+
+// The page itself never scrolls (a phone pushing it along for a keyboard that does not come).
+keepPageSteady();
 
 // Scroll bars outside the windows, only while scrolling.
 outerScrollbars();

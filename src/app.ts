@@ -12,7 +12,7 @@ import { findAction, openCommandSearch, showShortcuts } from "./ui/commands";
 import type { EdgeFeature, EdgeRef, ExtrudeFeature, ExtrudeSource, Feature, FillToPlaneFeature, ImageFeature, LoftFeature, PathRef, PinDef, PlaneDef, PlaneFeature, ProjectDoc, RevolveFeature, ShellFeature, SketchEntity, SketchFeature, SplitFeature, SweepFeature, TransformFeature, Units, Vec3 } from "./doc/types";
 import { emptyDoc } from "./doc/types";
 import { editedStep } from "./doc/freeformEdits";
-import { createVariable, insertFile, insertImage } from "./io/insert";
+import { createVariable, insertFile, insertImage, acceptFor } from "./io/insert";
 import { RefImages } from "./ui/refImages";
 import { WebWindow } from "./ui/webWindow";
 import { numpadVariables } from "./ui/numpad";
@@ -1672,6 +1672,8 @@ export class App implements AppContext {
     };
     const paintHints = () => switchOf("m-hints", settings.value.showHints);
     paintHints();
+    // (Also switched off by the × on the guide text itself.)
+    settings.onChange(paintHints);
     moreItem("m-hints", () => {
       settings.set("showHints", !settings.value.showHints);
       paintHints();
@@ -2180,7 +2182,7 @@ export class App implements AppContext {
   private open(): void {
     const input = document.createElement("input");
     input.type = "file";
-    input.accept = ".super,.tessel,application/json";
+    input.accept = acceptFor(".super,.tessel,application/json");
     input.onchange = async () => {
       const file = input.files?.[0];
       if (!file) return;

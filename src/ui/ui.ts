@@ -681,7 +681,27 @@ export class UI {
   // ------------------------------------------------------- hint/status/toast
 
   setHint(text: string | null): void {
-    this.hint.textContent = text ?? "";
+    // The words, and a small × to put the guide text away for good (More → Guide text brings it back). Asked for:
+    // "there is no way to remove them" - the switch in More was not found. (Only the × takes a tap: the words let
+    // taps through to the model under them.)
+    if (!this.hintWords) {
+      this.hintWords = document.createElement("span");
+      const x = document.createElement("button");
+      x.type = "button";
+      x.className = "hint-x";
+      x.textContent = "×";
+      x.title = "Hide guide text (More → Guide text shows it again)";
+      x.setAttribute("aria-label", "Hide guide text");
+      x.addEventListener("pointerdown", (e) => e.stopPropagation());
+      x.addEventListener("click", (e) => {
+        e.stopPropagation();
+        settings.set("showHints", false);
+        this.refreshHint();
+        this.toast("Guide text is off. More → Guide text turns it on again.");
+      });
+      this.hint.replaceChildren(this.hintWords, x);
+    }
+    this.hintWords.textContent = text ?? "";
     this.hintText = text;
     this.hint.hidden = !text || !settings.value.showHints;
     // How tall it is (a long hint wraps to more lines): the sketch tools column keeps clear of it.
@@ -692,6 +712,7 @@ export class UI {
 
 
   private hintText: string | null = null;
+  private hintWords: HTMLElement | null = null;
 
   /** More → Guide text switched: show (or hide) what's there now. */
   refreshHint(): void {

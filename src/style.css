@@ -36,6 +36,16 @@ body {
   overscroll-behavior: none;
 }
 
+/* Installed on a home screen: the page is pinned to the screen, so nothing can slide it (an iPhone pushed it down
+   by the status bar's height when a number box took the focus - see ui/steady.ts). */
+@media (display-mode: standalone) {
+  body {
+    position: fixed;
+    inset: 0;
+    width: 100%;
+  }
+}
+
 button {
   font: inherit;
   color: inherit;
@@ -887,6 +897,31 @@ input.np-all {
   text-align: center;
   pointer-events: none;
   z-index: 9;
+}
+/* The × on the guide text: hides it for good (the only part of it that takes a tap). */
+#hint .hint-x {
+  pointer-events: auto;
+  margin: -6px -10px -6px 6px;
+  width: 28px;
+  height: 28px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: #8d93a0;
+  font-size: 17px;
+  line-height: 1;
+  vertical-align: middle;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+#hint .hint-x:hover,
+#hint .hint-x:active {
+  background: rgba(255, 255, 255, 0.1);
+  color: var(--text);
+}
+/* (The tutorial's own card says what to do: nothing to put away there.) */
+body.tut-on #hint .hint-x {
+  display: none;
 }
 #hint[hidden],
 #status[hidden],

@@ -12,11 +12,22 @@ import { DIALOG_ACTION } from "../ui/dialogAction";
 import { read3mf } from "./formats";
 import { parseSVG } from "./svg";
 
+/**
+ * What a file picker is told to offer. On an iPad or iPhone, nothing: told a list of endings (".stl,.step,.super"),
+ * the Files window there greys out every file whose kind it has no name for - STL and STEP files and the app's own
+ * projects could not be tapped (reported from an iPad, files in iCloud Drive). Every file can be picked there, and
+ * one that is not of a kind the app reads is said so once picked. (A list of kinds alone, "image/*", is understood.)
+ */
+export function acceptFor(accept: string): string {
+  const apple = /iPad|iPhone|iPod/.test(navigator.userAgent) || (/Macintosh/.test(navigator.userAgent) && navigator.maxTouchPoints > 1);
+  return apple && accept.split(",").some((a) => a.trim().startsWith(".")) ? "" : accept;
+}
+
 export function pickFile(accept: string): Promise<File | null> {
   return new Promise((resolve) => {
     const input = document.createElement("input");
     input.type = "file";
-    input.accept = accept;
+    input.accept = acceptFor(accept);
     input.onchange = () => resolve(input.files?.[0] ?? null);
     input.click();
   });
@@ -69,6 +80,8 @@ export async function insertFile(app: AppContext): Promise<void> {
       insertProject(app, parseProject(await file.text()).features, file.name);
       return;
     }
+    // (Any file can be picked on an iPad: see acceptFor.)
+    if (!["step", "stp", "stl", "obj", "3mf"].includes(ext)) return app.ui.toast(`Could not insert ${file.name}: it is not a kind of file the app reads (STEP, STL, OBJ, 3MF, DXF, SVG or a project)`, "error");
     let bytes: Uint8Array = new Uint8Array(await file.arrayBuffer());
     let format: "step" | "stl" = ext === "stl" ? "stl" : "step";
     if (ext === "obj") {

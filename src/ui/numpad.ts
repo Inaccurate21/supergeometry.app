@@ -365,7 +365,7 @@ class Numpad {
       // Anything else (a name not made yet): the system keyboard.
       this.close();
       t.inputMode = "text";
-      t.focus();
+      t.focus({ preventScroll: true });
       return;
     } else if (k === "+ New") {
       // A variable from this value: it's made, and the box uses it.
@@ -529,7 +529,7 @@ function scrubbable(input: HTMLInputElement): void {
       // A first click: the whole value, ready to be typed over. In use
       // already: the caret where it was clicked (to add to it).
       if (!s.focused || document.activeElement !== input) {
-        input.focus();
+        input.focus({ preventScroll: true });
         input.select();
       } else {
         const i = caretAt(input, e.clientX);

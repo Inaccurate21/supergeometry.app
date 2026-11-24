@@ -1424,6 +1424,9 @@ async function apply(f: Feature, ctx: Ctx): Promise<void> {
         if (result && f.type === "fillet" && !f.g2 && (f.setback ?? 0) > 0) result = setbackCorners(result, edges, f.setback!, f.radius * Math.max(1, r2 ? r2 / f.radius : 1));
         if (!result) {
           const what = f.type === "fillet" ? "radius" : "distance";
+          // No corner there at all: the faces either side run smoothly into each other (the lines between a
+          // freeform's patches, where a round already ends). Said as that - "too big" sent people to try smaller.
+          if (edges.every((e) => smoothEdge(body, e))) throw new Error(`${edges.length > 1 ? "Those edges are" : "That edge is"} smooth already: the faces either side run into each other with no corner to ${f.type === "fillet" ? "round" : "cut"}. Pick an edge with a corner.`);
           throw new Error(`That ${f.type} doesn't fit here - the ${what} is too big for the faces around ${edges.length > 1 ? "those edges" : "that edge"}. Try a smaller ${what}.`);
         }
         bodies.set(bodyId, result);
@@ -5144,11 +5147,16 @@ function resolveFace(body: Shape3D, ref: FaceRef, only?: (f: Face) => boolean): 
   // The one made from the same sketch curve, if that can be told: wherever it
   // is now. (Cut in two since: the nearer piece, below.)
   const origins = steps && ref.curve ? faceOrigins(body) : undefined;
-  const same = origins ? faces.filter((face, i) => steps![i] === ref.step && origins[i] === ref.curve && (!only || only(face))) : [];
+  let curve = ref.curve;
+  const sameAs = (c: string) => faces.filter((face, i) => steps![i] === ref.step && origins![i] === c && (!only || only(face)));
+  let same = origins ? sameAs(curve!) : [];
+  // The far end of an extrusion since turned to go the other way: still its far end.
+  const turned = origins && !same.length ? otherEnd(curve!) : null;
+  if (turned && !origins!.includes(curve!) && sameAs(turned).length) same = sameAs((curve = turned));
   if (same.length === 1) return same[0];
   for (const [i, face] of faces.entries()) {
     if (steps && steps![i] !== ref.step) continue;
-    if (same.length && origins![i] !== ref.curve) continue;
+    if (same.length && origins![i] !== curve) continue;
     if (only && !only(face)) continue;
     const fi = faceInfo(face);
     const align = dot(fi.normal, ref.normal);
@@ -5219,6 +5227,28 @@ function edgeTable(body: Shape3D): { edges: Edge[]; infoOf(i: number): EdgeInfo 
   return { edges: table.edges, infoOf: (i) => (table.info[i] ??= edgeInfo(table.edges[i])) };
 }
 
+/** No corner along it: the two faces beside the edge look the same way at its middle (to about 3°). */
+function smoothEdge(body: Shape3D, edge: Edge): boolean {
+  const two = body.faces.filter((fc) => fc.edges.some((x) => x.isSame(edge)));
+  if (two.length !== 2) return false;
+  try {
+    const mid = edge.pointAt(0.5);
+    const [a, b] = two.map((fc) => {
+      const n = fc.normalAt(mid);
+      return norm([n.x, n.y, n.z]);
+    });
+    return Math.abs(dot(a, b)) > 0.9986;
+  } catch {
+    return false;
+  }
+}
+
+/** An extrusion's far end named for the other side of its sketch ("…cap:1@…" for "…cap:2@…"); null: not a far end. */
+function otherEnd(curve: string): string | null {
+  const m = /^(.*\|)?cap:([12])@/.exec(curve);
+  return m ? `${m[1] ?? ""}cap:${m[2] === "1" ? 2 : 1}@${curve.slice(m[0].length)}` : null;
+}
+
 function resolveEdge(body: Shape3D, ref: EdgeRef, rounding = false): Edge {
   const size = ref.length || 1;
   // (Saved directions are of unit length; one that isn't - written by hand, or by a
@@ -5246,8 +5276,21 @@ function resolveEdge(body: Shape3D, ref: EdgeRef, rounding = false): Edge {
   }
   // The one between the same two faces (by the sketch curves they came from), wherever it is now.
   const origins = steps && ref.curves ? edgeOrigins(body) : undefined;
-  const isIt = (i: number) => !!origins?.[i] && sameSteps(origins[i]!, ref.curves!) && !seams?.[i];
-  const same = origins ? all.filter((_, i) => isIt(i)) : [];
+  let curves = ref.curves;
+  const isIt = (i: number) => !!origins?.[i] && sameSteps(origins[i]!, curves!) && !seams?.[i];
+  let same = origins ? all.filter((_, i) => isIt(i)) : [];
+  // An edge of the far end of an extrusion since turned to go the other way (10 up edited to 20 down): still
+  // that end's edge. (Its end was named by the side of the sketch it is on: a rounding of five edges was left
+  // on four - the fifth was looked for by place, and found an edge already taken.)
+  if (origins && !same.length && curves!.some((c) => otherEnd(c))) {
+    const turned = curves!.map((c) => otherEnd(c) ?? c).sort();
+    const has = (cs: string[]) => origins.some((o, i) => !!o && sameSteps(o, cs) && !seams?.[i]);
+    const ends = (c: string) => origins.some((o) => !!o && o.includes(c));
+    if (has(turned) && !curves!.some((c) => otherEnd(c) && ends(c))) {
+      curves = turned;
+      same = all.filter((_, i) => isIt(i));
+    }
+  }
   if (same.length === 1) return same[0];
   for (const [i, edge] of all.entries()) {
     if (steps && !sameSteps(steps[i], ref.steps!)) continue;
