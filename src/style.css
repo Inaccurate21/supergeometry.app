@@ -1018,6 +1018,52 @@ body.tut-on #hint .hint-x {
 .dim-widget[hidden] {
   display: none;
 }
+/* The sizes of the shape being drawn, by the pointer (a mouse): what each is, the one typing goes to lit. */
+.size-tags {
+  position: fixed;
+  left: 0;
+  top: 0;
+  z-index: 46;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  pointer-events: none;
+  white-space: nowrap;
+}
+.size-tag {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  padding: 4px 8px;
+  border-radius: 8px;
+  background: rgba(31, 33, 37, 0.95);
+  border: 1px solid var(--line);
+  color: var(--text);
+}
+.size-tag i {
+  font-style: normal;
+  font-size: 10.5px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: #8d93a0;
+}
+.size-tag b {
+  font: 600 13px ui-monospace, monospace;
+}
+.size-tag.on {
+  border-color: rgba(61, 139, 255, 0.85);
+}
+.size-tag.held b {
+  color: #ffc23d;
+}
+.size-tab {
+  font-size: 10px;
+  color: #8d93a0;
+  border: 1px solid var(--line);
+  border-radius: 5px;
+  padding: 1px 5px;
+  background: rgba(31, 33, 37, 0.95);
+}
 .dim-widget select {
   font: inherit;
   font-size: 12px;

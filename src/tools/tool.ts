@@ -22,6 +22,8 @@ export interface Tool extends PointerHandler {
   exit?(): void;
   /** Return true when the key was handled. */
   key?(e: KeyboardEvent): boolean;
+  /** Ctrl + A: pick everything the tool picks from. False: it has nothing of the kind. */
+  selectAll?(): boolean;
   /** Keys typed while a drag is held (type an exact value; Enter finishes). */
   dragKey?(e: KeyboardEvent): boolean;
   /** Called after every regeneration (committed or preview). */

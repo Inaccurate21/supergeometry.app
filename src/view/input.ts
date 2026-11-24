@@ -1,3 +1,4 @@
+import { mouseDrag, settings } from "../settings";
 import { isHeadset, pickTolerance } from "../device";
 // One input model for mouse, touch and pen (see docs/ARCHITECTURE.md §5).
 
@@ -65,7 +66,7 @@ interface Tracked {
 export class InputRouter {
   handler: PointerHandler = {};
   private pointers = new Map<number, Tracked>();
-  private mode: "idle" | "pending" | "captured" | "orbit" | "pan" | "pinch" | "box" | "ended" | "rpending" = "idle";
+  private mode: "idle" | "pending" | "captured" | "orbit" | "pan" | "zoom" | "pinch" | "box" | "ended" | "rpending" = "idle";
 
   /** A tool is holding a drag (keys typed now go to it). */
   get dragging(): boolean {
@@ -143,18 +144,12 @@ export class InputRouter {
     }
     if (this.pointers.size > 1) return;
 
-    // Mouse: right-drag orbits, middle-drag (or shift+right) pans, alt+left orbits (trackpads).
-    if (type === "mouse" && (e.button === 1 || (e.button === 2 && e.shiftKey))) {
-      this.mode = "pan";
-      return;
-    }
-    // Right button: a drag orbits, a click is a "context" action (decided on move/up).
-    if (type === "mouse" && e.button === 2) {
-      this.mode = "rpending";
-      return;
-    }
-    if (type === "mouse" && e.button === 0 && e.altKey) {
-      this.mode = "orbit";
+    // Mouse: which drags turn, move and zoom the view is a setting (Settings > Mouse). As it comes: right-drag
+    // orbits, middle-drag (or shift+right) pans, alt+left orbits (trackpads).
+    const nav = type === "mouse" ? mouseDrag(settings.value.mouse, e.button, { shift: e.shiftKey, ctrl: e.ctrlKey || e.metaKey, alt: e.altKey }) : null;
+    if (nav) {
+      // Right button: a drag orbits, a click is a "context" action (decided on move/up).
+      this.mode = nav === "right" ? "rpending" : nav;
       return;
     }
     this.modifiers = e.ctrlKey || e.metaKey || e.shiftKey;
@@ -265,6 +260,11 @@ export class InputRouter {
         this.view.cam.pan(dx, dy, this.view.height);
         this.view.requestRender();
         return;
+      case "zoom":
+        // Dragged down: further away. About where the drag began.
+        this.view.cam.zoom(Math.exp(dy * 0.01), this.view.worldUnder(t.x0, t.y0));
+        this.view.requestRender();
+        return;
       case "pinch": {
         const s = this.pinchState();
         if (!s || !this.lastPinch) return;
@@ -342,11 +342,12 @@ export class InputRouter {
     // Wheel held down (panning): a press on the wheel can tilt it, and a tilted
     // wheel repeats sideways scrolls for as long as it's held - the view slid
     // off to one side without stopping. Only the drag pans meanwhile.
-    if (e.buttons & 4 || this.mode === "pan") return;
+    if (e.buttons & 4 || this.mode === "pan" || this.mode === "orbit" || this.mode === "zoom") return;
     const [x, y] = this.local(e);
     if (e.ctrlKey || !isTrackpadPan(e)) {
       // Mouse wheel, or trackpad pinch (reported as ctrl+wheel).
-      const factor = Math.exp(e.deltaY * (e.ctrlKey ? 0.01 : 0.0015));
+      // (The wheel's way round is a setting; a trackpad's pinch is not a wheel.)
+      const factor = Math.exp(e.deltaY * (e.ctrlKey ? 0.01 : settings.value.wheelReverse ? -0.0015 : 0.0015));
       this.view.cam.zoom(factor, this.view.worldUnder(x, y));
     } else {
       this.view.cam.pan(-e.deltaX, -e.deltaY, this.view.height);

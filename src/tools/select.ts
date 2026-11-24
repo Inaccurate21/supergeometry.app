@@ -416,9 +416,22 @@ export class SelectTool implements Tool {
         }
       }
     }
+    // No body in the box: the closed shapes of the sketches in it (an imported drawing's hundreds of shapes,
+    // picked one tap at a time before - "I tried click drag release around them all").
+    if (kind === "all" && !picked.length) for (const pr of view.profileList()) if (takes(pr.points.length, (i) => pr.points[i])) picked.push({ kind: "profile", sketch: pr.sketch, region: pr.region });
     const k = picked[0]?.kind ?? (kind === "all" ? "body" : kind);
     const base = add ? this.app.selection.filter((s) => s.kind === k) : [];
     this.app.setSelection([...base, ...picked.filter((s) => !base.some((x) => sameSel(x, s)))]);
+  }
+
+  /** Ctrl + A: every body shown; with no bodies, every closed shape of the sketches shown. */
+  selectAll(): boolean {
+    const view = this.app.view;
+    const bodies: Sel[] = view.bodyList.filter((b) => !view.isHidden(b.id)).map((b) => ({ kind: "body", body: b.id }));
+    const all: Sel[] = bodies.length ? bodies : view.profileList().map((pr) => ({ kind: "profile", sketch: pr.sketch, region: pr.region }));
+    if (!all.length) return false;
+    this.app.setSelection(all);
+    return true;
   }
 
   /** Keys while a box is being dragged: which kind it takes. */

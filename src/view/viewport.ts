@@ -177,6 +177,23 @@ export class Viewport {
   private bodies = new Map<string, BodyView>();
   private profileMeshes: Mesh[] = [];
   /** Closed shapes of the sketches on show, ready to pull into 3D. */
+  /** The closed shapes of the sketches shown (outside the sketch being drawn): which, and the corners of each in the world. */
+  profileList(): { sketch: string; region: number; points: Vec3[] }[] {
+    return this.profileMeshes
+      .filter((m) => m.visible && m.parent?.visible !== false)
+      .map((m) => {
+        let pts = m.userData.world as Vec3[] | undefined;
+        if (!pts) {
+          const pos = m.geometry.getAttribute("position");
+          const v = new Vector3();
+          pts = [];
+          for (let i = 0; i < pos.count; i++) pts.push(v.fromBufferAttribute(pos, i).applyMatrix4(m.matrix).toArray() as Vec3);
+          m.userData.world = pts;
+        }
+        return { sketch: m.userData.sketch as string, region: m.userData.region as number, points: pts };
+      });
+  }
+
   get profileCount(): number {
     return this.profileMeshes.length;
   }

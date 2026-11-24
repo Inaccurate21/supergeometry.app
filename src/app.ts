@@ -1492,6 +1492,12 @@ export class App implements AppContext {
       this.save();
       return;
     }
+    // Everything: Ctrl+A (the bodies, or with none the sketches' shapes; in a sketch, its curves).
+    if (mod && !e.shiftKey && k === "a") {
+      e.preventDefault();
+      this.tool.selectAll?.();
+      return;
+    }
     // Search commands: Ctrl+F anywhere (X too, outside a sketch - see below).
     if (mod && k === "f") {
       e.preventDefault();

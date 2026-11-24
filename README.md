@@ -61,7 +61,9 @@ There's no wrong order. Undo (bottom left) is always one tap away.
    it, with **Line** on. (Any other time: tap **Sketch** on the line at the
    bottom, then a plane or a flat face.)
 2. Tap **Draw**, then **Rectangle**; tap one corner, tap the opposite corner. While you draw,
-   type a number for an exact size (e.g. `40`, Tab, `30`). The ways a tool can
+   type a number for an exact size (e.g. `40`, Tab, `30`, then Enter or a
+   click): with a mouse the sizes show in small tags by the pointer, the one
+   a typed number goes to lit. The ways a tool can
    be used (Rectangle: Center, Diagonal, 3 Points) are on the line while it is on.
 3. Tap **Draw**, then **Circle**; tap a centre inside the rectangle, tap again for the size
    (or type `8`).
@@ -95,14 +97,19 @@ There's no wrong order. Undo (bottom left) is always one tap away.
 
 | | Mouse | Touch / pen | Headset controller |
 |---|---|---|---|
-| Turn the view | left-drag empty space | one-finger drag | drag with the trigger |
-| Move the view | right or middle-drag | two-finger drag | - (use the view cube) |
+| Turn the view | right-drag (or Alt + left-drag) | one-finger drag | drag with the trigger |
+| Move the view | middle-drag (or Shift + right-drag) | two-finger drag | - (use the view cube) |
 | Zoom | mouse wheel | pinch | thumbstick / pinch |
 | Select | click | tap | point and trigger |
+| Select several | left-drag a box on empty space, or Ctrl + A for everything | tap one after another | point and trigger |
 | Select a whole body | double-click | double-tap | double-trigger |
 | Deselect | Esc or click empty space | tap empty space | tap empty space |
 | Step back | right-click or Esc | - | - |
 
+- **Used to another program's mouse?** Settings → Mouse has four styles for
+  which drag turns and which moves the view (right drag turns; middle drag
+  turns with Shift to move; Shift + middle turns with middle to move; middle
+  turns with Ctrl to move), and which way the wheel zooms.
 - **Right-click steps back**: first what's half done or picked, then the
   drawing tool, then out of the sketch; in other tools it backs out. With
   something selected, right-click shows its tools by the pointer.

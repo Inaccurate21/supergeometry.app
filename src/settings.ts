@@ -63,6 +63,37 @@ export interface Settings {
    * (kept as a setting for the code that asks).
    */
   direct: boolean;
+  /**
+   * Which mouse drags turn and move the view (Settings > Mouse), for hands used to another program:
+   *   right        right drag turns; middle drag (or Shift + right) moves
+   *   middle       middle drag turns; Shift + middle moves; Ctrl + middle zooms
+   *   shiftMiddle  Shift + middle drag turns; middle drag moves; Ctrl + middle zooms
+   *   ctrlMiddle   middle drag turns; Ctrl + middle moves; Shift + middle zooms
+   * In all of them the wheel zooms, Alt + left drag turns, and a right drag turns too.
+   */
+  mouse: MouseStyle;
+  /** The wheel rolled forward zooms out (it zooms in otherwise). */
+  wheelReverse: boolean;
+}
+
+export type MouseStyle = "right" | "middle" | "shiftMiddle" | "ctrlMiddle";
+
+/** What a mouse press on the view does to the view, in a style: null, nothing (the press is for the tools). */
+export function mouseDrag(style: MouseStyle, button: number, keys: { shift: boolean; ctrl: boolean; alt: boolean }): "orbit" | "pan" | "zoom" | "right" | null {
+  if (button === 0) return keys.alt ? "orbit" : null;
+  // The right button: a drag turns the view, a click is the right-click (told apart as it moves). Shift: moves.
+  if (button === 2) return keys.shift ? "pan" : "right";
+  if (button !== 1) return null;
+  switch (style) {
+    case "middle":
+      return keys.shift ? "pan" : keys.ctrl ? "zoom" : "orbit";
+    case "shiftMiddle":
+      return keys.shift ? "orbit" : keys.ctrl ? "zoom" : "pan";
+    case "ctrlMiddle":
+      return keys.ctrl ? "pan" : keys.shift ? "zoom" : "orbit";
+    default:
+      return "pan";
+  }
 }
 
 const DEFAULTS: Settings = {
@@ -96,6 +127,8 @@ const DEFAULTS: Settings = {
   offline: false,
   sentence: true,
   direct: true,
+  mouse: "right",
+  wheelReverse: false,
   version: 5,
 };
 
