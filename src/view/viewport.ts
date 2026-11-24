@@ -105,6 +105,40 @@ export function dotMaterial(opts: { color: number; size: number; depthTest?: boo
   return new PointsMaterial({ color: opts.color, size: opts.size, sizeAttenuation: false, depthTest: opts.depthTest ?? false, map: dotTexture, alphaTest: 0.5, transparent: true, opacity: opts.opacity ?? 1 });
 }
 
+/** Snap marks, as in other CAD programs: what the point snapped to, drawn round it big enough to show past a pen's tip. */
+export type SnapGlyph = "end" | "mid" | "center" | "on";
+const glyphTextures = new Map<SnapGlyph, CanvasTexture>();
+
+/** Snapped: a square at an end, a triangle at a middle, a ring at a centre, a cross on a line or curve. */
+export function snapGlyphMaterial(kind: SnapGlyph, opts: { color: number; size: number }): PointsMaterial {
+  let t = glyphTextures.get(kind);
+  if (!t) {
+    const c = document.createElement("canvas");
+    c.width = c.height = 64;
+    const g = c.getContext("2d")!;
+    g.lineJoin = "round";
+    const path = () => {
+      g.beginPath();
+      if (kind === "end") g.rect(12, 12, 40, 40);
+      else if (kind === "mid") (g.moveTo(32, 9), g.lineTo(56, 51), g.lineTo(8, 51), g.closePath());
+      else if (kind === "center") g.arc(32, 32, 21, 0, Math.PI * 2);
+      else (g.moveTo(14, 14), g.lineTo(50, 50), g.moveTo(50, 14), g.lineTo(14, 50));
+    };
+    // A dark outline under the light mark: it reads on light faces and on the grid alike.
+    g.strokeStyle = "rgba(0,0,0,0.85)";
+    g.lineWidth = 11;
+    path();
+    g.stroke();
+    g.strokeStyle = "#fff";
+    g.lineWidth = 6;
+    path();
+    g.stroke();
+    t = new CanvasTexture(c);
+    glyphTextures.set(kind, t);
+  }
+  return new PointsMaterial({ color: opts.color, size: opts.size, sizeAttenuation: false, depthTest: false, map: t, transparent: true, alphaTest: 0.05 });
+}
+
 export interface PickOptions {
   edgeTolPx?: number;
   profiles?: boolean;

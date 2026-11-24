@@ -153,6 +153,14 @@ function translate(s: string, depth: number): string {
       if (rest !== null) t = b[1] + rest;
     }
   }
+  // A step's or a body's own number: "Sketch 01", "Extrude 03".
+  if (t === null) {
+    const n = /^([A-Za-z][\s\S]*?) (\d+)$/.exec(core);
+    if (n) {
+      const name = lookup(n[1], depth);
+      if (name !== null) t = `${name} ${n[2]}`;
+    }
+  }
   // "Size:" when there is "Size"; "Open…" when there is "Open".
   if (t === null) {
     const p = /^([\s\S]+?)(\s*[:…]|\.\.\.)$/.exec(core);

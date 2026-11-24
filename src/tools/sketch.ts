@@ -61,7 +61,7 @@ import { CopyToggle, copyMode } from "./copyToggle";
 import type { PanelItem, ToolItem } from "../ui/ui";
 import { evaluate, fmtLen, trim as trimNum } from "../units";
 import type { ToolPointer } from "../view/input";
-import { dotMaterial, sketchToWorld } from "../view/viewport";
+import { dotMaterial, sketchToWorld, snapGlyphMaterial, type SnapGlyph } from "../view/viewport";
 import { FILL_KINDS, FILL_PREFIX, fillCurves, fillRegion, refill, withoutFills } from "../sketch/fill";
 import { applyRepeats } from "../sketch/repeat";
 import { edgeRefOf, edgesOfFace, hitToSel, sourceFrame, sourcesOf, type AppContext, type Sel, type Tool } from "./tool";
@@ -1771,7 +1771,7 @@ export class SketchTool implements Tool {
   // -------------------------------------------------------------- pointer
 
   hover(p: ToolPointer | null): void {
-    if (p) this.pen = p.type === "pen";
+    if (p) (this.pen = p.type === "pen"), (this.lastPointer = p.type);
     if (this.offsetGrip) {
       const over = !!p && this.offsetGrip.arrows.some((h) => h.hit(p));
       this.offsetGrip.arrows.forEach((h) => h.setHot(over));
@@ -1835,6 +1835,7 @@ export class SketchTool implements Tool {
 
   down(p: ToolPointer): boolean {
     this.pen = p.type === "pen";
+    this.lastPointer = p.type;
     if (this.phase !== "draw") return false;
     // The extrude arrow of a tapped shape, grabbed: only now does Extrude start
     // (the sketch closes), and this same drag sizes it.
@@ -3964,6 +3965,14 @@ export class SketchTool implements Tool {
       const marker = new Points(new BufferGeometry().setFromPoints([sketchToWorld(this.plane, c ?? this.cursor.uv, 0.01)]), dotMaterial({ color: this.cursor.label ? 0x4fd18b : 0xffc23d, size: 11 }));
       marker.renderOrder = 10;
       this.addOverlay(marker);
+      // What it snapped to, marked round the dot (bigger for a pen or a finger, whose tip hides a small one).
+      const glyph = snapGlyphOf(this.cursor.label);
+      if (glyph) {
+        const big = this.pen || this.lastPointer === "touch";
+        const mark = new Points(new BufferGeometry().setFromPoints([sketchToWorld(this.plane, c ?? this.cursor.uv, 0.01)]), snapGlyphMaterial(glyph, { color: 0x4fd18b, size: big ? 40 : 26 }));
+        mark.renderOrder = 11;
+        this.addOverlay(mark);
+      }
       for (const [g0, g1] of this.cursor.guides ?? []) {
         const line = new Line(new BufferGeometry().setFromPoints([sketchToWorld(this.plane, g0), sketchToWorld(this.plane, g1)]), new LineDashedMaterial({ color: 0x4fd18b, dashSize: this.app.view.cam.worldPerPixel(this.app.view.height) * 5, gapSize: this.app.view.cam.worldPerPixel(this.app.view.height) * 4, depthTest: false }));
         line.computeLineDistances();
@@ -4044,6 +4053,8 @@ export class SketchTool implements Tool {
   private lineDim: DimWidget | null = null;
   /** The last pointer was a pen (it hovers: see showLineDim). */
   private pen = false;
+  /** What the last pointer was (a finger's or a pen's snap mark is drawn bigger). */
+  private lastPointer: ToolPointer["type"] = "mouse";
 
   /** Length of the line being drawn: dimension line with arrows + a box you can type into. */
   private showLineDim(a: Vec2, b: Vec2): void {
@@ -5949,4 +5960,15 @@ function dimLabel(e: SketchEntity | null, pts: Vec2[]): string | null {
     default:
       return pts.length ? `${pts.length} points` : null;
   }
+}
+
+/** The mark for what a sketch point snapped to (by its label), or none. */
+function snapGlyphOf(label: string | undefined): SnapGlyph | null {
+  if (!label) return null;
+  if (/^(Endpoint|Point|Edge point|3D point|Origin)$/.test(label)) return "end";
+  if (label === "Midpoint") return "mid";
+  if (label === "Center") return "center";
+  // A direction held (its dashed guide shows it), not a point snapped to.
+  if (/^(Horizontal|Vertical|Parallel|Perpendicular|Aligned)$/.test(label)) return null;
+  return "on";
 }

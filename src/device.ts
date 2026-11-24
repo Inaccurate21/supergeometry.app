@@ -12,6 +12,8 @@ export const isCoarse = isHeadset || (typeof matchMedia !== "undefined" && match
  */
 export function pickTolerance(type: string): number {
   if (type === "touch") return 18;
+  // A pen's tip sits a little off what it points at (and covers it): it reaches further than a mouse.
+  if (type === "pen") return 13;
   return isHeadset ? 14 : 8;
 }
 
