@@ -80,6 +80,8 @@ import { closestOnEntity } from "../sketch/regions";
 import { cylinderOf, deleteFace,
  deleteFaces as deleteBodyFaces, editNotes, freeformFace, sameSizesAgain, sheetFace, sheetFaces, hasBlends, inFlatFace, looseBox, offsetFace, onFace as pointOnFace, planeOf, replaceFacePlane, SIDES_MEET, sizeOf, unify } from "./faceEdit";
 import { threadDepth } from "./threads";
+import { faceMiddle, holeCutter, holeFault, roundCentre } from "./hole";
+import { holeFromLines } from "../doc/holeSizes";
 import { anchorOf, freeformFaces, meshViews, viewEdge } from "./viewLines";
 import { entitiesWire, pathOf, regionFaces, regionHoleWires, regionWire, withFittedSplines } from "./sketchGeom";
 import { stretchShape } from "./stretch";
@@ -1821,6 +1823,54 @@ async function apply(f: Feature, ctx: Ctx): Promise<void> {
       const n0 = planeOf(face).normal;
       const n = dot(plane.normal, n0) < 0 ? scale(plane.normal, -1) : plane.normal;
       bodies.set(f.face.body, staysClosed(body, replaceFacePlane(body, face, { origin: plane.origin, normal: n, xDir: xDirFor(n) })));
+      return;
+    }
+
+    case "hole": {
+      const body = need(bodies, f.face.body);
+      const face = resolveFace(body, f.face, (g) => g.geomType === "PLANE");
+      const out = norm(face.normalAt().toTuple() as Vec3);
+      const on = planeOf(face).origin;
+      // Where: the centre of the round edge it was put on, the face's middle, or the place itself - on the face's
+      // plane as it is now (the face moved out or in since: the hole starts at it still).
+      let at = f.at;
+      if (f.around) {
+        try {
+          at = roundCentre(resolveEdge(body, f.around)) ?? at;
+        } catch {
+          // The edge is gone: where it was put.
+        }
+      } else if (f.centered) at = faceMiddle(face);
+      else if (f.from) {
+        try {
+          const lines = f.from.map((x) => {
+            const e = resolveEdge(body, x.edge);
+            if (e.geomType !== "LINE") throw new Error("not straight");
+            return { a: e.pointAt(0).toTuple() as Vec3, b: e.pointAt(1).toTuple() as Vec3, d: x.d };
+          });
+          at = holeFromLines(at, faceMiddle(face), out, lines[0], lines[1]) ?? at;
+        } catch {
+          // An edge is gone, or round now: where it was put.
+        }
+      }
+      at = sub(at, scale(out, dot(sub(at, on), out)));
+      const into = scale(out, -1);
+      // Right through: past the far side of the body, wherever that is.
+      let depth = f.depth;
+      if (f.through) {
+        const [lo, hi] = body.boundingBox.bounds as [Vec3, Vec3];
+        depth = 0;
+        for (const x of [lo[0], hi[0]]) for (const y of [lo[1], hi[1]]) for (const z of [lo[2], hi[2]]) depth = Math.max(depth, dot(sub([x, y, z], at), into));
+        depth += Math.max(1, f.diameter);
+      }
+      const fault = holeFault(f, depth);
+      if (fault) throw new Error(fault);
+      // Its mouth is open: nothing of the body over it. (Put on the plate under a boss - the boss's foot is a round
+      // edge to catch on - it was drilled from the plate's face down, a hollow under the boss that nothing showed.)
+      if (insideOf(body, [add(at, scale(out, Math.max(2e-3, f.diameter * 0.05)))])[0]) throw new Error("The body covers the hole there: tap the face the screw goes in from.");
+      const made = body.cut(holeCutter(f, at, into, depth, Math.max(1e-3, f.diameter * 0.01))) as Shape3D;
+      if (!(volumeOf(body) - volumeOf(made) > 1e-9)) throw new Error("The hole is off the body there: nothing to drill into. Drag it onto the face.");
+      bodies.set(f.face.body, made);
       return;
     }
 
@@ -5504,7 +5554,7 @@ function patternCount(n: number): void {
 }
 
 /** Edits that change a solid in place (their results are checked). */
-const GUARDED = new Set<string>(["extrude", "revolve", "sweep", "loft", "boolean", "fillet", "chamfer", "shell", "moveFace", "scaleFace", "replaceFace", "deleteGeom", "split", "connect"]);
+const GUARDED = new Set<string>(["extrude", "revolve", "sweep", "loft", "boolean", "fillet", "chamfer", "shell", "moveFace", "scaleFace", "replaceFace", "deleteGeom", "split", "connect", "hole"]);
 /** Edits that must not break a body into pieces (cuts and booleans may). */
 const NO_SPLIT = new Set<string>(["fillet", "chamfer", "shell", "moveFace", "scaleFace", "replaceFace", "deleteGeom"]);
 

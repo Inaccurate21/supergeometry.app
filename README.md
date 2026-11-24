@@ -296,6 +296,14 @@ sketch. A sketch stays in view until every region of it is used.
   leave copies. Two overlapping bodies picked: all three are in the list.
   Many tools at once are one checked cut.
 - **Split Body** - by a plane (yours, by name) or a face.
+- **Hole** - tap a flat face where a screw goes, then Hole: choose the screw
+  (M2 to M12) and the head (none, a counterbore for a cap screw, a countersink)
+  and the hole has the right sizes, right through or to a depth. Each size can
+  be typed over (a printer that makes holes tight wants a few tenths more).
+  Drag its dot to move it: it catches on the middle of the face and on the
+  centre of a round edge (a boss) and stays there; anywhere else, type its two
+  distances from the nearest edges, which it keeps when the part is resized.
+  It is one step in History, opened again like any other.
 - **Thread** - tap a round face or a hole's rim: a shank at the nominal size
   gets an outside thread, a hole at the tap-drill size an inside one. The
   pitch starts at the ISO coarse pitch (the line says what it makes, e.g.

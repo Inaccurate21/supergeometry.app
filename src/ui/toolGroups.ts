@@ -25,7 +25,7 @@ export const GROUP_OF: Record<string, string> = {
  */
 export const RANK = [
   "extrude", "revolve", "sweep", "loft",
-  "fillet", "chamfer", "shell", "offsetFace", "fix", "offsetEdge", "thread", "wrap",
+  "fillet", "chamfer", "shell", "offsetFace", "fix", "offsetEdge", "hole", "thread", "wrap",
   "subtract", "union", "intersect", "split",
   "move", "mirror", "pattern", "scale", "translate", "rotate",
   "plane", "axis", "proje",

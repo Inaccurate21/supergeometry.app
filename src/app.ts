@@ -31,6 +31,7 @@ import { openDrawing } from "./bim/drawing";
 import { ItemsPanel } from "./ui/items";
 import { OffsetEdgeOp } from "./tools/offsetEdge";
 import { faceFreeformTool } from "./tools/faceFreeform";
+import { HoleOp } from "./tools/holeOp";
 import { bodyCenter, AxisOp, ConnectOp, EdgeOp, ExtrudeOp, FillOp, FillToPlaneOp, ThreadOp, ImageOp, LoftOp, MidplaneOp, MoveFaceOp, PlaneOp, ReplaceFaceOp, ScaleFaceOp, ScaleOp, ScaleRefOp, RevolveOp, ShellOp, SplitOp, SweepOp, TransformOp } from "./tools/ops";
 import { add, dist, scale, xDirFor } from "./geom";
 import { entityWorldPolylines } from "./sketch/curves";
@@ -579,6 +580,19 @@ export class App implements AppContext {
     this.setTool(new ThreadOp(this, ref, info.round));
   }
 
+  /** Hole: a screw's hole in the flat face picked, where it was tapped (its middle when the tap is not known). */
+  startHole(): void {
+    const s = this.selection[0];
+    const info = s?.kind === "face" ? this.view.body(s.body)?.faces[s.face] : undefined;
+    const ref = s?.kind === "face" ? faceRefOf(this, s) : null;
+    if (s?.kind !== "face" || !info?.plane || !ref) return void this.ui.toast("Holes go into flat faces: tap one where the screw goes");
+    const tap = this.selectTool.tapPoint;
+    const hit = tap ? this.view.pick(tap.x, tap.y, { edgeTolPx: 0 }) : null;
+    const at = hit?.kind === "face" && hit.body === s.body && hit.face === s.face ? hit.point : info.center;
+    this.setSelection([s]);
+    this.setTool(new HoleOp(this, ref, at, tap?.tol));
+  }
+
   setSection(s: SectionState | null): void {
     this.section = s;
     // A section on screen is the one to remember (a deleted one is forgotten).
@@ -1121,6 +1135,8 @@ export class App implements AppContext {
         return this.setTool(new WrapOp(this, f.source, f));
       case "thread":
         return this.setTool(new ThreadOp(this, f.face, f.round ?? { r: 5, hole: false }, f));
+      case "hole":
+        return this.setTool(new HoleOp(this, f.face, f.at, undefined, f));
       case "plane":
         return this.setTool(new PlaneOp(this, f.plane, f.face, f as PlaneFeature));
       case "transform": {
@@ -1233,6 +1249,7 @@ export class App implements AppContext {
             const s = this.selection.find((x) => x.kind === "edge");
             this.setTool(new OffsetEdgeOp(this, s?.kind === "edge" ? s : undefined));
           } },
+          { id: "hole", label: "Hole", icon: "hole", run: wait("Hole (tap a flat face where the screw goes)", ["face"], () => this.startHole()) },
           { id: "thread", label: "Thread", icon: "thread", run: wait("Thread (tap a round face or its rim)", ["face", "edge"], () => this.startThread()) },
           { id: "wrap", label: "Wrap & Emboss", icon: "wrap", beta: true, run: wait("Wrap & Emboss (tap a sketch's shape)", ["profile"], () => src() && this.setTool(new WrapOp(this, src()!))) },
           // Holes filled, surfaces closed, broken bodies mended.
