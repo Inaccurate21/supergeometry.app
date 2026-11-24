@@ -11,7 +11,7 @@ import { caretToEnd, selectAll, textField, type TextField } from "../ui/textFiel
 import { nearestSnap } from "../sketch/snapPick";
 import { arrangement } from "../sketch/regions";
 import { Gimbal, IN_PLANE, type GimbalPart } from "./gimbal";
-import { buildConstraints, CONSTRAINT_BUTTONS, ConstraintGlyphs, dimOf, distanceOf, existingConstraints, setDim } from "./sketchConstraints";
+import { buildConstraints, CONSTRAINT_BUTTONS, constraintGlyph, ConstraintGlyphs, dimOf, distanceOf, existingConstraints, setDim } from "./sketchConstraints";
 import { settings } from "../settings";
 import { isCoarse, screenClass } from "../device";
 import { arcFrom3, closestOnPrim, entityPolylines, entityPrims, evalPrim, splineHeights } from "../sketch/curves";
@@ -60,7 +60,8 @@ import { ExtrudeOp, LoftOp, RevolveOp, SweepOp } from "./ops";
 import { splitRegions } from "./select";
 import { CopyToggle, copyMode } from "./copyToggle";
 import type { PanelItem, ToolItem } from "../ui/ui";
-import { evaluate, fmtLen, trim as trimNum } from "../units";
+import { evaluate, fmtLen, toDisplay, trim as trimNum, UNIT_LABEL, units } from "../units";
+import { showConstraintList, type ConstraintRow } from "./constraintList";
 import type { ToolPointer } from "../view/input";
 import { dotMaterial, sketchToWorld } from "../view/viewport";
 import { FILL_KINDS, FILL_PREFIX, fillCurves, fillRegion, refill, withoutFills } from "../sketch/fill";
@@ -849,7 +850,7 @@ export class SketchTool implements Tool {
    * Explode: the rectangle / polygon becomes its sides as lines, still joined
    * at the corners (a rectangle's stay square, its width and height become
    * two sides' lengths) - the same lines a corner drag makes. The lines are
-   * selected, so their card (and Delete constraints, to free them) is right there.
+   * selected, so their card (and Constraints, to free them) is right there.
    */
   private explodeShape(id: string): void {
     const e = this.entities.find((x) => x.id === id);
@@ -868,22 +869,67 @@ export class SketchTool implements Tool {
     return this.selected.size ? touchingEnds(this.entities, this.constraints, this.selected) : [];
   }
 
-  /** "Delete constraints (n)" for the selection's card, when it has any. */
+  /**
+   * "Constraints (n)" for the selection's card, when it has any: the list of them, each with its own bin and its
+   * size to type over, and all of them deleted at once from there. (It was "Delete constraints (n)", which took
+   * them all - asked for: "show the list of the constraints of the selected object; allow to modify or delete some
+   * or all of them".)
+   */
   private deleteConstraintsItem(): PanelItem[] {
     const n = this.selectionConstraints().length;
     if (!n) return [];
-    return [
-      {
-        type: "button",
-        label: `Delete constraints (${n})`,
-        icon: "constraints",
-        onClick: () => {
-          const list = this.selectionConstraints();
-          this.removeConstraints(list);
-          this.app.ui.toast(`${list.length} constraint${list.length === 1 ? "" : "s"} removed - the shape stays as it is, free to change`);
-        },
+    return [{ type: "button", label: `Constraints (${n})`, icon: "constraints", onClick: () => this.openConstraintList() }];
+  }
+
+  private openConstraintList(): void {
+    showConstraintList({
+      title: "Constraints",
+      rows: () => this.selectionConstraints().map((c) => this.constraintRow(c)),
+      setValue: (id, text) => {
+        const c = this.constraints.find((x) => x.id === id);
+        if (!c) return false;
+        const v = evaluate(text, c.prop === "angle" ? "angle" : "length");
+        if (v === null || (c.prop !== "angle" && !(v > 0))) return false;
+        const before = this.constraints;
+        this.pendingExpr = isExpression(text) ? text.trim() : null;
+        this.setConstraintValue(id, v);
+        // (Refused - it contradicts another: said by a toast, the list keeps the old size.)
+        return this.constraints !== before;
       },
-    ];
+      remove: (id) => this.removeConstraints(this.constraints.filter((c) => c.id === id)),
+      removeAll: () => {
+        const list = this.selectionConstraints();
+        this.removeConstraints(list);
+        this.app.ui.toast(`${list.length} constraint${list.length === 1 ? "" : "s"} removed - the shape stays as it is, free to change`);
+      },
+      point: (id) => {
+        if (!this.glyphs || !this.plane) return;
+        this.glyphs.selected = id ?? this.selConstraint;
+        this.glyphs.set(this.plane, this.entities, this.constraints);
+      },
+    });
+  }
+
+  /** One constraint as a row of the list: its name, what else it involves, its size if it has one. */
+  private constraintRow(c: SketchConstraint): ConstraintRow {
+    const SIZES: Record<string, string> = { length: "Length", radius: "Radius", diameter: "Diameter", w: "Width", h: "Height", rx: "Radius across", ry: "Radius up", dx: "Width", dy: "Height", angle: "Angle" };
+    const NAMES: Partial<Record<SketchConstraint["type"], string>> = { fix: "Lock", symmetric: "Symmetry", distance: "Distance", pattern: "Pattern link" };
+    const name =
+      c.type === "dim" ? (SIZES[c.prop ?? ""] ?? "Size") : c.type === "follow" ? (c.how?.mirror ? "Mirror link" : "Offset link") : (NAMES[c.type] ?? c.type[0].toUpperCase() + c.type.slice(1));
+    // What it ties the pick to: the other curves it names, by kind.
+    const KINDS: Record<string, string> = { line: "a line", circle: "a circle", arc: "an arc", rect: "a rectangle", polygon: "a polygon", ellipse: "an ellipse", spline: "a curve", polyline: "a shape", point: "a point", text: "text" };
+    const others = [...new Set(refsOf(c))].filter((id) => !this.selected.has(id)).map((id) => this.entities.find((e) => e.id === id));
+    const kinds = [...new Set(others.map((e) => (e ? (KINDS[e.kind] ?? "a curve") : "something deleted")))];
+    const note = c.type === "dim" && c.held ? "kept by Lock" : kinds.length ? `with ${kinds.join(" and ")}` : c.type === "fix" ? "held where it is" : "";
+    const sized = (c.type === "dim" || c.type === "distance") && c.value !== undefined && !c.held;
+    const angle = c.prop === "angle";
+    return {
+      id: c.id,
+      glyph: constraintGlyph(c),
+      name,
+      note,
+      ...(sized ? { value: { text: c.expr ?? (angle ? trimNum(c.value!, 2) : trimNum(toDisplay(c.value!), 3)), unit: angle ? "°" : UNIT_LABEL[units()] } } : {}),
+    };
   }
 
   private removeConstraints(list: SketchConstraint[]): void {
