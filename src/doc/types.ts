@@ -159,6 +159,8 @@ export interface SketchConstraint {
    * neighbours - it stays on the original's offset, its ends where its neighbours put them.
    */
   how?: { offset?: number; mirror?: [Vec2, Vec2]; loose?: boolean };
+  /** dim / distance: where its text was dragged to (sketch units) - the dimension line runs through it, as in Fusion. */
+  place?: Vec2;
 }
 
 export interface SketchFeature extends FeatureBase {

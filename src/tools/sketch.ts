@@ -715,7 +715,12 @@ export class SketchTool implements Tool {
   /** Constraint column (enabled per selection) and badges on the geometry. */
   private refreshConstraintUI(): void {
     if (this.phase !== "draw" || !this.plane) return;
-    this.glyphs ??= new ConstraintGlyphs(this.app.view, (id) => this.selectConstraint(id));
+    this.glyphs ??= new ConstraintGlyphs(
+      this.app.view,
+      (id) => this.selectConstraint(id),
+      // A dimension's text dragged elsewhere: kept with the sketch (its line runs through it, as in Fusion).
+      (id, place) => this.commit(this.entities, this.constraints.map((c) => (c.id === id ? { ...c, place } : c))),
+    );
     this.glyphs.selected = this.selConstraint;
     this.glyphs.set(this.plane, this.entities, this.constraints);
     this.glyphs.setVisible(settings.value.showConstraintGlyphs);

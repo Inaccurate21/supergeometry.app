@@ -7701,3 +7701,30 @@ html.android-app body.history-open #topbar,
 html.android-app body.items-open #topbar {
   transform: translateX(calc(-50% + var(--hole-shift, 0px))) !important;
 }
+
+/* Sketch dimensions drawn as in Fusion (src/tools/sketchConstraints.ts): extension lines, the dimension line with
+   its arrows, a radius's leader; the text on it can be dragged anywhere. */
+.cglyphs svg.cdims {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+  pointer-events: none;
+}
+.cdim-line {
+  fill: none;
+  stroke: rgba(210, 225, 255, 0.85);
+  stroke-width: 1;
+}
+.cdim-arrow {
+  fill: rgba(210, 225, 255, 0.9);
+  stroke: none;
+}
+.cglyph.dim {
+  cursor: move;
+  touch-action: none;
+}
+.cglyph.dim.dragging {
+  border-color: #ffd34d;
+}
