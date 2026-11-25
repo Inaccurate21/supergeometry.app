@@ -63,6 +63,23 @@ function besideHistory(btn: HTMLElement): void {
   later();
 }
 
+/**
+ * Chrome or Edge: the browsers the extension is made for (its maker's pages name those two; other browsers built on
+ * Chrome are said not to be supported, and there is none for Firefox or Safari). Told by the browser's own name
+ * for itself, where it gives one - Brave, Opera, Vivaldi and Arc each look like Chrome by their user agent alone.
+ */
+function extensionBrowser(): boolean {
+  const nav = navigator as Navigator & { userAgentData?: { brands?: { brand: string }[] }; brave?: unknown };
+  if (nav.brave) return false;
+  // (Arc names itself only in a style it sets on every page.)
+  if (getComputedStyle(document.documentElement).getPropertyValue("--arc-palette-title")) return false;
+  const brands = nav.userAgentData?.brands?.map((b) => b.brand);
+  if (brands?.length) return brands.includes("Google Chrome") || brands.includes("Microsoft Edge");
+  // (No list of names: an older Chrome or Edge, by its user agent - with nothing of the others' in it.)
+  const ua = navigator.userAgent;
+  return /Chrome\//.test(ua) && !/OPR\/|Vivaldi|YaBrowser|SamsungBrowser/.test(ua);
+}
+
 function showAssistant(): void {
   if (document.querySelector(".dialog.ai-card")) return;
   const back = el("div", "dialog-back");
@@ -75,7 +92,7 @@ function showAssistant(): void {
   closeBtn.innerHTML = icons.close;
   head.append(closeBtn);
 
-  const chromium = /Chrome\//.test(navigator.userAgent);
+  const supported = extensionBrowser();
   const body = el("div", "ai-body");
   body.append(el("p", "", "Open Claude's extension and tell it what you want made. It builds it in this tab while you watch. Then ask for changes, or change it yourself: every step is in History."));
   // Where the extension's button is: a small drawing of the top right of the browser's window, the button ringed.
@@ -87,7 +104,7 @@ function showAssistant(): void {
   body.append(where);
   body.append(el("p", "dialog-note", "Not there? Click the puzzle piece next to it and pin Claude."));
   body.append(el("p", "", "The app is built so Claude needs only a few steps for each change, to keep your Claude usage low."));
-  if (!chromium) body.append(el("p", "ai-warn", "This needs the Chrome browser: Claude's extension is made for Chrome."));
+  if (!supported) body.append(el("p", "ai-warn", "Claude's extension is made for Chrome and Edge. It is not made for this browser: open the app in one of those to use it."));
   const get = el("a", "text-btn primary ai-get", "Get Claude for Chrome");
   get.href = STORE;
   get.target = "_blank";
