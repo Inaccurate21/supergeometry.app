@@ -2293,5 +2293,12 @@
  "✕  Intersection": "✕  Przecięcie",
  "⟂  Perpendicular": "⟂  Prostopadle",
  "⧖  Nearest (on a curve)": "⧖  Najbliższy (na krzywej)",
- "＋ Save current view": "＋ Zapisz bieżący widok"
+ "＋ Save current view": "＋ Zapisz bieżący widok",
+ "Pivot X": "Punkt chwytu X",
+ "Pivot Y": "Punkt chwytu Y",
+ "Pivot X {0}": "Punkt chwytu X {0}",
+ "Pivot Y {0}": "Punkt chwytu Y {0}",
+ "Pivot set. Tap another point, slide it by the arrows, or type it; then Done.": "Punkt chwytu ustawiony. Kliknij inny punkt, przesuń go strzałkami lub wpisz współrzędne; potem Gotowe.",
+ "Setting the pivot: tap a point (snaps in OSNAP), slide it by the gimbal's arrows, or type it. Then Done.": "Ustawianie punktu chwytu: kliknij punkt (przyciąga wg OSNAP), przesuń go strzałkami uchwytu lub wpisz współrzędne. Potem Gotowe.",
+ "The gimbal holds the curves by that point: drag it, or type the distances.": "Uchwyt trzyma krzywe za ten punkt: przeciągnij go lub wpisz odległości."
 }

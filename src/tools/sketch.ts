@@ -404,7 +404,7 @@ export class SketchTool implements Tool {
     /** Points of a spline pulled off the sketch's plane (the gimbal's third arrow): each one's height as it began. */
     | { kind: "lift"; from: ToolPointer; origin: Vec3; pts: { e: string; i: number; z0: number }[]; dz: number }
     /** The gimbal's centre dragged: where the curves are held and turned about (Fusion's Set pivot), they stay put. */
-    | { kind: "setPivot" }
+    | { kind: "setPivot"; axis?: 0 | 1; start?: Vec2; from?: Vec2 }
     | null = null;
   /**
    * One line selected: where its rotation pivot sits along it (0 = start,
@@ -2283,6 +2283,16 @@ export class SketchTool implements Tool {
   private startGimbalDrag(p: ToolPointer): boolean {
     const part = this.gimbal?.hit(p);
     if (!part || !this.gimbal) return false;
+    // Setting the pivot: an arrow slides it along its own direction (the curves stay put); the rings do nothing.
+    if (this.pivotEdit && part.kind === "axis" && (part.i === 0 || part.i === 1)) {
+      const from = this.uvAt(p);
+      if (!from) return false;
+      this.sdrag = { kind: "setPivot", axis: part.i, start: toPlane(this.plane!, this.gimbal.origin), from };
+      this.snapEnts = null;
+      this.gimbal.setHot(part);
+      return true;
+    }
+    if (this.pivotEdit && part.kind !== "center") return false;
     // The centre dot: moved anywhere (caught on the snaps - the curves' own too: a circle's edge, a corner), the
     // point the curves are held by and turned about. (A single line's slid along it, as before, unless taken off it.)
     if (part.kind === "center") {
@@ -2314,7 +2324,7 @@ export class SketchTool implements Tool {
   private swipe: { base: SketchEntity[]; last: { x: number; y: number }; cut: number; now?: SketchEntity[] } | null = null;
 
   dragStart(p: ToolPointer): boolean {
-    if (this.phase === "draw" && (this.kind === "select" || this.kind === "move") && !this.edit.picking && this.startGimbalDrag(p)) return true;
+    if (this.phase === "draw" && (this.kind === "select" || this.kind === "move") && (!this.edit.picking || this.pivotEdit) && this.startGimbalDrag(p)) return true;
     // Trim (Cut): a swipe that starts on a curve trims every piece it crosses
     // (one undo step). A swipe from empty space still moves the view.
     if (this.phase === "draw" && this.kind === "trim" && memory.trim === "cut" && this.sketchId) {
@@ -2383,6 +2393,19 @@ export class SketchTool implements Tool {
 
   private dragGeometry(p: ToolPointer): void {
     const dr = this.sdrag!;
+    if (dr.kind === "setPivot" && dr.axis !== undefined && dr.start && dr.from) {
+      const uv = this.uvAt(p);
+      if (!uv) return;
+      const d = uv[dr.axis] - dr.from[dr.axis];
+      const at: Vec2 = [...dr.start] as Vec2;
+      at[dr.axis] += d;
+      this.edit.moveFrom = at;
+      this.edit.moveTo = undefined;
+      this.gimbal?.setCenter(sketchToWorld(this.plane!, at).toArray() as Vec3);
+      this.refreshPreview(p);
+      this.app.ui.setLabel(p.x, p.y, `Pivot ${dr.axis ? "Y" : "X"} ${d >= 0 ? "+" : ""}${trimNum(toDisplay(d))}`);
+      return;
+    }
     if (dr.kind === "setPivot") {
       const s = this.snapAt(p);
       const at = s?.uv ?? this.uvAt(p);
@@ -2549,6 +2572,8 @@ export class SketchTool implements Tool {
    */
   /** Which pick the pivot (edit.moveFrom) was set for. */
   private pivotFor = "";
+  /** Move's Set pivot is on: taps and the gimbal (its dot and its arrows) move the pivot only, till Done. */
+  private pivotEdit = false;
 
   /** While curves or points are moved: the sketch without them, for snapping (they can't catch on themselves). */
   private snapEnts: SketchEntity[] | null = null;
@@ -5176,6 +5201,7 @@ export class SketchTool implements Tool {
    * Beside the view, dragged by its title; the line at the bottom has the same.
    */
   private renderMoveDialog(): void {
+    if (this.kind !== "move" || this.phase !== "draw" || this.moveMode !== "free") this.pivotEdit = false;
     if (this.kind !== "move" || this.phase !== "draw") {
       this.moveDlg?.remove();
       this.moveDlg = null;
@@ -5240,17 +5266,31 @@ export class SketchTool implements Tool {
     row("Objects", el("span", "sk-move-val", sel ? `${sel} picked` : "Tap what to move"));
     row(
       "Type",
-      btn("Free move", this.moveMode === "free", () => ((this.moveMode = "free"), (this.edit.picking = undefined), this.updatePanel())),
+      btn("Free move", this.moveMode === "free", () => ((this.moveMode = "free"), (this.pivotEdit = false), (this.edit.picking = undefined), this.updatePanel())),
       btn("Point to point", this.moveMode === "p2p", () => ((this.moveMode = "p2p"), this.pickMovePoint(this.edit.moveFrom ? "moveTo" : "moveFrom"))),
     );
     const at = (q?: Vec2) => (q ? `${trimNum(toDisplay(q[0]))}, ${trimNum(toDisplay(q[1]))}` : "");
     if (this.moveMode === "free") {
       // Fusion's Set Pivot: a tap puts the gimbal there (its centre dot can be dragged there too).
+      // Set pivot stays on till Done: a tap puts the pivot there, the gimbal's arrows slide it, or it is typed.
       row(
         "Pivot",
-        btn(this.edit.picking === "moveFrom" ? "Tap a point…" : this.edit.moveFrom ? at(this.edit.moveFrom) : "Set pivot", this.edit.picking === "moveFrom", () => this.pickMovePoint("moveFrom")),
-        btn("Centre", false, () => ((this.edit.moveFrom = this.edit.moveTo = undefined), (this.edit.picking = undefined), this.updatePanel(), this.refreshGimbal())),
+        btn(this.pivotEdit ? "Done" : this.edit.moveFrom ? at(this.edit.moveFrom) : "Set pivot", this.pivotEdit, () => this.setPivotEdit(!this.pivotEdit)),
+        btn("Centre", false, () => ((this.edit.moveFrom = this.edit.moveTo = undefined), this.updatePanel(), this.refreshGimbal())),
       );
+      if (this.pivotEdit && this.plane && this.gimbal) {
+        const c = this.edit.moveFrom ?? toPlane(this.plane, this.gimbal.origin);
+        const setC = (i: 0 | 1) => (v: number) => {
+          const q: Vec2 = [...(this.edit.moveFrom ?? c)] as Vec2;
+          q[i] = v;
+          this.edit.moveFrom = q;
+          this.edit.moveTo = undefined;
+          this.refreshGimbal();
+          this.updatePanel();
+        };
+        row("Pivot X", num(c[0], "length", setC(0)));
+        row("Pivot Y", num(c[1], "length", setC(1)));
+      }
     } else {
       row("From", btn(this.edit.picking === "moveFrom" ? "Tap a point…" : at(this.edit.moveFrom) || "Tap a point", this.edit.picking === "moveFrom", () => this.pickMovePoint("moveFrom")));
       row("To", btn(this.edit.picking === "moveTo" ? "Tap a point…" : at(this.edit.moveTo) || "Tap a point", this.edit.picking === "moveTo", () => this.pickMovePoint(this.edit.moveFrom ? "moveTo" : "moveFrom")));
@@ -5278,6 +5318,21 @@ export class SketchTool implements Tool {
     }
   }
 
+  /** Move's Set pivot on (taps, the arrows and the boxes move the pivot) or off (Done: they move the curves again). */
+  private setPivotEdit(on: boolean): void {
+    this.pivotEdit = on;
+    if (on) {
+      this.pickMovePoint("moveFrom");
+      this.setHint("Setting the pivot: tap a point (snaps in OSNAP), slide it by the gimbal's arrows, or type it. Then Done.");
+    } else {
+      this.edit.picking = undefined;
+      this.snapEnts = null;
+      this.setHint("The gimbal holds the curves by that point: drag it, or type the distances.");
+      this.updatePanel();
+    }
+    this.refreshGimbal();
+  }
+
   /** Move point to point: the next tap takes the point to move from (on the curves) or to (anywhere it snaps). */
   private pickMovePoint(which: "moveFrom" | "moveTo"): void {
     this.edit.picking = which;
@@ -5297,8 +5352,9 @@ export class SketchTool implements Tool {
         this.edit.dx = this.edit.dy = 0;
         // Free move: that is the pivot (the gimbal goes there). Point to point: now where it goes.
         if (this.moveMode === "free" && this.moveDlg) {
-          this.edit.picking = undefined;
-          this.setHint("The gimbal is on that point now: drag it (it holds that point), or type the distances.");
+          // (Setting the pivot stays on till Done: tap again, or slide it by the arrows, or type it.)
+          if (!this.pivotEdit) this.edit.picking = undefined;
+          this.setHint(this.pivotEdit ? "Pivot set. Tap another point, slide it by the arrows, or type it; then Done." : "The gimbal is on that point now: drag it (it holds that point), or type the distances.");
           this.updatePanel();
         } else this.pickMovePoint("moveTo");
       } else {
