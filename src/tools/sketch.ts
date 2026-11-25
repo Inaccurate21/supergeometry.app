@@ -11,6 +11,8 @@ import { caretToEnd, selectAll, textField, type TextField } from "../ui/textFiel
 import { nearestSnap } from "../sketch/snapPick";
 import { arrangement } from "../sketch/regions";
 import { Gimbal, IN_PLANE, type GimbalPart } from "./gimbal";
+import { curvesNear } from "./selectOther";
+import { tr } from "../i18n";
 import { buildConstraints, CONSTRAINT_BUTTONS, constraintGlyph, ConstraintGlyphs, dimOf, distanceOf, existingConstraints, setDim } from "./sketchConstraints";
 import { OSNAP_LIST, settings, type Osnap } from "../settings";
 import { isCoarse, screenClass } from "../device";
@@ -5225,6 +5227,33 @@ export class SketchTool implements Tool {
   /** Rotate About / Circular Pattern with curves picked and no centre yet: the next tap is the centre. */
   private get wantsCentre(): boolean {
     return (this.kind === "rotate" || this.kind === "patternCircular") && this.selected.size > 0 && !this.edit.pivot;
+  }
+
+  /**
+   * Held still on curves lying one on another (a line drawn over a line): which one, from a list by the pointer
+   * (Select Other). The one chosen is picked, as a tap on it alone would.
+   */
+  selectOther(p: ToolPointer): boolean {
+    if (this.phase !== "draw" || !this.plane || this.pts.length || this.sdrag) return false;
+    if (this.kind !== "select" && !this.isSelectionTool()) return false;
+    if (this.gimbal?.hit(p)) return false;
+    const near = curvesNear(this.app.view, this.entities, this.plane, p.x, p.y, Math.max(10, p.tol * 1.3));
+    if (near.length < 2) return false;
+    const r = this.app.view.canvas.getBoundingClientRect();
+    const names: Record<string, string> = { line: "Line", arc: "Arc", circle: "Circle", ellipse: "Ellipse", spline: "Spline", rect: "Rectangle", polygon: "Polygon", polyline: "Polyline", point: "Point" };
+    this.app.ui.menu(
+      r.left + p.x,
+      r.top + p.y,
+      near.map(({ e }, i) => ({
+        label: `${i + 1}. ${tr(names[e.kind] ?? e.kind)}${e.construction ? ` (${tr("construction")})` : ""}${this.selected.has(e.id) ? " ✓" : ""}`,
+        run: () => {
+          if (!p.add) this.selected.clear();
+          this.selected.add(e.id);
+          this.selectionChanged();
+        },
+      })),
+    );
+    return true;
   }
 
   private selectionChanged(): void {

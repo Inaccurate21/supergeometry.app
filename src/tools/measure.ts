@@ -1,13 +1,15 @@
 import type { PinDef, SketchFeature, Vec2, Vec3 } from "../doc/types";
-import { pointOf } from "../sketch/constraints";
+import { pointOf, pointsOf } from "../sketch/constraints";
 import { entityPolylines } from "../sketch/curves";
 import { sketchToWorld } from "../view/viewport";
 import { settings } from "../settings";
 import { cross, dist, dot, len, sub } from "../geom";
 import type { BodyMesh } from "../kernel/protocol";
+import { copyText, numberIn, sendToCalculator } from "../ui/calculator";
 import { el } from "../ui/ui";
 import { fmtLen, trim, UNIT_MM, UNIT_LABEL, units } from "../units";
 import type { ToolPointer } from "../view/input";
+import { filterHit, filterOptions } from "./selFilter";
 import { hitToSel, sameSel, type AppContext, type Sel, type Tool } from "./tool";
 
 export interface MeasureHost extends AppContext {
@@ -25,15 +27,28 @@ interface Row {
   b?: Vec3;
 }
 
+/** What was picked: something of the model (a face, an edge, a body, a sketch's curve) or a snap point on it. */
+type Pick = { sel: Sel } | { pt: Vec3; what: string };
+
+/** A point the pointer is caught on (Show snap points): where, and what it is. */
+interface SnapPt {
+  at: Vec3;
+  what: string;
+}
+
 /**
- * Measure: tap faces, edges or bodies; a card lists what can be measured
- * about them (and between two of them). Pin any value to keep it visible.
+ * Measure, as Fusion's: tap faces, edges, bodies, sketch curves - or, with Show snap points on, the ends, middles and
+ * centres the pointer catches on. The card has Results (between the two picks: the distance, the angle) and each
+ * pick's own sizes and place (X, Y, Z, and how far it is off each axis). Any value can be copied (to the clipboard
+ * and the calculator) or pinned to stay on screen.
  */
 export class MeasureTool implements Tool {
   readonly id = "measure";
-  private items: Sel[] = [];
+  private items: Pick[] = [];
   private card: HTMLElement | null = null;
   private deltas = false;
+  private hot: SnapPt | null = null;
+  private mark: HTMLElement | null = null;
 
   /** `over`: measuring inside an open sketch, as in Fusion - the sketch and its bar stay, the sizes stay shown. */
   constructor(
@@ -48,47 +63,65 @@ export class MeasureTool implements Tool {
   }
 
   enter(): void {
-    if (this.over) {
-      this.app.ui.setHint("Measuring in the sketch: tap curves, points, faces or edges. Measure again (or Esc) goes back to drawing.");
-      this.card = el("div", "measure-card");
-      document.body.append(this.card);
-      this.render();
-      return;
+    if (!this.over) {
+      this.app.ui.setTools([{ id: "exit", label: "Exit Measure", icon: "exit", shortcut: "Esc", run: () => this.close() }]);
+      // The view tools stay, this one lit and pulsing (tap it again to close it).
+      this.app.ui.setBottom(this.app.bottomTools());
     }
-    this.app.ui.setTools([{ id: "exit", label: "Exit Measure", icon: "exit", shortcut: "Esc", run: () => this.close() }]);
-    // The view tools stay, this one lit and pulsing (tap it again to close it).
-    this.app.ui.setBottom(this.app.bottomTools());
-    this.app.ui.setHint("Tap faces, edges or points to see their sizes. Double-tap for a whole body.");
+    this.app.ui.setHint(
+      this.over
+        ? "Measuring in the sketch: tap curves, points, faces or edges. Measure again (or Esc) goes back to drawing."
+        : "Tap faces, edges or points to see their sizes. Double-tap for a whole body.",
+    );
     this.card = el("div", "measure-card");
     document.body.append(this.card);
+    this.mark = el("div", "measure-snap");
+    this.mark.hidden = true;
+    document.body.append(this.mark);
     this.render();
   }
 
   exit(): void {
     this.card?.remove();
+    this.mark?.remove();
     this.app.ui.setHint(null);
     this.app.setSelection([]);
     this.app.setHover(null);
   }
 
+  private pickAt(p: ToolPointer) {
+    // (Through the selection filter: only cones, only centres...)
+    return filterHit(this.app.view, this.app.view.pick(p.x, p.y, filterOptions({ edgeTolPx: p.tol, profiles: false, planes: false, curves: true })));
+  }
+
   hover(p: ToolPointer | null): void {
-    this.app.setHover(p ? hitToSel(this.app.view.pick(p.x, p.y, { edgeTolPx: p.tol, profiles: false, planes: false, curves: true })) : null);
+    const hit = p ? this.pickAt(p) : null;
+    this.hot = p && settings.value.measureSnap ? this.snapNear(p, hit) : null;
+    this.app.setHover(this.hot ? null : hitToSel(hit));
+    this.showMark();
   }
 
   tap(p: ToolPointer, count: number): void {
-    let s = hitToSel(this.app.view.pick(p.x, p.y, { edgeTolPx: p.tol, profiles: false, planes: false, curves: true }));
-    if (!s) {
-      // Empty space: first clears, second leaves Measure.
-      // (In a sketch Measure stays till its button or Esc: a tap beside a line is no reason to drop it.)
-      if (!this.items.length) return this.over ? undefined : this.close();
-      this.items = [];
-    } else {
-      if (count >= 2 && (s.kind === "face" || s.kind === "edge" || s.kind === "vertex")) s = { kind: "body", body: s.body };
-      const i = this.items.findIndex((x) => sameSel(x, s!));
+    const hit = this.pickAt(p);
+    const hot = settings.value.measureSnap ? this.snapNear(p, hit) : null;
+    if (hot) {
+      const i = this.items.findIndex((x) => "pt" in x && dist(x.pt, hot.at) < 1e-6);
       if (i >= 0) this.items.splice(i, 1);
-      else this.items = [...this.items.slice(-1), s];
+      else this.items = [...this.items.slice(-1), { pt: hot.at, what: hot.what }];
+    } else {
+      let s = hitToSel(hit);
+      if (!s) {
+        // Empty space: first clears, second leaves Measure (in a sketch it stays till its button or Esc).
+        if (!this.items.length) return this.over ? undefined : this.close();
+        this.items = [];
+      } else {
+        if (count >= 2 && (s.kind === "face" || s.kind === "edge" || s.kind === "vertex")) s = { kind: "body", body: s.body };
+        const i = this.items.findIndex((x) => "sel" in x && sameSel(x.sel, s!));
+        if (i >= 0) this.items.splice(i, 1);
+        else this.items = [...this.items.slice(-1), { sel: s }];
+      }
     }
-    this.app.setSelection(this.items);
+    this.app.setSelection(this.items.flatMap((x) => ("sel" in x ? [x.sel] : [])));
     this.render();
   }
 
@@ -104,64 +137,162 @@ export class MeasureTool implements Tool {
     return false;
   }
 
-  private render(): void {
-    if (!this.card) return;
-    this.card.innerHTML = "";
-    const rows = this.measurements();
-    const head = el("label", "measure-toggle");
-    const box = document.createElement("input");
-    box.type = "checkbox";
-    box.checked = this.deltas;
-    box.addEventListener("change", () => ((this.deltas = box.checked), this.render()));
-    head.append(box, " Include X, Y, Z deltas");
-    const show = el("label", "measure-toggle");
-    const sbox = document.createElement("input");
-    sbox.type = "checkbox";
-    sbox.checked = settings.value.showPinned;
-    sbox.addEventListener("change", () => settings.set("showPinned", sbox.checked));
-    show.append(sbox, " Show pinned measurements");
-    this.card.append(head, show);
-    if (!rows.length) this.card.append(el("div", "measure-empty", "Nothing selected"));
-    for (const r of rows) {
-      const row = el("div", "measure-row");
-      row.append(el("div", "measure-value", r.value), el("div", "measure-name", r.name));
-      const pin = el("button", "icon-btn", "📌");
-      pin.title = "Pin to always show";
-      pin.addEventListener("click", () => (this.app.addPin({ text: r.value, at: r.at, a: r.a, b: r.b }), this.render()));
-      row.append(pin);
-      this.card.append(row);
+  // ------------------------------------------------------------ snap points
+
+  /** The snap points of what is under the pointer, the nearest on screen within reach. */
+  private snapNear(p: ToolPointer, hit: ReturnType<MeasureTool["pickAt"]>): SnapPt | null {
+    if (!hit) return null;
+    const cands: SnapPt[] = [];
+    const add = (at: Vec3 | undefined | null, what: string) => at && cands.push({ at, what });
+    if (hit.kind === "vertex") add(this.app.view.vertexOf(hit.body, hit.vertex), "Vertex");
+    else if (hit.kind === "edge") {
+      const b = this.app.view.body(hit.body);
+      const e = b?.edges[hit.edge];
+      if (b && e) {
+        const pts = edgePoints(b, hit.edge);
+        if (pts.length) (add(pts[0], "Edge end"), add(pts[pts.length - 1], "Edge end"));
+        add(e.mid, "Edge middle");
+        if (e.type === "CIRCLE" && pts.length >= 3) add(circumcentre(pts[0], pts[Math.floor(pts.length / 3)], pts[Math.floor((2 * pts.length) / 3)]), "Centre");
+      }
+    } else if (hit.kind === "face") {
+      const f = this.app.view.body(hit.body)?.faces[hit.face];
+      if (f) add(f.center, "Face centre");
+    } else if (hit.kind === "curve" || hit.kind === "point") {
+      const plane = this.app.sketchPlane(hit.sketch);
+      const e = this.app.store.find<SketchFeature>(hit.sketch)?.entities.find((x) => x.id === hit.entity);
+      if (plane && e) {
+        const w = (q: Vec2) => sketchToWorld(plane, q).toArray() as Vec3;
+        for (const q of pointsOf(e)) add(w(q.at), q.p === "c" ? (e.kind === "point" ? "Sketch point" : "Centre") : "Sketch point");
+        if (e.kind === "line") add(w([(e.a[0] + e.b[0]) / 2, (e.a[1] + e.b[1]) / 2]), "Midpoint");
+        if (e.kind === "circle") for (let i = 0; i < 4; i++) add(w([e.center[0] + e.radius * Math.cos((i * Math.PI) / 2), e.center[1] + e.radius * Math.sin((i * Math.PI) / 2)]), "Quadrant");
+      }
     }
+    let best: SnapPt | null = null;
+    let bd = Math.max(16, p.tol * 1.5);
+    // The filter's Centre points, Edges and Vertices switches hold for the snap points too.
+    const flt = settings.value.selFilter;
+    const kept = cands.filter((c) => (c.what === "Centre" || c.what === "Face centre" ? flt.centres : c.what.startsWith("Edge") || c.what === "Midpoint" || c.what === "Quadrant" ? flt.edges || flt.sketchCurves : c.what === "Vertex" ? flt.vertices : true));
+    for (const c of kept) {
+      const s = this.app.view.toScreen(c.at);
+      if (!s) continue;
+      const d = Math.hypot(s[0] - p.x, s[1] - p.y);
+      if (d < bd) ((bd = d), (best = c));
+    }
+    return best;
+  }
+
+  private showMark(): void {
+    const m = this.mark;
+    if (!m) return;
+    const s = this.hot && this.app.view.toScreen(this.hot.at);
+    m.hidden = !s;
+    if (!s || !this.hot) return;
+    const r = this.app.view.canvas.getBoundingClientRect();
+    m.style.left = `${r.left + s[0]}px`;
+    m.style.top = `${r.top + s[1]}px`;
+    m.dataset.what = this.hot.what;
+    m.title = this.hot.what;
+  }
+
+  // ------------------------------------------------------------ the card
+
+  private render(): void {
+    const card = this.card;
+    if (!card) return;
+    card.replaceChildren();
+    const opt = (label: string, on: boolean, set: (v: boolean) => void) => {
+      const l = el("label", "measure-toggle");
+      const box = document.createElement("input");
+      box.type = "checkbox";
+      box.checked = on;
+      box.addEventListener("change", () => set(box.checked));
+      l.append(box, ` ${label}`);
+      return l;
+    };
+    card.append(
+      opt("Show snap points", settings.value.measureSnap, (v) => (settings.set("measureSnap", v), (this.hot = null), this.showMark())),
+      opt("Include X, Y, Z deltas", this.deltas, (v) => ((this.deltas = v), this.render())),
+      opt("Show pinned measurements", settings.value.showPinned, (v) => settings.set("showPinned", v)),
+    );
+    const info = this.items.map((x) => this.describe(x));
+    if (!info.some((x) => x)) card.append(el("div", "measure-empty", settings.value.measureSnap ? "Tap a face, an edge or a body - or a snap point (a dot shows by the pointer)." : "Nothing selected"));
+    const section = (title: string, sub: string | null, rows: Row[]) => {
+      if (!rows.length) return;
+      const head = el("div", "measure-sec", `▾ ${title}`);
+      card.append(head);
+      if (sub) card.append(el("div", "measure-sub", sub));
+      for (const r of rows) card.append(this.row(r));
+    };
+    if (info.length === 2 && info[0] && info[1]) section("Results", null, this.between(info[0], info[1]));
+    info.forEach((d, i) => d && section(`Selection ${i + 1}`, d.what, d.rows));
+    const foot = el("div", "measure-foot");
     if (this.app.pins.length) {
       const clear = el("button", "text-btn", `Clear ${this.app.pins.length} pinned`);
       clear.addEventListener("click", () => (this.app.setPins([]), this.render()));
-      this.card.append(clear);
+      foot.append(clear);
     }
+    const close = el("button", "measure-close", "Close");
+    close.addEventListener("click", () => this.close());
+    foot.append(close);
+    card.append(foot);
   }
 
-  private measurements(): Row[] {
+  private row(r: Row): HTMLElement {
+    const row = el("div", "measure-row");
+    row.append(el("div", "measure-name", r.name), el("div", "measure-value", r.value));
+    const copy = el("button", "icon-btn measure-copy", "⧉");
+    copy.title = "Copy (to the clipboard and the calculator)";
+    copy.addEventListener("click", () => {
+      const n = numberIn(r.value.replace(/^[ØR]\s*/, ""));
+      void copyText(n !== null ? String(n) : r.value);
+      if (n !== null) sendToCalculator(n, r.name);
+    });
+    const pin = el("button", "icon-btn", "📌");
+    pin.title = "Pin to always show";
+    pin.addEventListener("click", () => (this.app.addPin({ text: r.value, at: r.at, a: r.a, b: r.b }), this.render()));
+    row.append(copy, pin);
+    return row;
+  }
+
+  /** Between two picks: the shortest distance, between their centres, the angle, and (asked) the deltas. */
+  private between(a: Described, b: Described): Row[] {
     const out: Row[] = [];
-    const info = this.items.map((s) => this.describe(s)).filter((x): x is Described => !!x);
-    for (const d of info) out.push(...d.rows);
-    if (info.length === 2) {
-      const [a, b] = info;
-      const mid = (p: Vec3, q: Vec3): Vec3 => [(p[0] + q[0]) / 2, (p[1] + q[1]) / 2, (p[2] + q[2]) / 2];
-      out.push({ name: "Distance (centers)", value: fmtLen(dist(a.anchor, b.anchor)), at: mid(a.anchor, b.anchor), a: a.anchor, b: b.anchor });
-      const m = closestPair(a.points, b.points);
-      out.push({ name: "Minimum distance", value: fmtLen(m.d), at: mid(m.p, m.q), a: m.p, b: m.q });
-      if (this.deltas) {
-        const d = sub(b.anchor, a.anchor);
-        ["X", "Y", "Z"].forEach((n, i) => {
-          const end = [...a.anchor] as Vec3;
-          end[i] = b.anchor[i];
-          out.push({ name: `Δ${n}`, value: fmtLen(Math.abs(d[i])), at: mid(a.anchor, end), a: a.anchor, b: end });
-        });
-      }
-      if (a.dir && b.dir) {
-        const ang = (Math.acos(Math.min(1, Math.abs(dot(a.dir, b.dir)))) * 180) / Math.PI;
-        out.push({ name: "Angle", value: `${trim(ang, 2)}°`, at: mid(a.anchor, b.anchor) });
-      }
+    const mid = (p: Vec3, q: Vec3): Vec3 => [(p[0] + q[0]) / 2, (p[1] + q[1]) / 2, (p[2] + q[2]) / 2];
+    const m = closestPair(a.points, b.points);
+    out.push({ name: "Distance", value: fmtLen(m.d), at: mid(m.p, m.q), a: m.p, b: m.q });
+    if (dist(a.anchor, b.anchor) - m.d > 1e-6) out.push({ name: "Distance (centres)", value: fmtLen(dist(a.anchor, b.anchor)), at: mid(a.anchor, b.anchor), a: a.anchor, b: b.anchor });
+    if (a.dir && b.dir) {
+      const ang = (Math.acos(Math.min(1, Math.abs(dot(a.dir, b.dir)))) * 180) / Math.PI;
+      out.push({ name: "Angle", value: `${trim(ang, 2)}°`, at: mid(a.anchor, b.anchor) });
+    }
+    if (this.deltas) {
+      const d = sub(b.anchor, a.anchor);
+      ["X", "Y", "Z"].forEach((n, i) => {
+        const end = [...a.anchor] as Vec3;
+        end[i] = b.anchor[i];
+        out.push({ name: `Δ${n}`, value: fmtLen(Math.abs(d[i])), at: mid(a.anchor, end), a: a.anchor, b: end });
+      });
     }
     return out;
+  }
+
+  /** A point's place: X, Y, Z, and how far it is off each axis (asked for: "XYZ from the axes too"). */
+  private placeRows(at: Vec3, of = "Position"): Row[] {
+    const u = UNIT_MM[units()];
+    const v = (n: number) => `${trim(n / u, 3)} ${UNIT_LABEL[units()]}`;
+    return [
+      { name: `${of} X`, value: v(at[0]), at, a: [0, at[1], at[2]], b: at },
+      { name: `${of} Y`, value: v(at[1]), at, a: [at[0], 0, at[2]], b: at },
+      { name: `${of} Z`, value: v(at[2]), at, a: [at[0], at[1], 0], b: at },
+      { name: "From X axis", value: v(Math.hypot(at[1], at[2])), at, a: [at[0], 0, 0], b: at },
+      { name: "From Y axis", value: v(Math.hypot(at[0], at[2])), at, a: [0, at[1], 0], b: at },
+      { name: "From Z axis", value: v(Math.hypot(at[0], at[1])), at, a: [0, 0, at[2]], b: at },
+    ];
+  }
+
+  private describe(x: Pick): Described | null {
+    if ("pt" in x) return { what: `${x.what} picked`, rows: this.placeRows(x.pt), anchor: x.pt, points: [x.pt] };
+    return this.describeSel(x.sel);
   }
 
   /** A curve or a point of a sketch: its length, its radius, where it is. */
@@ -172,11 +303,11 @@ export class MeasureTool implements Tool {
     if (!plane || !e) return null;
     const w = (q: Vec2) => sketchToWorld(plane, q).toArray() as Vec3;
     const u = UNIT_MM[units()];
-    if (s.kind === "point") {
-      const q = pointOf(e, s.p);
+    if (s.kind === "point" || e.kind === "point") {
+      const q = s.kind === "point" ? pointOf(e, s.p) : pointOf(e, "c");
       if (!q) return null;
       const v = w(q);
-      return { rows: [{ name: "Point (X, Y in the sketch)", value: `${trim(q[0] / u, 3)}, ${trim(q[1] / u, 3)}`, at: v }], anchor: v, points: [v] };
+      return { what: "Sketch point picked", rows: [{ name: "In the sketch (X, Y)", value: `${trim(q[0] / u, 3)}, ${trim(q[1] / u, 3)}`, at: v }, ...this.placeRows(v)], anchor: v, points: [v] };
     }
     const polys = entityPolylines(e);
     // (Straight runs filled in: the nearest distance to a line is then to its middle too, not just its ends.)
@@ -199,7 +330,7 @@ export class MeasureTool implements Tool {
       const l = len(d) || 1;
       dir = [d[0] / l, d[1] / l, d[2] / l];
       anchor = [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2, (a[2] + b[2]) / 2];
-      rows.push({ name: "Length · line", value: fmtLen(len(d)), at: anchor, a, b });
+      rows.push({ name: "Length", value: fmtLen(len(d)), at: anchor, a, b });
       const ang = (Math.atan2(e.b[1] - e.a[1], e.b[0] - e.a[0]) * 180) / Math.PI;
       rows.push({ name: "Angle to X", value: `${trim(((ang % 180) + 180) % 180, 2)}°`, at: anchor });
     } else if (e.kind === "circle") {
@@ -210,20 +341,24 @@ export class MeasureTool implements Tool {
       rows.push({ name: "Radius", value: `R ${fmtLen(e.radius)}`, at: b, a: anchor, b });
       rows.push({ name: "Circumference", value: fmtLen(2 * Math.PI * e.radius), at: b });
       rows.push({ name: "Area", value: fmtArea(Math.PI * e.radius * e.radius), at: anchor });
+      rows.push(...this.placeRows(anchor, "Centre"));
     } else if (e.kind === "arc" && pts.length >= 3) {
+      rows.push({ name: "Length", value: fmtLen(length), at: mid });
       const r = circumradius(w(e.a), w(e.m), w(e.b));
-      rows.push({ name: "Length · arc", value: fmtLen(length), at: mid });
       if (r) rows.push({ name: "Radius", value: `R ${fmtLen(r)}`, at: mid });
+      const c = circumcentre(w(e.a), w(e.m), w(e.b));
+      if (c) rows.push(...this.placeRows(c, "Centre"));
     } else if (e.kind === "rect") {
       anchor = w(e.center);
       rows.push({ name: "Width × height", value: `${trim(e.w / u, 3)} × ${fmtLen(e.h)}`, at: anchor });
       rows.push({ name: "Perimeter", value: fmtLen(length), at: anchor });
       rows.push({ name: "Area", value: fmtArea(e.w * e.h), at: anchor });
+      rows.push(...this.placeRows(anchor, "Centre"));
     } else rows.push({ name: "Length", value: fmtLen(length), at: mid });
-    return { rows, anchor, points: pts, dir };
+    return { what: "Sketch curve picked", rows, anchor, points: pts, dir };
   }
 
-  private describe(s: Sel): Described | null {
+  private describeSel(s: Sel): Described | null {
     if (s.kind === "curve" || s.kind === "point") return this.describeSketch(s);
     if (s.kind !== "face" && s.kind !== "edge" && s.kind !== "body" && s.kind !== "vertex") return null;
     const b = this.app.view.body(s.body);
@@ -231,13 +366,12 @@ export class MeasureTool implements Tool {
     if (s.kind === "vertex") {
       const v = this.app.view.vertexOf(s.body, s.vertex);
       if (!v) return null;
-      const u = UNIT_MM[units()];
-      return { rows: [{ name: "Point (X, Y, Z)", value: v.map((c) => trim(c / u, 3)).join(", "), at: v }], anchor: v, points: [v] };
+      return { what: "Vertex picked", rows: this.placeRows(v), anchor: v, points: [v] };
     }
     if (s.kind === "face") {
       const f = b.faces[s.face];
       const pts = facePoints(b, s.face);
-      const rows: Row[] = [{ name: `Surface area · ${niceType(f.type)}`, value: fmtArea(f.area), at: f.center }];
+      const rows: Row[] = [{ name: "Area", value: fmtArea(f.area), at: f.center }];
       // A round face (a shaft, a hole): its diameter, pinned as a line straight across it.
       if (f.round) {
         const r = f.round.r;
@@ -245,17 +379,22 @@ export class MeasureTool implements Tool {
         rows.push({ name: f.round.hole ? "Diameter · hole" : "Diameter", value: `Ø ${fmtLen(2 * r)}`, at: across?.mid ?? f.center, ...(across ? { a: across.a, b: across.b } : {}) });
         rows.push({ name: "Radius", value: `R ${fmtLen(r)}`, at: across?.b ?? f.center, ...(across ? { a: across.mid, b: across.b } : {}) });
       }
-      return { rows, anchor: f.center, points: pts, dir: f.plane ? f.normal : undefined };
+      rows.push(...this.placeRows(f.center, "Centre"));
+      return { what: `Face picked · ${niceType(f.type)}`, rows, anchor: f.center, points: pts, dir: f.plane ? f.normal : undefined };
     }
     if (s.kind === "edge") {
       const e = b.edges[s.edge];
       const pts = edgePoints(b, s.edge);
-      const rows: Row[] = [{ name: `Length · ${niceType(e.type)}`, value: fmtLen(e.length), at: e.mid, ...(e.type === "LINE" ? { a: e.start, b: e.end } : {}) }];
+      const rows: Row[] = [{ name: "Length", value: fmtLen(e.length), at: e.mid, ...(e.type === "LINE" ? { a: e.start, b: e.end } : {}) }];
+      let centre: Vec3 | null = null;
       if (e.type === "CIRCLE" && pts.length >= 3) {
-        const r = circumradius(pts[0], pts[Math.floor(pts.length / 3)], pts[Math.floor((2 * pts.length) / 3)]);
-        if (r) rows.push({ name: "Diameter", value: fmtLen(2 * r), at: e.mid }, { name: "Radius", value: fmtLen(r), at: e.mid });
+        const [p0, p1, p2] = [pts[0], pts[Math.floor(pts.length / 3)], pts[Math.floor((2 * pts.length) / 3)]];
+        const r = circumradius(p0, p1, p2);
+        centre = circumcentre(p0, p1, p2);
+        if (r) rows.push({ name: "Radius", value: `R ${fmtLen(r)}`, at: e.mid }, { name: "Diameter", value: `Ø ${fmtLen(2 * r)}`, at: e.mid });
       }
-      return { rows, anchor: e.mid, points: pts, dir: e.type === "LINE" ? e.dir : undefined };
+      rows.push(...this.placeRows(centre ?? e.mid, centre ? "Centre" : "Middle"));
+      return { what: `Edge picked · ${niceType(e.type)}`, rows, anchor: centre ?? e.mid, points: pts, dir: e.type === "LINE" ? e.dir : undefined };
     }
     const pts: Vec3[] = [];
     for (let i = 0; i < b.positions.length; i += 3) pts.push([b.positions[i], b.positions[i + 1], b.positions[i + 2]]);
@@ -264,10 +403,12 @@ export class MeasureTool implements Tool {
     const center: Vec3 = [(min[0] + max[0]) / 2, (min[1] + max[1]) / 2, (min[2] + max[2]) / 2];
     const area = b.faces.reduce((s2, f) => s2 + f.area, 0);
     return {
+      what: "Body picked",
       rows: [
         { name: "Size (X × Y × Z)", value: `${trim((max[0] - min[0]) / UNIT_MM[units()], 3)} × ${trim((max[1] - min[1]) / UNIT_MM[units()], 3)} × ${fmtLen(max[2] - min[2])}`, at: center },
         { name: "Surface area", value: fmtArea(area), at: center },
         { name: "Volume", value: fmtVolume(volume(b)), at: center },
+        ...this.placeRows(center, "Centre"),
       ],
       anchor: center,
       points: pts,
@@ -276,10 +417,26 @@ export class MeasureTool implements Tool {
 }
 
 interface Described {
+  /** What it is ("Edge picked · circle"). */
+  what: string;
   rows: Row[];
   anchor: Vec3;
   points: Vec3[];
   dir?: Vec3;
+}
+
+/** The centre of the circle through three points. */
+function circumcentre(a: Vec3, b: Vec3, c: Vec3): Vec3 | null {
+  const ab = sub(b, a);
+  const ac = sub(c, a);
+  const n = cross(ab, ac);
+  const nn = dot(n, n);
+  if (nn < 1e-18) return null;
+  const t1 = cross(n, ab);
+  const t2 = cross(ac, n);
+  const k1 = dot(ac, ac) / (2 * nn);
+  const k2 = dot(ab, ab) / (2 * nn);
+  return [a[0] + t1[0] * k1 + t2[0] * k2, a[1] + t1[1] * k1 + t2[1] * k2, a[2] + t1[2] * k1 + t2[2] * k2];
 }
 
 function facePoints(b: BodyMesh, face: number): Vec3[] {

@@ -1,3 +1,6 @@
+import type { PickOptions } from "../view/viewport";
+import { filterHit, filterOptions, wholeBodyFor } from "./selFilter";
+import { choicesAt, showChoices } from "./selectOther";
 import { AssemblyTool } from "../assembly/assemblyTool";
 import { QuickActions, type QuickKind, type QuickPlace } from "./quickActions";
 import { circleAxis } from "./slots";
@@ -89,7 +92,8 @@ export class SelectTool implements Tool {
     }
     const hit = this.pickAt(p);
     this.lastHover = { x: p.x, y: p.y, hit };
-    this.app.setHover(hitToSel(hit));
+    const whole = this.pending ? null : wholeBodyFor(hit, this.app.view);
+    this.app.setHover(whole ? { kind: "body", body: whole } : hitToSel(hit));
     // Direct touch: over what is picked and can be dragged by itself, the pointer says so.
     if ((this.handleAction || (this.gimbal && this.app.selection[0]?.kind === "body")) && this.onPick(p, hit)) this.app.view.canvas.style.cursor = "grab";
   }
@@ -174,11 +178,30 @@ export class SelectTool implements Tool {
     return !!this.handleAction;
   }
 
+  /** Held still where several things lie: the list to choose from (Select Other). */
+  selectOther(p: ToolPointer): boolean {
+    if (this.gimbal?.hit(p) || this.handle?.hit(p)) return false;
+    const choices = choicesAt(this.app, p);
+    if (choices.length < 2) return false;
+    showChoices(this.app, p, choices, (h) => {
+      this.chosenHit = h;
+      this.tap(p, 1);
+    });
+    return true;
+  }
+
   /** Sketch curves win near them; a face outline copied into a sketch ("bnd-…") is the body's edge. */
   private pickAt(p: ToolPointer) {
-    const hit = this.app.view.pick(p.x, p.y, { edgeTolPx: p.tol, curves: true });
+    const raw = this.pickRaw(p);
+    // The selection filter (a tool waiting for its own kind of pick goes by that instead).
+    return this.pending ? raw : filterHit(this.app.view, raw);
+  }
+
+  private pickRaw(p: ToolPointer) {
+    const o = (x: PickOptions): PickOptions => (this.pending ? x : filterOptions(x));
+    const hit = this.app.view.pick(p.x, p.y, o({ edgeTolPx: p.tol, curves: true }));
     if (hit?.kind !== "curve" && hit?.kind !== "point") return hit;
-    const under = this.app.view.pick(p.x, p.y, { edgeTolPx: p.tol });
+    const under = this.app.view.pick(p.x, p.y, o({ edgeTolPx: p.tol }));
     if (hit.entity.startsWith("bnd-")) return under;
     // A sketch curve behind a body (seen through it) doesn't win over the body in front.
     if (under && !this.app.view.selectThrough && (under.kind === "face" || under.kind === "edge" || under.kind === "vertex")) {
@@ -285,6 +308,9 @@ export class SelectTool implements Tool {
       this.app.setSelection([]);
       return true;
     }
+    // The filter keeps this kind of face out but lets bodies in: the tap picks the body.
+    const wb = this.pending ? null : wholeBodyFor(hit, this.app.view);
+    if (wb) s = { kind: "body", body: wb };
     // Double tap selects the whole body (what its first tap picked there gives way to it).
     const whole = count >= 2 && (s.kind === "face" || s.kind === "edge" || s.kind === "vertex");
     if (whole) s = { kind: "body", body: (s as { body: string }).body };

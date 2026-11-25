@@ -256,6 +256,7 @@ export class Viewport {
   /** The construction planes and axes shown (read: listed by name where a tap would pick one). */
   construction: { planes: ConstructionInfo[]; axes: ConstructionInfo[] } = { planes: [], axes: [] };
   private showOriginPlanes = false;
+  private originShown = "";
   private clip: Plane | null = null;
   private bodyMat: MeshStandardMaterial;
   private capMat: MeshBasicMaterial;
@@ -365,6 +366,12 @@ export class Viewport {
     this.grid.locked = s.gridLocked;
     this.grid.lockedStep = s.gridStep;
     this.axesGroup.visible = s.showAxes;
+    // (The origin planes shown from the Browser: drawn again when that changes.)
+    const op = `${s.showOriginPlanes}|${JSON.stringify(s.originPlanes)}`;
+    if (op !== this.originShown) {
+      this.originShown = op;
+      if (this.constructionGroup) this.rebuildPlanes();
+    }
     this.cam.animate = s.animateCamera;
     // A 2D section is always seen straight on, without perspective.
     // (Orthographic chosen in Settings: no longer only flat for a view of the cube's.)
@@ -1048,7 +1055,7 @@ export class Viewport {
       this.constructionGroup.add(mesh);
       this.planeMeshes.push(mesh);
     };
-    if (this.showOriginPlanes) for (const [id, p] of Object.entries(ORIGIN_PLANES)) addPlane(id, p, 1, true);
+    if (this.showOriginPlanes || settings.value.showOriginPlanes) for (const [id, p] of Object.entries(ORIGIN_PLANES)) if (this.showOriginPlanes || settings.value.originPlanes[id] !== false) addPlane(id, p, 1, true);
     for (const c of this.construction.planes) addPlane(c.id, c.plane, 1, false);
     for (const a of this.construction.axes) {
       const o = new Vector3(...a.plane.origin);

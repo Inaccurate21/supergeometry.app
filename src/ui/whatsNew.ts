@@ -22,6 +22,19 @@ interface Update {
 export const UPDATES: Update[] = [
   {
     date: "2026-11-25",
+    version: "0.9.0.0",
+    added: [
+      "The Browser (top bar, at the left) took the place of Items: Document settings (units), Named views (save the view, tap one to look from it), Origin (the axes and the XY, XZ and YZ planes, each shown or hidden), then Bodies, Sketches, Construction geometry, Images and Joints.",
+      "Calculator (left edge): numbers, + - × ÷ ^, brackets, √, π and the project's variables. Copy the result, paste a value, or Insert it into the box typed in last.",
+      "Measure as in Fusion: Results, Selection 1 and Selection 2, with each pick's sizes, its X, Y, Z and how far it is from each axis. Show snap points picks ends, middles, centres and quadrants. Each value can be copied (to the clipboard and the calculator) or pinned.",
+      "Selection filter (the funnel at the left edge): pick only bodies, faces of a kind (flat, cylinders, cones, spheres), edges, vertices, centre points, sketch curves, points or shapes, or planes.",
+      "Select Other: press and hold still where several things lie (a line drawn over another, an edge behind a face) and choose the one you mean from the list.",
+      "Sketch: Point, Slot (centre to centre, overall, or from its centre), Ellipse by its centre, by the ends of its axis or in a box, and Break (a curve cut where another crosses it, every piece kept).",
+      "Rectangle draws from its centre by default.",
+    ],
+  },
+  {
+    date: "2026-11-25",
     version: "0.8.7.1",
     added: ["More \u2192 Version lists the changes of every version, with its number."],
   },

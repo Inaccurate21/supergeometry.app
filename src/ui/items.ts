@@ -1,8 +1,11 @@
-// Items panel: every body, sketch, plane, axis and image, with visibility
-// toggles - plus folders (at the bottom) to group any of them.
+// The Browser (as Fusion's, at the left): the project's settings (its units), its saved views, the origin (the
+// world axes and the XY / XZ / YZ planes, each shown or hidden), then every body, sketch, construction plane and
+// axis, image and joint, with visibility toggles - plus folders (at the bottom) to group any of them. It took the
+// place of the Items panel (asked for: "the Browser tree ... Items goes, so the same thing isn't there twice").
 
 import type { DocStore } from "../doc/store";
-import type { Feature, ItemFolder } from "../doc/types";
+import type { Feature, ItemFolder, SavedView, Units } from "../doc/types";
+import { settings } from "../settings";
 import type { RegenResult } from "../kernel/protocol";
 import { icons, type IconName } from "./icons";
 import { el, twoTap } from "./ui";
@@ -20,6 +23,13 @@ export interface ItemsHandlers {
   /** Ask for a name (folders). */
   askName(title: string, current: string): Promise<string | null>;
   isolated(): string[] | null;
+  /** The project's units, and changing them. */
+  setUnits(u: Units): void;
+  /** A saved view: look from it; the view as it is now: kept under a name. */
+  restoreView(v: SavedView): void;
+  saveView(): void;
+  /** Assemblies (a joint tapped). */
+  openJoints(): void;
 }
 
 interface Row {
@@ -40,7 +50,8 @@ export class ItemsPanel {
   private picking = false;
   /** Move pressed: the folders get ticks - the one ticked takes the ticked items. */
   private moving = false;
-  private collapsed = new Set<string>();
+  /** (The project's own branches start folded, as Fusion's do: the bodies and sketches are what is looked for.) */
+  private collapsed = new Set<string>(["cat:Document settings", "cat:Named views", "cat:Origin"]);
   private last: RegenResult | null = null;
 
   constructor(
@@ -48,6 +59,8 @@ export class ItemsPanel {
     private h: ItemsHandlers,
   ) {
     document.getElementById("items-btn")!.addEventListener("click", () => this.toggle());
+    // (The origin's eyes follow the settings they switch.)
+    settings.onChange(() => this.render(this.last));
     document.getElementById("items-close")!.innerHTML = icons.close;
     document.getElementById("items-close")!.addEventListener("click", () => this.toggle(false));
     const pick = document.getElementById("items-pick")!;
@@ -90,7 +103,7 @@ export class ItemsPanel {
     // click that's in progress would swallow that click).
     const d = this.store.doc;
     const sig = JSON.stringify([
-      d.hidden, d.names, d.folders, this.h.isolated(), [...this.checked], this.picking, this.moving, [...this.collapsed],
+      d.hidden, d.names, d.folders, this.h.isolated(), d.units, d.views, d.joints?.map((j) => [j.id, j.name]), settings.value.showAxes, settings.value.showOriginPlanes, settings.value.originPlanes, [...this.checked], this.picking, this.moving, [...this.collapsed],
       result?.bodies.map((b) => [b.id, b.name]),
       d.features.filter((f) => ["sketch", "plane", "axis", "image"].includes(f.type)).map((f) => [f.id, f.name, f.type]),
     ]);
@@ -111,8 +124,9 @@ export class ItemsPanel {
       Bodies: bodies.map((b) => ({ id: b.id, name: names[b.id] ?? b.name, icon: "body" as IconName, open: () => this.h.selectBody(b.id), remove: () => this.h.deleteBody(b.id), extra: iso && !iso.includes(b.id) ? " isolated-out" : "", isBody: true })),
       // Greyed while something else is isolated (they're hidden until Isolate is off).
       Sketches: of("sketch").map((s) => ({ id: s.id, name: s.name, icon: "sketch" as IconName, open: () => this.h.editSketch(s.id), remove: () => this.h.deleteFeature(s.id), extra: iso && !iso.includes(s.id) ? " isolated-out" : "" })),
-      "Planes & axes": [...of("plane"), ...of("axis")].map((c) => ({ id: c.id, name: c.name, icon: (c.type === "plane" ? PLANE_ICON[(c as { kind?: string }).kind ?? "offset"] ?? "plane" : AXIS_ICON[(c as { kind?: string }).kind ?? ""] ?? "axis") as IconName, open: () => this.h.selectPlane(c.id), remove: () => this.h.deleteFeature(c.id), extra: iso && !iso.includes(c.id) ? " isolated-out" : "" })),
+      "Construction geometry": [...of("plane"), ...of("axis")].map((c) => ({ id: c.id, name: c.name, icon: (c.type === "plane" ? PLANE_ICON[(c as { kind?: string }).kind ?? "offset"] ?? "plane" : AXIS_ICON[(c as { kind?: string }).kind ?? ""] ?? "axis") as IconName, open: () => this.h.selectPlane(c.id), remove: () => this.h.deleteFeature(c.id), extra: iso && !iso.includes(c.id) ? " isolated-out" : "" })),
       Images: of("image").map((i) => ({ id: i.id, name: i.name, icon: "image" as IconName, open: () => this.h.selectImage(i.id), remove: () => this.h.deleteFeature(i.id) })),
+      Joints: (d.joints ?? []).map((j) => ({ id: j.id, name: j.name, icon: "assembly" as IconName, open: () => this.h.openJoints(), remove: () => this.store.commit((x) => (x.joints = (x.joints ?? []).filter((y) => y.id !== j.id))) })),
     };
     const byId = new Map(Object.values(rows).flat().map((r) => [r.id, r]));
 
@@ -121,7 +135,7 @@ export class ItemsPanel {
     const category = (title: string, count: number) => {
       const key = `cat:${title}`;
       const li = el("li", "items-heading items-category");
-      const b = el("button", "items-category-btn", `${this.collapsed.has(key) ? "▸" : "▾"} ${tr(title)} (${count})`);
+      const b = el("button", "items-category-btn", `${this.collapsed.has(key) ? "▸" : "▾"} ${tr(title)}${count >= 0 ? ` (${count})` : ""}`);
       b.title = this.collapsed.has(key) ? "Show" : "Fold away";
       b.addEventListener("click", () => {
         if (this.collapsed.has(key)) this.collapsed.delete(key);
@@ -132,6 +146,50 @@ export class ItemsPanel {
       this.list.append(li);
       return !this.collapsed.has(key);
     };
+    // The project's own branches first: its settings, its views, the origin.
+    if (category("Document settings", -1)) {
+      const u = d.units;
+      const li = this.simpleRow("settings", `Units: ${u}`);
+      const pick = document.createElement("select");
+      pick.className = "browser-units no-tr";
+      for (const x of ["mm", "cm", "m", "in", "ft"] as Units[]) pick.append(new Option(x, x, x === u, x === u));
+      pick.addEventListener("change", () => this.h.setUnits(pick.value as Units));
+      li.append(pick);
+    }
+    if (category("Named views", d.views.length)) {
+      for (const v of d.views) {
+        const li = this.simpleRow("eye", v.name, () => this.h.restoreView(v));
+        const del = el("button", "icon-btn");
+        del.title = "Delete view";
+        del.innerHTML = icons.trash;
+        del.addEventListener("click", () => this.store.commit((x) => (x.views = x.views.filter((y) => y.name !== v.name))));
+        li.append(del);
+      }
+      this.simpleRow("plus", "Save current view", () => this.h.saveView(), "browser-add");
+    }
+    if (category("Origin", -1)) {
+      const st = settings.value;
+      const eyeRow = (label: string, icon: IconName, on: boolean, flip: () => void) => {
+        const li = this.simpleRow(icon, label, flip, on ? "" : " hidden-item");
+        const eye = el("button", "icon-btn");
+        eye.title = on ? "Hide" : "Show";
+        eye.innerHTML = icons[on ? "eye" : "eyeOff"];
+        eye.addEventListener("click", (e) => (e.stopPropagation(), flip()));
+        li.prepend(eye);
+      };
+      eyeRow("Axes (X, Y, Z)", "axis", st.showAxes, () => settings.set("showAxes", !settings.value.showAxes));
+      for (const id of ["XY", "XZ", "YZ"]) {
+        const on = st.showOriginPlanes && st.originPlanes[id] !== false;
+        eyeRow(`${id} plane`, "plane", on, () => {
+          const now = settings.value;
+          const shown = now.showOriginPlanes && now.originPlanes[id] !== false;
+          const next = { ...now.originPlanes, [id]: !shown };
+          settings.set("originPlanes", next);
+          settings.set("showOriginPlanes", Object.values(next).some((x) => x));
+        });
+      }
+    }
+
     for (const [title, list] of Object.entries(rows)) {
       const loose = list.filter((r) => !inFolder.has(r.id));
       if (title !== "Bodies" && !loose.length) continue;
@@ -205,6 +263,18 @@ export class ItemsPanel {
     } else if (this.picking) {
       this.list.append(el("li", "items-empty", "Tick items, then make a folder of them."));
     }
+  }
+
+  /** A row of the project's own branches: an icon and a name (a tap does `run`), and room for buttons after. */
+  private simpleRow(icon: IconName, name: string, run?: () => void, extra = ""): HTMLElement {
+    const li = el("li", `items-row browser-row${extra}`);
+    const label = el("button", "items-name");
+    label.innerHTML = icons[icon] ?? "";
+    label.append(name);
+    if (run) label.addEventListener("click", run);
+    li.append(label);
+    this.list.append(li);
+    return li;
   }
 
   private row(r: Row, hidden: Set<string>, depth: number): void {

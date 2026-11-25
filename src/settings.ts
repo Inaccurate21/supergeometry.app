@@ -18,6 +18,7 @@ export interface Settings {
    * drawing and while moving curves and points.
    */
   osnap: Osnap;
+  selFilter: SelFilter;
   /** While a sketch is open: the bodies as they are, see-through, or hidden (its View list on the line). */
   sketchBodies: "normal" | "ghost" | "hidden";
   /** While a sketch is open: the model's faces, edges and corners can be picked and caught on. */
@@ -31,6 +32,9 @@ export interface Settings {
   gridStep: number;
   showGrid: boolean;
   showAxes: boolean;
+  /** The origin planes (XY, XZ, YZ) shown all the time (the Browser's Origin), each on or off. */
+  showOriginPlanes: boolean;
+  originPlanes: Record<string, boolean>;
   animateCamera: boolean;
   ortho: boolean;
   shader: "shaded" | "wireframe" | "xray";
@@ -43,6 +47,8 @@ export interface Settings {
   showEdges: boolean;
   showHiddenEdges: boolean;
   showPinned: boolean;
+  /** Measure: snap points (ends, middles, centres) shown by the pointer and picked as points. */
+  measureSnap: boolean;
   /** Sketch mode: show the constraint column. */
   showConstraints: boolean;
   /** Sketch: add Horizontal/Vertical/Coincident automatically while drawing. */
@@ -186,6 +192,26 @@ export function mouseChord(id: string, buttons: number): MouseNav | null {
   return (buttons & 1 ? chord.left : undefined) ?? (buttons & 2 ? chord.right : undefined) ?? null;
 }
 
+/** The selection filter (src/tools/selFilter.ts): each kind of thing a tap may pick. */
+export interface SelFilter {
+  bodies: boolean;
+  faces: boolean;
+  facePlane: boolean;
+  faceCyl: boolean;
+  faceCone: boolean;
+  faceSphere: boolean;
+  faceOther: boolean;
+  edges: boolean;
+  vertices: boolean;
+  centres: boolean;
+  sketchCurves: boolean;
+  sketchPoints: boolean;
+  profiles: boolean;
+  planes: boolean;
+}
+
+const SELFILTER_DEFAULT: SelFilter = { bodies: true, faces: true, facePlane: true, faceCyl: true, faceCone: true, faceSphere: true, faceOther: true, edges: true, vertices: true, centres: true, sketchCurves: true, sketchPoints: true, profiles: true, planes: true };
+
 export interface Osnap {
   endpoint: boolean;
   midpoint: boolean;
@@ -221,6 +247,7 @@ export const OSNAP_DEFAULT: Osnap = { endpoint: true, midpoint: true, center: tr
 const DEFAULTS: Settings = {
   snap: { grid: true, guidePoints: true, guideLines: true, points3d: true, distantEdges: false },
   osnap: OSNAP_DEFAULT,
+  selFilter: SELFILTER_DEFAULT,
   sketchBodies: "normal",
   sketchModelPick: true,
   sketchRegionPick: true,
@@ -230,6 +257,8 @@ const DEFAULTS: Settings = {
   gridStep: 1,
   showGrid: true,
   showAxes: true,
+  showOriginPlanes: false,
+  originPlanes: { XY: true, XZ: true, YZ: true },
   animateCamera: true,
   ortho: true,
   shader: "shaded",
@@ -240,6 +269,7 @@ const DEFAULTS: Settings = {
   showEdges: true,
   showHiddenEdges: false,
   showPinned: true,
+  measureSnap: true,
   degrees: "decimal",
   // The Constraints column (Auto constrain, Show constraints): closed - the
   // constraints themselves are in the card of what's selected.
@@ -273,7 +303,7 @@ class SettingsStore {
     } catch {
       // Unavailable storage just means defaults.
     }
-    this.value = { ...DEFAULTS, ...saved, snap: { ...DEFAULTS.snap, ...(saved.snap ?? {}) }, osnap: { ...OSNAP_DEFAULT, ...(saved.osnap ?? {}) } };
+    this.value = { ...DEFAULTS, ...saved, snap: { ...DEFAULTS.snap, ...(saved.snap ?? {}) }, osnap: { ...OSNAP_DEFAULT, ...(saved.osnap ?? {}) }, selFilter: { ...SELFILTER_DEFAULT, ...(saved.selFilter ?? {}) } };
     // v2: orthographic view and the sketch constraint column are on by default -
     // also for anyone whose saved preferences still hold the old defaults.
     if ((saved.version ?? 1) < 2) this.value = { ...this.value, ortho: true, showConstraints: true, version: 2 };

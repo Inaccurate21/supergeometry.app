@@ -67,6 +67,7 @@ export const icons = {
   wrap: svg('<path d="M4 7c5-3 11-3 16 0v10c-5-3-11-3-16 0z"/><path d="M9 11h6"/>'),
   replaceFace: svg('<rect x="4" y="9" width="12" height="11"/><path d="M8 9l4-5h8l-4 5M20 4v11l-4 5"/>'),
   projectEdge: svg('<rect x="4" y="12" width="16" height="8"/><path d="M8 4h8l-2 8h-4z" stroke-dasharray="2 2"/>'),
+  plus: svg('<path d="M12 5v14M5 12h14"/>'),
   plane: svg('<path d="M3 15l6-6h12l-6 6z"/>'),
   // Each kind of plane: what makes it big (the mark it has in the view), the plane small.
   planeOffset: planeWith('<path d="M15 18V3M10 8l5-5 5 5"/>'),
@@ -119,6 +120,8 @@ export const icons = {
   sheet: svg('<path d="M6 3h9l4 4v14H6z"/><path d="M14 3v5h5M9 12h7M9 15h7M9 18h5"/>'),
   drawing: svg('<rect x="3" y="4" width="18" height="16" rx="1"/><path d="M6 8h5v5H6zM6 16h5M14 8h4M14 11h4M14 16h4"/>'),
   assembly: svg('<rect x="3" y="12" width="8" height="8"/><rect x="13" y="12" width="8" height="8"/><rect x="8" y="4" width="8" height="8"/>'),
+  filter: svg('<path d="M4 5h16l-6 7.5V19l-4-2v-4.5z"/>'),
+  calculator: svg('<rect x="5" y="3" width="14" height="18" rx="2"/><path d="M8 7h8"/><path d="M8.5 11h.01M12 11h.01M15.5 11h.01M8.5 14.5h.01M12 14.5h.01M15.5 14.5h.01M8.5 18h.01M12 18h.01M15.5 18h.01" stroke-width="2.4" stroke-linecap="round"/>'),
   measure: svg('<path d="M3 17L17 3l4 4L7 21z"/><path d="M7 13l2 2M10 10l2 2M13 7l2 2"/>'),
   magnet: svg('<path d="M6 4v8a6 6 0 0 0 12 0V4h-4v8a2 2 0 0 1-4 0V4z"/>'),
   ruler: svg('<path d="M4 20V4"/><path d="M4 7h4M4 11h6M4 15h4M4 19h6"/><path d="M14 4h6M17 4v16M14 20h6"/>'),
