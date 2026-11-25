@@ -61,7 +61,9 @@ There's no wrong order. Undo (bottom left) is always one tap away.
    it, with **Line** on. (Any other time: tap **Sketch** on the line at the
    bottom, then a plane or a flat face.)
 2. Tap **Draw**, then **Rectangle**; tap one corner, tap the opposite corner. While you draw,
-   type a number for an exact size (e.g. `40`, Tab, `30`). The ways a tool can
+   type a number for an exact size (e.g. `40`, Tab, `30`, then Enter or a
+   click): with a mouse the sizes show in small tags by the pointer, the one
+   a typed number goes to lit. The ways a tool can
    be used (Rectangle: Center, Diagonal, 3 Points) are on the line while it is on.
 3. Tap **Draw**, then **Circle**; tap a centre inside the rectangle, tap again for the size
    (or type `8`).
@@ -95,14 +97,20 @@ There's no wrong order. Undo (bottom left) is always one tap away.
 
 | | Mouse | Touch / pen | Headset controller |
 |---|---|---|---|
-| Turn the view | left-drag empty space | one-finger drag | drag with the trigger |
-| Move the view | right or middle-drag | two-finger drag | - (use the view cube) |
+| Turn the view | right-drag (or Alt + left-drag) | one-finger drag | drag with the trigger |
+| Move the view | middle-drag (or Shift + right-drag) | two-finger drag | - (use the view cube) |
 | Zoom | mouse wheel | pinch | thumbstick / pinch |
 | Select | click | tap | point and trigger |
+| Select several | left-drag a box on empty space, or Ctrl + A for everything | tap one after another | point and trigger |
 | Select a whole body | double-click | double-tap | double-trigger |
 | Deselect | Esc or click empty space | tap empty space | tap empty space |
 | Step back | right-click or Esc | - | - |
 
+- **Used to another program's mouse?** Settings → Mouse makes the buttons
+  turn, move and zoom the view as they do there: Onshape and Tinkercad (the
+  way the app comes), Fusion / Inventor / Revit / AutoCAD, SolidWorks,
+  Creo / Solid Edge / Blender / SketchUp, NX, CATIA / FreeCAD, or Rhino -
+  and sets which way the wheel zooms.
 - **Right-click steps back**: first what's half done or picked, then the
   drawing tool, then out of the sketch; in other tools it backs out. With
   something selected, right-click shows its tools by the pointer.
@@ -288,6 +296,14 @@ sketch. A sketch stays in view until every region of it is used.
   leave copies. Two overlapping bodies picked: all three are in the list.
   Many tools at once are one checked cut.
 - **Split Body** - by a plane (yours, by name) or a face.
+- **Hole** - tap a flat face where a screw goes, then Hole: choose the screw
+  (M2 to M12) and the head (none, a counterbore for a cap screw, a countersink)
+  and the hole has the right sizes, right through or to a depth. Each size can
+  be typed over (a printer that makes holes tight wants a few tenths more).
+  Drag its dot to move it: it catches on the middle of the face and on the
+  centre of a round edge (a boss) and stays there; anywhere else, type its two
+  distances from the nearest edges, which it keeps when the part is resized.
+  It is one step in History, opened again like any other.
 - **Thread** - tap a round face or a hole's rim: a shank at the nominal size
   gets an outside thread, a hole at the tap-drill size an inside one. The
   pitch starts at the ISO coarse pitch (the line says what it makes, e.g.
@@ -342,7 +358,8 @@ sketch. A sketch stays in view until every region of it is used.
   them move against each other. **Add joint**, tap a face on each part, and
   the kind is read off the faces: two round faces on one axis, or two flat
   faces one above the other, make a **Hinge** (a **Screw** of the thread's
-  pitch when one part is threaded); two flat faces side by side, a **Slide**;
+  pitch when one part is threaded - a thread's own faces can be tapped too);
+  two flat faces side by side, a **Slide**;
   anything else, **Fixed**. Drag a part to move it by its joint, or type its
   angle or distance; **Limits** keep it between two values; **Follows** makes
   one joint go with another by a ratio (gears); **Explode** pulls the parts
@@ -423,6 +440,14 @@ can't be rebuilt after a change, it's marked and the reason is shown.
 - **More → Insert** brings in files (STEP, STL, OBJ, 3MF, DXF, SVG), another
   project's parts (**Project**), and pictures to trace over (**Image on
   plane**: on the floor, front or side, its middle at the X / Y you type).
+- A mesh (**STL**, OBJ, the meshes in a 3MF) comes in as a solid with real
+  faces, so it can be worked on: every flat side is one face, whichever way
+  it leans, and the round parts are truly round - a hole, a boss, a pin, a
+  rounded upright corner each become one round face, at its exact size. Then
+  Hole, Thread, Fillet, push/pull, Measure and joints work on it as on a part
+  drawn here. Left as they came: cones (a countersink), balls, rounded rims,
+  rounds of fewer than 12 sides, and sculpted or scanned shapes. A mesh put in
+  before this has **Make Faces** on its body.
 - A **.super** file is the whole project: every step and sketch, variables,
   saved views, names, colours, and the BIM side - materials, drawings, joints
   and the assembly's pose.

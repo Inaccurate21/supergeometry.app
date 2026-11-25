@@ -1,5 +1,5 @@
+import { mouseChord, mouseDrag, settings } from "../settings";
 import { isHeadset, isTouchDevice, pickTolerance } from "../device";
-import { mouseNavFor, mouseSettings } from "../mouseNav";
 // One input model for mouse, touch and pen (see docs/ARCHITECTURE.md §5).
 
 import type { Viewport } from "./viewport";
@@ -66,7 +66,7 @@ interface Tracked {
 export class InputRouter {
   handler: PointerHandler = {};
   private pointers = new Map<number, Tracked>();
-  private mode: "idle" | "pending" | "captured" | "orbit" | "pan" | "pinch" | "box" | "ended" | "rpending" = "idle";
+  private mode: "idle" | "pending" | "captured" | "orbit" | "pan" | "zoom" | "pinch" | "box" | "ended" | "rpending" = "idle";
 
   /** A tool is holding a drag (keys typed now go to it). */
   get dragging(): boolean {
@@ -151,26 +151,15 @@ export class InputRouter {
     }
     if (this.pointers.size > 1) return;
 
-    // Mouse: the view turned or moved the way chosen in Settings → Mouse (src/mouseNav.ts) - by default a
-    // right drag turns, a middle drag (or shift+right) moves, alt+left turns (trackpads).
-    if (type === "mouse") {
-      // (The S Pen's button acts as a mouse's right / middle button - src/penButton.ts, pointer 88: always so.)
-      const nav = e.pointerId === 88 ? (e.button === 2 ? "orbit" : e.button === 1 ? "pan" : null) : mouseNavFor(e);
-      // Right button: a click is the menu either way (decided on move/up); a drag turns or moves if it's set to.
-      if (e.button === 2) {
-        this.rightDrag = nav;
-        this.mode = "rpending";
-        return;
-      }
-      if (nav) {
-        this.mode = nav;
-        return;
-      }
-      // A middle press that does nothing in this way: not a tool's press either.
-      if (e.button === 1) {
-        this.mode = "ended";
-        return;
-      }
+    // Mouse: which drags turn, move and zoom the view is a setting (Settings > Mouse). As it comes: right-drag
+    // orbits, middle-drag (or shift+right) pans, alt+left orbits (trackpads).
+    // (The S Pen's button acts as a mouse's right / middle button - src/penButton.ts, pointer 88: always so, whatever the preset.)
+    const nav = type !== "mouse" ? null : e.pointerId === 88 ? (e.button === 2 ? "right" : e.button === 1 ? "pan" : null) : mouseDrag(settings.value.mouse, e.button, { shift: e.shiftKey, ctrl: e.ctrlKey || e.metaKey, alt: e.altKey });
+    if (nav) {
+      // Right button: a drag orbits, a click is a "context" action (decided on move/up).
+      this.mode = nav === "right" ? "rpending" : nav;
+      this.navBase = nav === "right" ? null : nav;
+      return;
     }
     this.modifiers = e.ctrlKey || e.metaKey || e.shiftKey;
     if (this.handler.down?.(this.tp(t))) {
@@ -255,10 +244,14 @@ export class InputRouter {
     t.y = y;
     t.shift = e.shiftKey;
 
+    // A middle drag with another button held too (some programs' way to turn or zoom): what the preset says for
+    // it, and back to the middle button's own once that button is let go.
+    if (t.type === "mouse" && t.button === 1 && this.navBase && (this.mode === "orbit" || this.mode === "pan" || this.mode === "zoom")) {
+      this.mode = mouseChord(settings.value.mouse, e.buttons) ?? this.navBase;
+    }
     switch (this.mode) {
       case "rpending":
-        // (A right drag that does nothing in the way chosen: still a right click when it comes up.)
-        if (Math.hypot(x - t.x0, y - t.y0) >= TAP_SLOP.mouse && this.rightDrag) this.mode = this.rightDrag;
+        if (Math.hypot(x - t.x0, y - t.y0) >= TAP_SLOP.mouse) this.mode = "orbit";
         return;
       case "pending": {
         if (Math.hypot(x - t.x0, y - t.y0) < TAP_SLOP[t.type]) return;
@@ -296,6 +289,11 @@ export class InputRouter {
         return;
       case "pan":
         this.view.cam.pan(dx, dy, this.view.height);
+        this.view.requestRender();
+        return;
+      case "zoom":
+        // Dragged down: further away. About where the drag began.
+        this.view.cam.zoom(Math.exp(dy * 0.01), this.view.worldUnder(t.x0, t.y0));
         this.view.requestRender();
         return;
       case "pinch": {
@@ -349,8 +347,8 @@ export class InputRouter {
     }
   }
 
-  /** What a right drag does in the way chosen (Settings → Mouse); null: nothing, it stays a click. */
-  private rightDrag: "orbit" | "pan" | null = "orbit";
+  /** What the press that began this drag of the view does by itself (see the chord above). */
+  private navBase: "orbit" | "pan" | "zoom" | null = null;
   private hoverAt: ToolPointer | null = null;
   private hoverFrame = 0;
 
@@ -377,11 +375,12 @@ export class InputRouter {
     // Wheel held down (panning): a press on the wheel can tilt it, and a tilted
     // wheel repeats sideways scrolls for as long as it's held - the view slid
     // off to one side without stopping. Only the drag pans meanwhile.
-    if (e.buttons & 4 || this.mode === "pan") return;
+    if (e.buttons & 4 || this.mode === "pan" || this.mode === "orbit" || this.mode === "zoom") return;
     const [x, y] = this.local(e);
     if (e.ctrlKey || !isTrackpadPan(e)) {
       // Mouse wheel, or trackpad pinch (reported as ctrl+wheel).
-      const factor = Math.exp((mouseSettings().invertZoom && !e.ctrlKey ? -1 : 1) * e.deltaY * (e.ctrlKey ? 0.01 : 0.0015));
+      // (The wheel's way round is a setting; a trackpad's pinch is not a wheel.)
+      const factor = Math.exp(e.deltaY * (e.ctrlKey ? 0.01 : settings.value.wheelReverse ? -0.0015 : 0.0015));
       this.view.cam.zoom(factor, this.view.worldUnder(x, y));
     } else {
       this.view.cam.pan(-e.deltaX, -e.deltaY, this.view.height);

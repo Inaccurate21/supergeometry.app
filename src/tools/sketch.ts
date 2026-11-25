@@ -1,3 +1,4 @@
+import { acceptFor } from "../io/insert";
 import { QuickActions } from "./quickActions";
 import { isTouchDevice } from "../device";
 import { simplifyStroke } from "../sketch/freehand";
@@ -10,7 +11,7 @@ import { caretToEnd, selectAll, textField, type TextField } from "../ui/textFiel
 import { nearestSnap } from "../sketch/snapPick";
 import { arrangement } from "../sketch/regions";
 import { Gimbal, IN_PLANE, type GimbalPart } from "./gimbal";
-import { buildConstraints, CONSTRAINT_BUTTONS, ConstraintGlyphs, dimOf, distanceOf, existingConstraints, setDim } from "./sketchConstraints";
+import { buildConstraints, CONSTRAINT_BUTTONS, constraintGlyph, ConstraintGlyphs, dimOf, distanceOf, existingConstraints, setDim } from "./sketchConstraints";
 import { settings } from "../settings";
 import { isCoarse, screenClass } from "../device";
 import { arcFrom3, closestOnPrim, entityPolylines, entityPrims, evalPrim, splineHeights } from "../sketch/curves";
@@ -59,7 +60,8 @@ import { ExtrudeOp, LoftOp, RevolveOp, SweepOp } from "./ops";
 import { splitRegions } from "./select";
 import { CopyToggle, copyMode } from "./copyToggle";
 import type { PanelItem, ToolItem } from "../ui/ui";
-import { evaluate, fmtLen, trim as trimNum } from "../units";
+import { evaluate, fmtLen, toDisplay, trim as trimNum, UNIT_LABEL, units } from "../units";
+import { showConstraintList, type ConstraintRow } from "./constraintList";
 import type { ToolPointer } from "../view/input";
 import { dotMaterial, sketchToWorld, snapGlyphMaterial, type SnapGlyph } from "../view/viewport";
 import { FILL_KINDS, FILL_PREFIX, fillCurves, fillRegion, refill, withoutFills } from "../sketch/fill";
@@ -655,6 +657,7 @@ export class SketchTool implements Tool {
     this.bar = null;
     window.removeEventListener("resize", this.placeBar);
     this.hideLineDim();
+    this.hideSizeTags();
     this.clearPreviewJoin();
     this.distDim?.dispose();
     this.distDim = null;
@@ -847,7 +850,7 @@ export class SketchTool implements Tool {
    * Explode: the rectangle / polygon becomes its sides as lines, still joined
    * at the corners (a rectangle's stay square, its width and height become
    * two sides' lengths) - the same lines a corner drag makes. The lines are
-   * selected, so their card (and Delete constraints, to free them) is right there.
+   * selected, so their card (and Constraints, to free them) is right there.
    */
   private explodeShape(id: string): void {
     const e = this.entities.find((x) => x.id === id);
@@ -866,22 +869,67 @@ export class SketchTool implements Tool {
     return this.selected.size ? touchingEnds(this.entities, this.constraints, this.selected) : [];
   }
 
-  /** "Delete constraints (n)" for the selection's card, when it has any. */
+  /**
+   * "Constraints (n)" for the selection's card, when it has any: the list of them, each with its own bin and its
+   * size to type over, and all of them deleted at once from there. (It was "Delete constraints (n)", which took
+   * them all - asked for: "show the list of the constraints of the selected object; allow to modify or delete some
+   * or all of them".)
+   */
   private deleteConstraintsItem(): PanelItem[] {
     const n = this.selectionConstraints().length;
     if (!n) return [];
-    return [
-      {
-        type: "button",
-        label: `Delete constraints (${n})`,
-        icon: "constraints",
-        onClick: () => {
-          const list = this.selectionConstraints();
-          this.removeConstraints(list);
-          this.app.ui.toast(`${list.length} constraint${list.length === 1 ? "" : "s"} removed - the shape stays as it is, free to change`);
-        },
+    return [{ type: "button", label: `Constraints (${n})`, icon: "constraints", onClick: () => this.openConstraintList() }];
+  }
+
+  private openConstraintList(): void {
+    showConstraintList({
+      title: "Constraints",
+      rows: () => this.selectionConstraints().map((c) => this.constraintRow(c)),
+      setValue: (id, text) => {
+        const c = this.constraints.find((x) => x.id === id);
+        if (!c) return false;
+        const v = evaluate(text, c.prop === "angle" ? "angle" : "length");
+        if (v === null || (c.prop !== "angle" && !(v > 0))) return false;
+        const before = this.constraints;
+        this.pendingExpr = isExpression(text) ? text.trim() : null;
+        this.setConstraintValue(id, v);
+        // (Refused - it contradicts another: said by a toast, the list keeps the old size.)
+        return this.constraints !== before;
       },
-    ];
+      remove: (id) => this.removeConstraints(this.constraints.filter((c) => c.id === id)),
+      removeAll: () => {
+        const list = this.selectionConstraints();
+        this.removeConstraints(list);
+        this.app.ui.toast(`${list.length} constraint${list.length === 1 ? "" : "s"} removed - the shape stays as it is, free to change`);
+      },
+      point: (id) => {
+        if (!this.glyphs || !this.plane) return;
+        this.glyphs.selected = id ?? this.selConstraint;
+        this.glyphs.set(this.plane, this.entities, this.constraints);
+      },
+    });
+  }
+
+  /** One constraint as a row of the list: its name, what else it involves, its size if it has one. */
+  private constraintRow(c: SketchConstraint): ConstraintRow {
+    const SIZES: Record<string, string> = { length: "Length", radius: "Radius", diameter: "Diameter", w: "Width", h: "Height", rx: "Radius across", ry: "Radius up", dx: "Width", dy: "Height", angle: "Angle" };
+    const NAMES: Partial<Record<SketchConstraint["type"], string>> = { fix: "Lock", symmetric: "Symmetry", distance: "Distance", pattern: "Pattern link" };
+    const name =
+      c.type === "dim" ? (SIZES[c.prop ?? ""] ?? "Size") : c.type === "follow" ? (c.how?.mirror ? "Mirror link" : "Offset link") : (NAMES[c.type] ?? c.type[0].toUpperCase() + c.type.slice(1));
+    // What it ties the pick to: the other curves it names, by kind.
+    const KINDS: Record<string, string> = { line: "a line", circle: "a circle", arc: "an arc", rect: "a rectangle", polygon: "a polygon", ellipse: "an ellipse", spline: "a curve", polyline: "a shape", point: "a point", text: "text" };
+    const others = [...new Set(refsOf(c))].filter((id) => !this.selected.has(id)).map((id) => this.entities.find((e) => e.id === id));
+    const kinds = [...new Set(others.map((e) => (e ? (KINDS[e.kind] ?? "a curve") : "something deleted")))];
+    const note = c.type === "dim" && c.held ? "kept by Lock" : kinds.length ? `with ${kinds.join(" and ")}` : c.type === "fix" ? "held where it is" : "";
+    const sized = (c.type === "dim" || c.type === "distance") && c.value !== undefined && !c.held;
+    const angle = c.prop === "angle";
+    return {
+      id: c.id,
+      glyph: constraintGlyph(c),
+      name,
+      note,
+      ...(sized ? { value: { text: c.expr ?? (angle ? trimNum(c.value!, 2) : trimNum(toDisplay(c.value!), 3)), unit: angle ? "°" : UNIT_LABEL[units()] } } : {}),
+    };
   }
 
   private removeConstraints(list: SketchConstraint[]): void {
@@ -1720,6 +1768,11 @@ export class SketchTool implements Tool {
     }
     // The size fields follow the pointer (refreshPreview) until one is typed.
     this.liveKeys = items.filter((it) => it.type === "number").map((it) => lockOf.get(it) ?? null);
+    this.liveLabels = new Map();
+    for (const it of items) {
+      const key = it.type === "number" ? lockOf.get(it) : undefined;
+      if (key && it.type === "number") this.liveLabels.set(key, { label: it.label, angle: it.kind === "angle" });
+    }
     ui.showPanel(items.length ? { title: k === "fillet" && memory.corner === "chamfer" ? "Chamfer" : titleOf(k), items, onCancel: this.pts.length ? () => this.resetDrawing() : undefined, onDone: k === "spline" && this.pts.length >= 2 ? () => this.finishSpline(false) : typed ? () => this.finishTyped() : undefined } : null);
   }
 
@@ -1727,7 +1780,7 @@ export class SketchTool implements Tool {
   private async importFontFile(): Promise<void> {
     const input = document.createElement("input");
     input.type = "file";
-    input.accept = ".ttf,.otf,.woff,font/ttf,font/otf,font/woff";
+    input.accept = acceptFor(".ttf,.otf,.woff,font/ttf,font/otf,font/woff");
     input.onchange = async () => {
       const file = input.files?.[0];
       if (!file) return;
@@ -1772,6 +1825,10 @@ export class SketchTool implements Tool {
 
   hover(p: ToolPointer | null): void {
     if (p) (this.pen = p.type === "pen"), (this.lastPointer = p.type);
+    // Where the pointer is: what is typed, and the sizes of the shape being drawn, show by it. (Only a drag said
+    // where: a size typed with the mouse just moved showed in the top left corner of the page.)
+    if (p) this.typing.track(p);
+    this.tagAt = p && p.type !== "touch" ? { x: p.x, y: p.y } : this.tagAt;
     if (this.offsetGrip) {
       const over = !!p && this.offsetGrip.arrows.some((h) => h.hit(p));
       this.offsetGrip.arrows.forEach((h) => h.setHot(over));
@@ -1905,6 +1962,7 @@ export class SketchTool implements Tool {
       return this.refreshPreview();
     }
     this.typing.track(p);
+    this.tagAt = p.type === "touch" ? null : { x: p.x, y: p.y };
     if (this.sdrag) return this.dragGeometry(p);
     this.cursor = this.snap(p);
     // Typed sizes stay locked; the pointer still sets the direction.
@@ -2644,6 +2702,17 @@ export class SketchTool implements Tool {
     this.selectionChanged();
   }
 
+  /** Ctrl + A: every curve of the sketch (the drawing tool put down for Select, nothing half drawn). */
+  selectAll(): boolean {
+    if (this.phase !== "draw" || !this.plane || !this.entities.length) return false;
+    if (this.pts.length) this.resetDrawing();
+    if (this.kind !== "select" && !this.isSelectionTool()) this.setKind("select");
+    this.selPts = [];
+    for (const e of this.entities) if (!this.selected.has(e.id)) (this.selected.add(e.id), this.pickSeq.set(e.id, ++this.seq));
+    this.selectionChanged();
+    return true;
+  }
+
   /** Right-click: end the current chain/shape (and keep what's drawn). */
   context(p?: ToolPointer): void {
     if (this.kind === "spline" && this.pts.length >= 2) return this.finishSpline(false);
@@ -2860,13 +2929,14 @@ export class SketchTool implements Tool {
     const keys = this.lockKeys();
     if (this.phase === "draw" && this.pts.length && keys.length && !this.dragging) {
       const starts = /^[0-9.,(-]$/.test(e.key);
-      const routed = this.typing.active || starts || (k === "enter" && this.typedThisShape);
+      // (Tab alone moves on to the next size, as it does once something is typed: the tags by the pointer show which.)
+      const routed = this.typing.active || starts || (k === "enter" && this.typedThisShape) || (k === "tab" && keys.length > 1);
       if (routed) {
         const key = keys[this.lockIndex];
         this.typedThisShape = true;
         const used = this.typing.key(e, {
           kind: key === "ang" || key === "a0" || key === "a1" ? "angle" : key === "sides" ? "number" : "length",
-          show: key === "len" && this.lineDim ? (text, bad) => this.lineDim?.setText(text, bad) : undefined,
+          show: key === "len" && this.lineDim ? (text, bad) => this.lineDim?.setText(text, bad) : this.tagsShown ? () => (this.app.ui.setLabel(0, 0, null), this.updateSizeTags(this.lockedCursor())) : undefined,
           apply: (v) => this.applyLock(key, v),
           commit: () => {
             // Enter moves on to the next size - except the polygon's side count (Tab only).
@@ -2881,7 +2951,8 @@ export class SketchTool implements Tool {
             this.setHint();
           },
           cancel: () => (delete this.locks[key], this.refreshPreview()),
-          next: () => (this.lockIndex < keys.length - 1 ? (this.lockIndex++, true) : false),
+          // (Round and round: Tab on the last size goes back to the first.)
+          next: () => (keys.length > 1 ? ((this.lockIndex = (this.lockIndex + 1) % keys.length), true) : false),
         });
         if (used) return true;
       }
@@ -3735,6 +3806,7 @@ export class SketchTool implements Tool {
     this.clearPreviewJoin();
     this.clearOverlays();
     this.hideLineDim();
+    this.hideSizeTags();
     this.app.ui.setLabel(0, 0, null);
     this.updatePanel();
     this.setHint();
@@ -4036,8 +4108,83 @@ export class SketchTool implements Tool {
 
   /** The card's size fields, as the pointer moves: what each would be (a typed one stays). */
   private updateLiveValues(c: Vec2 | null): void {
+    this.updateSizeTags(c);
     if (!this.liveKeys.some((k) => k)) return;
     this.app.ui.updatePanelValues(this.liveKeys.map((k) => (k ? (this.locks[k] ?? this.liveValue(k, c)) : undefined)) as number[]);
+  }
+
+  // ------------------------------------------------------------ size tags
+  // The sizes of the shape being drawn, in small tags by the pointer (a mouse, or a pen hovering): what each is
+  // now, the one a typed number goes to lit, a typed one held. Asked for: "having the dimensions show up near the
+  // sketch lines or the cursor ... than pulling the mouse down to a bar". They take no taps (the click under them
+  // places the point). A line has its own length box along it instead (see showLineDim).
+  private liveLabels = new Map<string, { label: string; angle: boolean }>();
+  private tagAt: { x: number; y: number } | null = null;
+  private sizeTags: HTMLDivElement | null = null;
+  private sizeTagsKey = "";
+
+  private hideSizeTags(): void {
+    this.sizeTags?.remove();
+    this.sizeTags = null;
+    this.sizeTagsKey = "";
+  }
+
+  /** The sizes that can be typed for the shape as it is now: shown by the pointer? (Not a line's: its box is on it.) */
+  private get tagsShown(): boolean {
+    const keys = this.lockKeys();
+    // (Not in the tutorial: its sizes are set for the learner, and a tag would sit over the lit spot.)
+    return this.phase === "draw" && this.pts.length > 0 && !!this.tagAt && !this.dragging && keys.length > 0 && keys[0] !== "len" && !document.body.classList.contains("tut-on");
+  }
+
+  private updateSizeTags(c: Vec2 | null): void {
+    if (!this.tagsShown || !c) return this.hideSizeTags();
+    const keys = this.lockKeys();
+    const active = keys[Math.min(this.lockIndex, keys.length - 1)];
+    const parts = keys.map((key) => {
+      const info = this.liveLabels.get(key) ?? { label: key === "sides" ? "Sides" : key, angle: false };
+      const v = key === "sides" ? memory.sides : (this.locks[key] ?? this.liveValue(key, c));
+      const typing = key === active && this.typing.active;
+      const text = typing ? `${this.typing.text}▌` : v === undefined ? "" : key === "sides" ? String(v) : info.angle ? `${+v.toFixed(2)}°` : fmtLen(v);
+      return { key, label: info.label, text, on: key === active, held: key in this.locks };
+    });
+    // Drawn again only when what it says changed (it is asked for on every move of the pointer).
+    const sig = JSON.stringify(parts);
+    if (!this.sizeTags) {
+      this.sizeTags = document.createElement("div");
+      this.sizeTags.className = "size-tags";
+      document.body.append(this.sizeTags);
+      this.sizeTagsKey = "";
+    }
+    if (sig !== this.sizeTagsKey) {
+      this.sizeTagsKey = sig;
+      this.sizeTags.replaceChildren(
+        ...parts.map((part) => {
+          const tag = document.createElement("span");
+          tag.className = `size-tag${part.on ? " on" : ""}${part.held ? " held" : ""}`;
+          const name = document.createElement("i");
+          name.textContent = part.label;
+          const value = document.createElement("b");
+          value.textContent = part.text;
+          tag.append(name, value);
+          return tag;
+        }),
+      );
+      if (keys.length > 1) {
+        const tab = document.createElement("span");
+        tab.className = "size-tab";
+        tab.textContent = "Tab";
+        this.sizeTags.append(tab);
+      }
+    }
+    // Below right of the pointer; the other side of it where that runs off the screen.
+    const r = this.app.view.canvas.getBoundingClientRect();
+    const w = this.sizeTags.offsetWidth;
+    const h = this.sizeTags.offsetHeight;
+    let x = r.left + this.tagAt!.x + 20;
+    let y = r.top + this.tagAt!.y + 18;
+    if (x + w > innerWidth - 8) x = r.left + this.tagAt!.x - 20 - w;
+    if (y + h > innerHeight - 8) y = r.top + this.tagAt!.y - 18 - h;
+    this.sizeTags.style.transform = `translate(${Math.round(Math.max(8, x))}px, ${Math.round(Math.max(8, y))}px)`;
   }
 
   /** A typed size; "sides" (polygon) is a count, not a lock. */

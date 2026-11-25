@@ -7,7 +7,7 @@
 
 import type { SavedView, Units, Vec3 } from "../doc/types";
 import type { DocStore } from "../doc/store";
-import { settings, type Settings } from "../settings";
+import { MOUSE_PRESETS, mousePreset, settings, type Settings } from "../settings";
 import { fmtLen as lenText, UNIT_LABEL, units } from "../units";
 import type { Viewport } from "../view/viewport";
 import type { UI } from "./ui";
@@ -18,7 +18,6 @@ import { PEN_DRAGS, PEN_TAPS, penButtonSettings, setPenButton } from "../penButt
 import { androidInfo, buildReport, clearLog, logLines, sendReport } from "../diagnostics";
 import { setUiScale, uiScale, uiScaleWorks, UI_SCALE_MAX, UI_SCALE_MIN } from "../uiScale";
 import { lang, LANGS, saveLang, type Lang } from "../i18n";
-import { mouseSettings, PRESETS, setMouse, type MousePreset } from "../mouseNav";
 import { saveTheme, theme, THEMES, type Theme } from "../theme";
 import { loadPackage, packageInUse, packagesSupported, removePackage, type PackageInfo } from "./package";
 
@@ -114,6 +113,24 @@ export function setupRightColumn(ui: UI, view: Viewport, store: DocStore, onUnit
       toggleRow("Show world axes", s.showAxes, (v) => settings.set("showAxes", v)),
     );
   }), undefined, stash);
+
+  // Mouse: which drags turn, move and zoom the view - the app's own way or another CAD program's, for hands used
+  // to it (asked for by many: "a setting menu with a list: default, Autodesk, onshape, etc", then "it should have
+  // controls presets from all major CAD apps"). Only where there is a mouse.
+  lists.mouse = (host) => {
+    const s = settings.value;
+    const now = mousePreset(s.mouse);
+    host.append(heading("Mouse like in"));
+    for (const m of MOUSE_PRESETS) {
+      const row = choiceRow(m.apps, now.id === m.id, () => (settings.set("mouse", m.id), ui.refreshPopover()));
+      row.title = m.text;
+      host.append(row);
+    }
+    host.append(el("div", "pop-note", now.text));
+    host.append(heading("Wheel"));
+    host.append(toggleRow("Forward zooms out", s.wheelReverse, (v) => settings.set("wheelReverse", v)));
+    host.append(el("div", "pop-note", "Always: the wheel zooms where the pointer is, a plain right drag turns the view, Alt + left drag turns it too (a trackpad), and a left drag on empty space draws a box to select with."));
+  };
 
   // Views (standard and saved): the button at the view cube's bottom right.
   const cube = document.getElementById("viewcube")!;
@@ -212,16 +229,6 @@ export function setupRightColumn(ui: UI, view: Viewport, store: DocStore, onUnit
     await store.flush();
     location.reload();
   };
-
-  // Mouse: the way of another CAD program to turn and move the view; the wheel's way.
-  kept("mouse", (host) => {
-    const m = mouseSettings();
-    host.append(heading("Mouse"));
-    for (const [id, p] of Object.entries(PRESETS) as [MousePreset, (typeof PRESETS)[MousePreset]][]) host.append(choiceRow(p.label, m.preset === id, () => (setMouse({ preset: id }), ui.refreshPopover())));
-    host.append(el("div", "pop-note", PRESETS[m.preset].says));
-    host.append(toggleRow("Wheel towards you zooms in", m.invertZoom, (v) => setMouse({ invertZoom: v })));
-    host.append(el("div", "pop-note", "In every way: a left drag on empty space picks with a box, a right click opens the menu, the wheel zooms at the pointer."));
-  });
 
   // Theme: dark, light or black; the app reloads in it (the project is saved first).
   kept("theme", (host) => {
@@ -452,12 +459,12 @@ export function setupRightColumn(ui: UI, view: Viewport, store: DocStore, onUnit
         nav("Appearance", `${s.ortho ? "Orthographic" : "Perspective"}${s.showGrid ? "" : " · no grid"}`, "appearance"),
         scaleRow(() => ui.refreshPopover()),
         nav("Theme", THEMES.find(([t]) => t === theme)![1], "theme"),
-        nav("Mouse", PRESETS[mouseSettings().preset].label, "mouse"),
         nav("Language", LANGS.find(([l]) => l === lang)![1], "lang"),
         nav("Updates", pkg ? "Own package" : `v${__APP_VERSION__}`, "update"),
         nav("S Pen", "", "pen"),
         nav("Diagnostics", `${logLines().filter((l) => l.level === "error").length} errors`, "diag"),
       );
+      if (matchMedia("(any-pointer: fine)").matches) host.append(nav("Mouse", mousePreset(s.mouse).apps.split(",")[0], "mouse"));
     },
     () => UNIT_LABEL[units()],
   );

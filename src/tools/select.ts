@@ -5,7 +5,8 @@ import { isTouchDevice } from "../device";
 import { peekSegs } from "./ghost";
 import { settings } from "../settings";
 import { BODY_COLORS, BODY_OPACITY, DEFAULT_BODY_COLOR, bodyColor } from "../doc/types";
-import type { DeleteGeomFeature, EdgeLink, FaceFreeformFeature, FreeformFeature, EdgeRef, ExtrudeSource, FaceRef, ImageFeature, PlaneDef, PlaneFeature, SketchFeature, Vec3 } from "../doc/types";
+import type { DeleteGeomFeature, Feature, EdgeLink, FaceFreeformFeature, FreeformFeature, EdgeRef, ExtrudeSource, FaceRef, ImageFeature, PlaneDef, PlaneFeature, SketchFeature, Vec3 } from "../doc/types";
+import { sayRounds } from "../io/insert";
 import { editedStep } from "../doc/freeformEdits";
 import { arrangement } from "../sketch/regions";
 import { projectPolyline, uid } from "../sketch/edit";
@@ -416,9 +417,22 @@ export class SelectTool implements Tool {
         }
       }
     }
+    // No body in the box: the closed shapes of the sketches in it (an imported drawing's hundreds of shapes,
+    // picked one tap at a time before - "I tried click drag release around them all").
+    if (kind === "all" && !picked.length) for (const pr of view.profileList()) if (takes(pr.points.length, (i) => pr.points[i])) picked.push({ kind: "profile", sketch: pr.sketch, region: pr.region });
     const k = picked[0]?.kind ?? (kind === "all" ? "body" : kind);
     const base = add ? this.app.selection.filter((s) => s.kind === k) : [];
     this.app.setSelection([...base, ...picked.filter((s) => !base.some((x) => sameSel(x, s)))]);
+  }
+
+  /** Ctrl + A: every body shown; with no bodies, every closed shape of the sketches shown. */
+  selectAll(): boolean {
+    const view = this.app.view;
+    const bodies: Sel[] = view.bodyList.filter((b) => !view.isHidden(b.id)).map((b) => ({ kind: "body", body: b.id }));
+    const all: Sel[] = bodies.length ? bodies : view.profileList().map((pr) => ({ kind: "profile", sketch: pr.sketch, region: pr.region }));
+    if (!all.length) return false;
+    this.app.setSelection(all);
+    return true;
   }
 
   /** Keys while a box is being dragged: which kind it takes. */
@@ -843,6 +857,7 @@ export class SelectTool implements Tool {
       { id: "move", label: "Move/Rotate Face", icon: "moveFace", shortcut: "M", ...needFlat, run: () => ref && info?.plane && app.setTool(new MoveFaceOp(app, { face: ref, plane: info.plane })) },
       // Scales just this face, within its plane; the sides tilt to follow.
       { id: "scale", label: "Scale Face", icon: "scale", ...needFlat, run: () => ref && info?.plane && app.setTool(new ScaleFaceOp(app, ref, info.plane)) },
+      { id: "hole", label: "Hole", icon: "hole", ...needFlat, run: () => app.startHole() },
       { id: "thread", label: "Thread", icon: "thread", disabled: !one || !info?.round, why: "Needs one round face (a shank or a hole)", run: () => app.startThread() },
       // Two faces, one on each of two bodies: the joint between the two (Assemblies opens with it made).
       (() => {
@@ -1009,6 +1024,26 @@ export class SelectTool implements Tool {
       // An open surface (a freeform sheet): filled down to a plane to make it a solid.
       ...(openSurface ? [{ id: "fillToPlane", label: "Fill to Plane", icon: "fill" as const, run: () => app.setTool(new FillToPlaneOp(app, bodies[0])) }] : []),
       { id: "shell", label: "Shell", icon: "shell", run: () => app.setTool(new ShellOp(app, bodies[0], [])) },
+      // A mesh put in before meshes were given faces: the same now, by asking. (What was built on its triangles
+      // may have to be picked again: said.)
+      ...(() => {
+        const mesh = bodies.length === 1 ? app.store.doc.features.find((f) => f.id === bodies[0] && f.type === "import" && f.format === "stl" && !f.round) : undefined;
+        if (!mesh) return [];
+        return [
+          {
+            id: "meshFaces",
+            label: "Make Faces",
+            icon: "check" as const,
+            sub: "flat and round faces from the mesh",
+            run: () => {
+              const before = app.view.body(mesh.id)?.faces.length ?? -1;
+              app.store.update(mesh.id, { round: true } as Partial<Feature>);
+              app.ui.toast("Making the mesh's flat faces whole and its round parts round. A step built on its old triangles may ask for its face again.");
+              sayRounds(app, mesh.id, "fileName" in mesh ? mesh.fileName : mesh.name, before);
+            },
+          },
+        ];
+      })(),
       // Every edge of the body rounded or bevelled (each can be taken off in the list after).
       { id: "fillet", label: "Fillet", icon: "fillet", shortcut: "F", run: () => this.edgesOfBodies("fillet", bodies) },
       { id: "chamfer", label: "Chamfer", icon: "chamfer", run: () => this.edgesOfBodies("chamfer", bodies) },
@@ -1570,7 +1605,7 @@ const lastScale: { kind: "uniform" | "xyz" | "ref" } = { kind: "uniform" };
 const GROUP: Record<string, string> = {
   deselect: "pick", editFreeform: "pick", connect: "pick", fillHole: "pick", thicken: "pick", wholePattern: "pick",
   move: "move", moveVertex: "move", moveBody: "move", scale: "move", translate: "move", rotate: "move", mirror: "move", patl: "move", patc: "move", copySketch: "move", align: "move",
-  sketch: "make", extrude: "make", revolve: "make", sweep: "make", loft: "make", shell: "make", split: "make", fillet: "make", chamfer: "make", thread: "make", offsetFace: "make", offsetEdge: "make", offset: "make", replace: "make", fill: "make", fillToPlane: "make", text: "make", wrap: "make", proje: "make", projs: "make", total: "make",
+  sketch: "make", extrude: "make", revolve: "make", sweep: "make", loft: "make", shell: "make", split: "make", fillet: "make", chamfer: "make", thread: "make", hole: "make", meshFaces: "make", offsetFace: "make", offsetEdge: "make", offset: "make", replace: "make", fill: "make", fillToPlane: "make", text: "make", wrap: "make", proje: "make", projs: "make", total: "make",
   union: "combine", subtract: "combine", intersect: "combine",
   axis: "construct", plane: "construct", planePerp: "construct",
   color: "look", opacity: "look",

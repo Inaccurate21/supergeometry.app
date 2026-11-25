@@ -13,6 +13,7 @@ import { addReportSection } from "./diagnostics";
 import { lang } from "./i18n";
 import { settings } from "./settings";
 import { uiScale } from "./uiScale";
+import { keepPageSteady } from "./ui/steady";
 
 // Update reloads with ?v=<time> so no stored copy is used; once loaded, the
 // address is plain again (it's what people copy to share the app).
@@ -23,6 +24,9 @@ import { uiScale } from "./uiScale";
     history.replaceState(history.state, "", url.pathname + url.search + url.hash);
   }
 }
+
+// The page itself never scrolls (a phone pushing it along for a keyboard that does not come).
+keepPageSteady();
 
 // Scroll bars outside the windows, only while scrolling.
 outerScrollbars();

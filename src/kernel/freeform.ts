@@ -4,6 +4,7 @@
 
 import { cast, getOC, type Shape3D } from "replicad";
 import { quickVolume } from "./ocFree";
+import { subShapes } from "./health";
 import { cubicKnots, interpolateGrid } from "../freeform/bspline";
 import { isClosed, limitPoints, subdivide, type Cage, type Subdivided } from "../freeform/cage";
 
@@ -73,7 +74,21 @@ function thickenSheet(sheet: unknown, { thickness: t, side }: Thicken): Shape3D 
     try {
       mk.MakeThickSolidBySimple(sheet as never, d);
       const solid = cast(mk.Shape()) as Shape3D;
-      // Growing along the normals comes out inside-out: turn it the right way.
+      // Growing along the normals comes out inside-out, and marking the solid as reversed (as was done) measured
+      // right but left its faces looking inwards: a rounding of its rim took every edge for a hollow one and came
+      // out as rubbish - "would turn the body inside out". A solid made anew from its skin has them outwards.
+      const shells = subShapes(solid, "SHELL");
+      if (shells.length === 1) {
+        const fix = new oc.ShapeFix_Solid();
+        try {
+          const made = cast(fix.SolidFromShell(oc.TopoDS.Shell(shells[0]))) as Shape3D;
+          if (quickVolume(made) > 0) return made;
+        } catch {
+          // as it was, below
+        } finally {
+          fix.delete();
+        }
+      }
       return quickVolume(solid) < 0 ? (cast(solid.wrapped.Reversed()) as Shape3D) : solid;
     } finally {
       mk.delete();

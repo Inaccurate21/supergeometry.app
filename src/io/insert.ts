@@ -12,11 +12,22 @@ import { DIALOG_ACTION } from "../ui/dialogAction";
 import { read3mf } from "./formats";
 import { parseSVG } from "./svg";
 
+/**
+ * What a file picker is told to offer. On an iPad or iPhone, nothing: told a list of endings (".stl,.step,.super"),
+ * the Files window there greys out every file whose kind it has no name for - STL and STEP files and the app's own
+ * projects could not be tapped (reported from an iPad, files in iCloud Drive). Every file can be picked there, and
+ * one that is not of a kind the app reads is said so once picked. (A list of kinds alone, "image/*", is understood.)
+ */
+export function acceptFor(accept: string): string {
+  const apple = /iPad|iPhone|iPod/.test(navigator.userAgent) || (/Macintosh/.test(navigator.userAgent) && navigator.maxTouchPoints > 1);
+  return apple && accept.split(",").some((a) => a.trim().startsWith(".")) ? "" : accept;
+}
+
 export function pickFile(accept: string): Promise<File | null> {
   return new Promise((resolve) => {
     const input = document.createElement("input");
     input.type = "file";
-    input.accept = accept;
+    input.accept = acceptFor(accept);
     input.onchange = () => resolve(input.files?.[0] ?? null);
     input.click();
   });
@@ -38,6 +49,26 @@ function unreadable(bytes: Uint8Array, format: "step" | "stl"): string | null {
   const text = new TextDecoder().decode(bytes);
   if (/\bfacet\b/i.test(text) && /\bvertex\b/i.test(text)) return null;
   return bytes.length ? "it isn't an STL file, or it is damaged" : "the file is empty";
+}
+
+/**
+ * A mesh has come in (or was asked to be given faces): once it is built, how many of its round parts are true
+ * round faces now, said once. (Looked for a few times a second until the body is there - it can take a while.)
+ */
+export function sayRounds(app: AppContext, id: string, name: string, before = -1): void {
+  const began = Date.now();
+  const look = () => {
+    if (!app.store.doc.features.some((f) => f.id === id)) return;
+    const body = app.view.body(id);
+    const count = body ? body.faces.filter((f) => f.round).length : -1;
+    // (Asked of a mesh already in the project: until its faces have changed.)
+    if (body && (before < 0 || body.faces.length !== before)) {
+      if (count > 0) app.ui.toast(`${name}: ${count} round ${count === 1 ? "part is a true round face" : "parts are true round faces"} now (holes, bosses, rounded corners).`);
+      return;
+    }
+    if (Date.now() - began < 180_000) setTimeout(look, 400);
+  };
+  setTimeout(look, 400);
 }
 
 export async function insertFile(app: AppContext): Promise<void> {
@@ -69,6 +100,8 @@ export async function insertFile(app: AppContext): Promise<void> {
       insertProject(app, parseProject(await file.text()).features, file.name);
       return;
     }
+    // (Any file can be picked on an iPad: see acceptFor.)
+    if (!["step", "stp", "stl", "obj", "3mf"].includes(ext)) return app.ui.toast(`Could not insert ${file.name}: it is not a kind of file the app reads (STEP, STL, OBJ, 3MF, DXF, SVG or a project)`, "error");
     let bytes: Uint8Array = new Uint8Array(await file.arrayBuffer());
     let format: "step" | "stl" = ext === "stl" ? "stl" : "step";
     if (ext === "obj") {
@@ -82,7 +115,10 @@ export async function insertFile(app: AppContext): Promise<void> {
     const why = unreadable(bytes, format);
     if (why) return app.ui.toast(`Could not insert ${file.name}: ${why}`, "error");
     app.ui.setStatus(`Importing ${file.name}…`);
-    app.store.add({ ...app.store.newIdentity("import"), type: "import", format, fileName: file.name, data: toBase64(bytes), apart: true });
+    // (A mesh: its flat faces made whole and its round parts round - see kernel/meshRound.ts.)
+    const step = { ...app.store.newIdentity("import"), type: "import" as const, format, fileName: file.name, data: toBase64(bytes), apart: true, ...(format === "stl" ? { round: true } : {}) };
+    app.store.add(step);
+    if (format === "stl") sayRounds(app, step.id, file.name);
     app.ui.setStatus(null);
   } catch (err) {
     app.ui.setStatus(null);

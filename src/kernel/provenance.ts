@@ -14,6 +14,7 @@
 // there are none, says so instead of guessing.
 
 import { getOC, type Face, type Shape3D } from "replicad";
+import { edgeFaces } from "./health";
 
 interface Tagged {
   /** The step that made each face (in the order of shape.faces). */
@@ -239,19 +240,7 @@ export function edgeSteps(shape: Shape3D): string[][] | undefined {
 }
 
 function stepsOfEdges(shape: Shape3D, steps: string[]): string[][] {
-  const edges = shape.edges;
-  const buckets = new Map<number, { i: number; s: Set<string> }[]>();
-  edges.forEach((e, i) => buckets.set(e.hashCode, [...(buckets.get(e.hashCode) ?? []), { i, s: new Set<string>() }]));
-  shape.faces.forEach((f, fi) => {
-    for (const fe of f.edges) {
-      const list = buckets.get(fe.hashCode);
-      const m = list?.length === 1 ? list[0] : list?.find((x) => edges[x.i].isSame(fe));
-      m?.s.add(steps[fi]);
-    }
-  });
-  const out: string[][] = new Array(edges.length).fill(null).map(() => []);
-  for (const list of buckets.values()) for (const { i, s } of list) out[i] = [...s].sort();
-  return out;
+  return edgeFaces(shape).uses.map((list) => [...new Set(list.map((u) => steps[u.face]))].sort());
 }
 
 /**
@@ -295,20 +284,10 @@ export function edgeOrigins(shape: Shape3D): (string[] | undefined)[] | undefine
   const steps = faceSteps(shape);
   const origins = faceOrigins(shape);
   if (!steps || !origins) return undefined;
-  const edges = shape.edges;
-  const buckets = new Map<number, { i: number; s: Set<string>; all: boolean }[]>();
-  edges.forEach((e, i) => buckets.set(e.hashCode, [...(buckets.get(e.hashCode) ?? []), { i, s: new Set<string>(), all: true }]));
-  shape.faces.forEach((f, fi) => {
-    for (const fe of f.edges) {
-      const list = buckets.get(fe.hashCode);
-      const m = list?.length === 1 ? list[0] : list?.find((x) => edges[x.i].isSame(fe));
-      if (!m) continue;
-      if (origins[fi] === undefined) m.all = false;
-      else m.s.add(`${steps[fi]}|${origins[fi]}`);
-    }
+  const out = edgeFaces(shape).uses.map((list) => {
+    if (!list.length || list.some((u) => origins[u.face] === undefined)) return undefined;
+    return [...new Set(list.map((u) => `${steps[u.face]}|${origins[u.face]}`))].sort();
   });
-  const out: (string[] | undefined)[] = new Array(edges.length).fill(undefined);
-  for (const list of buckets.values()) for (const { i, s, all } of list) out[i] = all && s.size ? [...s].sort() : undefined;
   edgeOriginTags.set(shape, out);
   return out;
 }
@@ -324,18 +303,7 @@ const seamTags = new WeakMap<Shape3D, boolean[]>();
 export function seamEdges(shape: Shape3D): boolean[] {
   const known = seamTags.get(shape);
   if (known) return known;
-  const edges = shape.edges;
-  const buckets = new Map<number, { i: number; faces: Set<number> }[]>();
-  edges.forEach((e, i) => buckets.set(e.hashCode, [...(buckets.get(e.hashCode) ?? []), { i, faces: new Set<number>() }]));
-  shape.faces.forEach((f, fi) => {
-    for (const fe of f.edges) {
-      const list = buckets.get(fe.hashCode);
-      const m = list?.length === 1 ? list[0] : list?.find((x) => edges[x.i].isSame(fe));
-      m?.faces.add(fi);
-    }
-  });
-  const out: boolean[] = new Array(edges.length).fill(false);
-  for (const list of buckets.values()) for (const { i, faces } of list) out[i] = faces.size === 1;
+  const out = edgeFaces(shape).uses.map((list) => new Set(list.map((u) => u.face)).size === 1);
   seamTags.set(shape, out);
   return out;
 }

@@ -77,24 +77,55 @@ function edgeUse(shape: Shape3D): { open: number[]; pinched: number } {
 }
 
 function findEdgeUse(shape: Shape3D): { open: number[]; pinched: number } {
+  const { uses, degenerated } = edgeFaces(shape);
+  const open: number[] = [];
+  let pinched = 0;
+  uses.forEach((list, i) => {
+    // A seam (cylinder/torus) belongs to its face twice but is listed once.
+    const n = list.reduce((s, u) => s + (u.closed ? 2 : 1), 0);
+    // A pole (where a revolved profile touches the axis) is a point-edge, not a gap.
+    if (n < 2 && !degenerated[i]) open.push(i);
+    if (new Set(list.map((u) => u.face)).size > 2) pinched++;
+  });
+  return { open, pinched };
+}
+
+/** Which faces each edge of a body lies on (by index, in the order of shape.edges and shape.faces). */
+export interface EdgeFaces {
+  /** For each edge: the faces it is an edge of, and whether it is that face's seam. */
+  uses: { face: number; closed: boolean }[][];
+  /** For each edge: a point-edge (a pole). */
+  degenerated: boolean[];
+}
+const edgeFacesCache = new WeakMap<Shape3D, EdgeFaces>();
+
+/**
+ * Each edge's faces, worked out once for a body. (Four things asked this, each going through every face's edges
+ * again - which steps an edge lies between, which sketch curves, whether it is a seam, whether it is open: on a
+ * body of two thousand faces that was half of what every rebuild took.)
+ */
+export function edgeFaces(shape: Shape3D): EdgeFaces {
+  const known = edgeFacesCache.get(shape);
+  if (known) return known;
+  const oc = getOC();
   const edges = shape.edges;
-  const buckets = new Map<number, { e: Edge; i: number; n: number; faces: Set<number> }[]>();
+  const buckets = new Map<number, { e: Edge; i: number }[]>();
   edges.forEach((e, i) => {
     const h = e.hashCode;
-    buckets.set(h, [...(buckets.get(h) ?? []), { e, i, n: 0, faces: new Set<number>() }]);
+    const list = buckets.get(h);
+    if (list) list.push({ e, i });
+    else buckets.set(h, [{ e, i }]);
   });
-  const oc = getOC();
+  const uses: EdgeFaces["uses"] = edges.map(() => []);
   shape.faces.forEach((f, k) => {
     for (const fe of f.edges) {
       const m = buckets.get(fe.hashCode)?.find((x) => x.e.isSame(fe));
-      // A seam (cylinder/torus) belongs to its face twice but is listed once.
-      if (m) m.n += oc.BRep_Tool.IsClosed(fe.wrapped, f.wrapped) ? 2 : 1;
-      m?.faces.add(k);
+      if (m) uses[m.i].push({ face: k, closed: oc.BRep_Tool.IsClosed(fe.wrapped, f.wrapped) });
     }
   });
-  // A pole (where a revolved profile touches the axis) is a point-edge, not a gap.
-  const all = [...buckets.values()].flat();
-  return { open: all.filter((x) => x.n < 2 && !oc.BRep_Tool.Degenerated(x.e.wrapped)).map((x) => x.i), pinched: all.filter((x) => x.faces.size > 2).length };
+  const out = { uses, degenerated: edges.map((e) => oc.BRep_Tool.Degenerated(e.wrapped)) };
+  edgeFacesCache.set(shape, out);
+  return out;
 }
 
 /**

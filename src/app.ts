@@ -8,11 +8,12 @@ import { SUPPORT, openSupport } from "./ui/support";
 import { currentProjectId, forgetProject, keepProject, libraryEntries, newProjectId, projectText, renameProject, setCurrentProject } from "./doc/library";
 import { showLibrary } from "./ui/library";
 import { showAbout } from "./ui/about";
+import { showWhatsNew } from "./ui/whatsNew";
 import { findAction, openCommandSearch, showShortcuts } from "./ui/commands";
 import type { EdgeFeature, EdgeRef, ExtrudeFeature, ExtrudeSource, Feature, FillToPlaneFeature, ImageFeature, LoftFeature, PathRef, PinDef, PlaneDef, PlaneFeature, ProjectDoc, RevolveFeature, ShellFeature, SketchEntity, SketchFeature, SplitFeature, SweepFeature, TransformFeature, Units, Vec3 } from "./doc/types";
 import { emptyDoc } from "./doc/types";
 import { editedStep } from "./doc/freeformEdits";
-import { createVariable, insertFile, insertImage } from "./io/insert";
+import { createVariable, insertFile, insertImage, acceptFor } from "./io/insert";
 import { RefImages } from "./ui/refImages";
 import { WebWindow } from "./ui/webWindow";
 import { numpadVariables } from "./ui/numpad";
@@ -31,6 +32,7 @@ import { openDrawing } from "./bim/drawing";
 import { ItemsPanel } from "./ui/items";
 import { OffsetEdgeOp } from "./tools/offsetEdge";
 import { faceFreeformTool } from "./tools/faceFreeform";
+import { HoleOp } from "./tools/holeOp";
 import { bodyCenter, AxisOp, ConnectOp, EdgeOp, ExtrudeOp, FillOp, FillToPlaneOp, ThreadOp, ImageOp, LoftOp, MidplaneOp, MoveFaceOp, PlaneOp, ReplaceFaceOp, ScaleFaceOp, ScaleOp, ScaleRefOp, RevolveOp, ShellOp, SplitOp, SweepOp, TransformOp } from "./tools/ops";
 import { add, dist, scale, xDirFor } from "./geom";
 import { entityWorldPolylines } from "./sketch/curves";
@@ -582,6 +584,19 @@ export class App implements AppContext {
     this.setTool(new ThreadOp(this, ref, info.round));
   }
 
+  /** Hole: a screw's hole in the flat face picked, where it was tapped (its middle when the tap is not known). */
+  startHole(): void {
+    const s = this.selection[0];
+    const info = s?.kind === "face" ? this.view.body(s.body)?.faces[s.face] : undefined;
+    const ref = s?.kind === "face" ? faceRefOf(this, s) : null;
+    if (s?.kind !== "face" || !info?.plane || !ref) return void this.ui.toast("Holes go into flat faces: tap one where the screw goes");
+    const tap = this.selectTool.tapPoint;
+    const hit = tap ? this.view.pick(tap.x, tap.y, { edgeTolPx: 0 }) : null;
+    const at = hit?.kind === "face" && hit.body === s.body && hit.face === s.face ? hit.point : info.center;
+    this.setSelection([s]);
+    this.setTool(new HoleOp(this, ref, at, tap?.tol));
+  }
+
   setSection(s: SectionState | null): void {
     this.section = s;
     // A section on screen is the one to remember (a deleted one is forgotten).
@@ -1124,6 +1139,8 @@ export class App implements AppContext {
         return this.setTool(new WrapOp(this, f.source, f));
       case "thread":
         return this.setTool(new ThreadOp(this, f.face, f.round ?? { r: 5, hole: false }, f));
+      case "hole":
+        return this.setTool(new HoleOp(this, f.face, f.at, undefined, f));
       case "plane":
         return this.setTool(new PlaneOp(this, f.plane, f.face, f as PlaneFeature));
       case "transform": {
@@ -1216,6 +1233,8 @@ export class App implements AppContext {
           { id: "revolve", label: "Revolve", icon: "revolve", run: wait("Revolve", ["profile", "face"], () => src() && this.setTool(new RevolveOp(this, src()!))) },
           { id: "sweep", label: "Sweep", icon: "sweep", run: wait("Sweep", ["profile", "face"], () => src() && this.setTool(new SweepOp(this, src()!))) },
           { id: "loft", label: "Loft", icon: "loft", run: wait("Loft", ["profile", "face"], () => this.setTool(new LoftOp(this, sourcesOf(this, this.selection).flatMap((s): ExtrudeSource[] => (s.kind === "profile" ? s.regions.map((r) => ({ ...s, regions: [r] })) : [s])), this.selection))) },
+          // (Asked for in Create: "Add another button in Create?" - looked for there, "i dont see it in create".)
+          { id: "hole", label: "Hole", icon: "hole", run: wait("Hole (tap a flat face where the screw goes)", ["face"], () => this.startHole()) },
         ],
       },
       {
@@ -1495,6 +1514,12 @@ export class App implements AppContext {
       this.save();
       return;
     }
+    // Everything: Ctrl+A (the bodies, or with none the sketches' shapes; in a sketch, its curves).
+    if (mod && !e.shiftKey && k === "a") {
+      e.preventDefault();
+      this.tool.selectAll?.();
+      return;
+    }
     // Search commands: Ctrl+F anywhere (X too, outside a sketch - see below).
     if (mod && k === "f") {
       e.preventDefault();
@@ -1625,7 +1650,9 @@ export class App implements AppContext {
     on("file-btn", () => ((more.hidden = true), menu.toggleAttribute("hidden"), !menu.hidden && phoneItemsAway()));
     on("more-btn", () => ((menu.hidden = true), more.toggleAttribute("hidden"), !more.hidden && phoneItemsAway()));
     on("history-btn", () => ((menu.hidden = more.hidden = true), this.ui.toggleHistory()));
-    document.getElementById("m-version")!.textContent = `Version ${__APP_VERSION__}`;
+    // Version: a tap shows what is new (asked for: "when we click on More>Version, it pops up a window that shows whats new").
+    document.getElementById("m-version")!.textContent = `Version ${__APP_VERSION__} · What's new`;
+    on("m-version", () => ((more.hidden = true), showWhatsNew(__APP_VERSION__)));
     const moreItem = (id: string, fn: () => void) => on(id, () => ((more.hidden = true), fn()));
     // Fullscreen (the label follows the state; Esc also leaves it).
     const fs = document.getElementById("m-fullscreen")!;
@@ -1684,6 +1711,8 @@ export class App implements AppContext {
     };
     const paintHints = () => switchOf("m-hints", settings.value.showHints);
     paintHints();
+    // (Also switched off by the × on the guide text itself.)
+    settings.onChange(paintHints);
     moreItem("m-hints", () => {
       settings.set("showHints", !settings.value.showHints);
       paintHints();
@@ -2194,7 +2223,7 @@ export class App implements AppContext {
   private open(): void {
     const input = document.createElement("input");
     input.type = "file";
-    input.accept = ".super,.tessel,application/json";
+    input.accept = acceptFor(".super,.tessel,application/json");
     input.onchange = async () => {
       const file = input.files?.[0];
       if (!file) return;
