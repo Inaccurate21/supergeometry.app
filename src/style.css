@@ -5985,9 +5985,9 @@ html[data-screen="phone"] .bim-props {
 }
 .shortcuts-row {
   display: grid;
-  grid-template-columns: minmax(110px, auto) 1fr;
+  grid-template-columns: minmax(110px, auto) 1fr auto auto;
   gap: 12px;
-  align-items: baseline;
+  align-items: center;
   font-size: 13px;
 }
 .shortcuts-row .cmd-key {
@@ -8291,4 +8291,128 @@ html.android-app body.items-open #topbar {
 .sel-filter-row.sub {
   padding-left: 22px;
   color: var(--muted);
+}
+
+/* The S box (favourites and search) by the pointer, and its stars. */
+.cmd-search.near {
+  transform: none;
+  width: min(340px, calc(100vw - 16px));
+}
+.cmd-star {
+  flex: none;
+  width: 26px;
+  text-align: center;
+  font-size: 16px;
+  color: var(--muted);
+  cursor: pointer;
+}
+.cmd-star.on {
+  color: #ffc23d;
+}
+.shortcuts-note {
+  color: var(--muted);
+  font-size: 12px;
+  padding: 2px 0 6px;
+}
+.shortcut-edit {
+  min-width: 64px;
+  cursor: pointer;
+  background: rgba(255, 255, 255, 0.05);
+  color: var(--text);
+}
+.shortcut-edit.waiting {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+.shortcuts-warn {
+  color: #ffb84d;
+  font-size: 11px;
+  margin-left: auto;
+}
+
+/* Pinned measurements picked (click, Ctrl+click, a box round them): lit, with a bar to delete them. */
+#pins .pin.sel {
+  border-color: #ffd34d;
+  box-shadow: 0 0 0 2px rgba(255, 211, 77, 0.45);
+  color: #ffd34d;
+}
+.pin-bar {
+  position: fixed;
+  left: 50%;
+  transform: translateX(-50%);
+  bottom: calc(96px + var(--safe-b));
+  z-index: 35;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px 6px 12px;
+  border-radius: 999px;
+  background: var(--chrome-solid);
+  border: 1px solid var(--line);
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.35);
+  font-size: 13px;
+}
+.pin-bar-del {
+  padding: 5px 12px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 90, 90, 0.6);
+  background: rgba(255, 90, 90, 0.12);
+  color: #ff8a8a;
+}
+.pin-bar-x {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  border: 0;
+  background: none;
+  color: var(--muted);
+  font-size: 18px;
+}
+
+/* More → App settings: kinds at the left, their rows at the right (one column on a phone). */
+.dialog.app-settings {
+  width: min(620px, calc(100vw - 24px));
+  max-height: min(82vh, 640px);
+  display: flex;
+  flex-direction: column;
+}
+.aps-wrap {
+  display: grid;
+  grid-template-columns: 150px 1fr;
+  gap: 10px;
+  min-height: 0;
+  flex: 1;
+  overflow: hidden;
+}
+.aps-nav {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 4px 0;
+}
+.aps-tab {
+  text-align: left;
+  padding: 9px 12px;
+  border-radius: 8px;
+  border: 0;
+  background: none;
+  color: var(--text);
+  font-size: 14px;
+}
+.aps-tab.on {
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+.aps-body {
+  overflow-y: auto;
+  padding: 0 4px 10px;
+}
+@media (max-width: 560px) {
+  .aps-wrap {
+    grid-template-columns: 1fr;
+  }
+  .aps-nav {
+    flex-direction: row;
+    flex-wrap: wrap;
+  }
 }

@@ -40,6 +40,8 @@ export interface Tool extends PointerHandler {
 }
 
 export interface AppContext {
+  /** Pinned measurements with their labels inside a box drawn on the view: picked. */
+  pinsInBox?(a: { x: number; y: number }, b: { x: number; y: number }, add: boolean): number;
   /** The row of view tools at the bottom (Section View, Measure, Variables, Isolate). */
   bottomTools(): ToolItem[];
   readonly store: DocStore;

@@ -1,3 +1,4 @@
+import { backupPrefs } from "./prefsBackup";
 // Per-device preferences (not part of the project file).
 
 import { isTouchDevice } from "./device";
@@ -19,6 +20,10 @@ export interface Settings {
    */
   osnap: Osnap;
   selFilter: SelFilter;
+  /** Keyboard shortcuts changed in Settings (action id → key, "" none): see keys.ts. */
+  keys: Record<string, string>;
+  /** Autosave: every change is written to this device at once; this also copies the project into the project list every n minutes (0: only when the app is left). */
+  autosaveMinutes: number;
   /** While a sketch is open: the bodies as they are, see-through, or hidden (its View list on the line). */
   sketchBodies: "normal" | "ghost" | "hidden";
   /** While a sketch is open: the model's faces, edges and corners can be picked and caught on. */
@@ -248,6 +253,8 @@ const DEFAULTS: Settings = {
   snap: { grid: true, guidePoints: true, guideLines: true, points3d: true, distantEdges: false },
   osnap: OSNAP_DEFAULT,
   selFilter: SELFILTER_DEFAULT,
+  keys: {},
+  autosaveMinutes: 2,
   sketchBodies: "normal",
   sketchModelPick: true,
   sketchRegionPick: true,
@@ -324,6 +331,7 @@ class SettingsStore {
     } catch {
       // Ignore: preferences are a convenience.
     }
+    backupPrefs();
     this.listeners.forEach((fn) => fn(this.value));
   }
 

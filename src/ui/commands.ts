@@ -6,6 +6,8 @@
 import { icons } from "./icons";
 import { caretAtEnd, caretToEnd, textField } from "./textField";
 import { el, type ToolItem } from "./ui";
+import { tr } from "../i18n";
+import { comboOf, KEY_ACTIONS, keyOf, setKey, showKey } from "../keys";
 
 export interface Listed {
   label: string;
@@ -76,6 +78,24 @@ function remember(path: string): void {
   }
 }
 
+/** Favourite commands (the star in the list), first in the S box. */
+const FAV = "sg.favCommands";
+function favs(): string[] {
+  try {
+    return JSON.parse(localStorage.getItem(FAV) ?? "[]") as string[];
+  } catch {
+    return [];
+  }
+}
+function toggleFav(path: string): void {
+  const now = favs();
+  try {
+    localStorage.setItem(FAV, JSON.stringify(now.includes(path) ? now.filter((p) => p !== path) : [...now, path]));
+  } catch {
+    // (No storage here.)
+  }
+}
+
 let openBox: HTMLElement | null = null;
 
 /**
@@ -83,9 +103,15 @@ let openBox: HTMLElement | null = null;
  * narrows; ↑ ↓ pick, Enter (or a click) runs it, → completes the name, Esc
  * closes. What the picked thing offers comes first.
  */
-export function openCommandSearch(offered: () => ToolItem[], main: () => ToolItem[]): void {
+export function openCommandSearch(offered: () => ToolItem[], main: () => ToolItem[], near?: { x: number; y: number }): void {
   if (openBox) return void openBox.querySelector<HTMLElement>(".cmd-input")?.focus();
   const box = el("div", "cmd-search");
+  // (The S box: by the pointer, as Fusion's.)
+  if (near) {
+    box.classList.add("near");
+    box.style.left = `${Math.max(8, Math.min(window.innerWidth - 348, near.x - 160))}px`;
+    box.style.top = `${Math.max(8, Math.min(window.innerHeight - 440, near.y - 24))}px`;
+  }
   const input = textField("cmd-input");
   input.placeholder = "Search commands…";
   input.setAttribute("aria-label", "Search commands");
@@ -117,10 +143,22 @@ export function openCommandSearch(offered: () => ToolItem[], main: () => ToolIte
       row.innerHTML = icons[x.item.icon] ?? "";
       const words = el("span", "cmd-words");
       words.append(el("span", "cmd-label", x.label));
-      const where = x.path.split(" › ").slice(0, -1).join(" › ");
+      const where = x.path.split(" › ").slice(0, -1).map((w) => tr(w)).join(" › ");
       if (where || x.item.disabled) words.append(el("span", "cmd-where", x.item.disabled ? (x.item.why ?? "Not now") : where));
       row.append(words);
       if (x.item.shortcut) row.append(el("kbd", "cmd-key", x.item.shortcut));
+      // The star: a favourite, first in the box when nothing is typed.
+      const fav = favs().includes(x.path);
+      const star = el("span", `cmd-star${fav ? " on" : ""}`, fav ? "★" : "☆");
+      star.title = fav ? "Remove from favourites" : "Add to favourites";
+      star.addEventListener("pointerdown", (e) => (e.preventDefault(), e.stopPropagation()));
+      star.addEventListener("click", (e) => {
+        e.stopPropagation();
+        toggleFav(x.path);
+        paint();
+        input.focus();
+      });
+      row.append(star);
       row.addEventListener("pointerdown", (e) => e.preventDefault());
       row.addEventListener("click", () => run(i));
       list.append(row);
@@ -132,14 +170,16 @@ export function openCommandSearch(offered: () => ToolItem[], main: () => ToolIte
     const q = input.value.trim();
     const items = all();
     if (!q) {
-      // Nothing typed: the ones used last, then what the picked thing offers.
+      // Nothing typed: the favourites, the ones used last, then what the picked thing offers.
       const byPath = new Map(items.map((x) => [x.path, x]));
-      const last = recent().flatMap((p) => (byPath.has(p) ? [byPath.get(p)!] : []));
-      const here = flatten(offered()).filter((x) => x.item.run && !last.some((l) => l.path === x.path));
-      shown = [...last, ...here].slice(0, 12);
+      const fav = favs().flatMap((p) => (byPath.has(p) ? [byPath.get(p)!] : []));
+      const last = recent().flatMap((p) => (byPath.has(p) && !fav.some((f) => f.path === p) ? [byPath.get(p)!] : []));
+      const here = flatten(offered()).filter((x) => x.item.run && !last.some((l) => l.path === x.path) && !fav.some((f) => f.path === x.path));
+      shown = [...fav, ...last, ...here].slice(0, 16);
     } else {
       shown = items
-        .map((x) => ({ x, s: Math.max(score(q, x.label) ?? -Infinity, (score(q, x.path) ?? -Infinity) - 2) }))
+        // (By its name as shown - Polish too - or as written in the code.)
+        .map((x) => ({ x, s: Math.max(score(q, tr(x.label)) ?? -Infinity, score(q, x.label) ?? -Infinity, (score(q, x.path.split(" › ").map((w) => tr(w)).join(" › ")) ?? -Infinity) - 2, (score(q, x.path) ?? -Infinity) - 2) }))
         .filter((r) => r.s > -Infinity)
         .sort((a, b) => Number(!!a.x.item.disabled) - Number(!!b.x.item.disabled) || b.s - a.s || a.x.path.length - b.x.path.length)
         .slice(0, 12)
@@ -208,38 +248,20 @@ export const SHORTCUTS: [string, [string, string][]][] = [
     ],
   ],
   [
-    "Modeling",
-    [
-      ["E", "Extrude"],
-      ["F", "Fillet (nothing picked: Zoom to Fit)"],
-      ["H", "Shell"],
-      ["M", "Move/Rotate"],
-      ["N", "Translate"],
-      ["P", "Project as Sketch"],
-      ["S", "Scale (nothing picked: Sketch)"],
-      ["V", "Revolve"],
-      ["W", "Sweep"],
-      ["Ctrl + U / B / I", "Union / Subtract / Intersect"],
-    ],
-  ],
-  [
     "View",
     [
       ["Ctrl (or Alt) + 1", "Default view"],
       ["Ctrl (or Alt) + 2 … 7", "Front, Back, Top, Bottom, Right, Left"],
       ["Space", "Zoom to the face under the pointer"],
+      ["Ctrl + U / B / I", "Union / Subtract / Intersect"],
     ],
   ],
   [
     "Edit",
     [
-      ["X or Ctrl + F", "Search commands"],
-      ["Ctrl + Shift + S", "Select Through (pick what's behind)"],
       ["Tab / B / F / E / A", "While box-selecting: what it takes"],
       ["Ctrl + Z / Ctrl + Shift + Z", "Undo / Redo"],
-      ["Ctrl + S", "Save"],
       ["Delete", "Delete what's picked"],
-      ["?", "This list"],
     ],
   ],
 ];
@@ -256,6 +278,49 @@ export function showShortcuts(): void {
   closeBtn.innerHTML = icons.close;
   head.append(closeBtn);
   const body = el("div", "shortcuts-body");
+  // The keys that can be changed: click one, press the new key (Backspace: none; the ↺: back to its own).
+  body.append(el("div", "shortcuts-note", "Click a key to change it, then press the new one (Backspace: no key, Esc: leave it)."));
+  const own = (k: string) => KEY_ACTIONS.find((a) => a.id === k)?.key ?? "";
+  for (const group of ["General", "View", "Model", "Draw"] as const) {
+    body.append(el("div", "shortcuts-group", group));
+    for (const a of KEY_ACTIONS.filter((x) => x.group === group)) {
+      const row = el("div", "shortcuts-row");
+      const kb = el("button", "cmd-key shortcut-edit no-tr", showKey(keyOf(a.id)));
+      const clash = () => KEY_ACTIONS.filter((x) => x.id !== a.id && keyOf(x.id) && keyOf(x.id) === keyOf(a.id) && !((x.id === "fit" && a.id === "fillet") || (x.id === "fillet" && a.id === "fit")));
+      kb.title = "Click, then press the new key";
+      kb.addEventListener("click", () => {
+        kb.textContent = "…";
+        kb.classList.add("waiting");
+        const take = (e: KeyboardEvent) => {
+          e.preventDefault();
+          e.stopPropagation();
+          if (e.key === "Escape") return done();
+          if (e.key === "Backspace" || e.key === "Delete") return (setKey(a.id, ""), done());
+          const c = comboOf(e);
+          if (!c) return;
+          setKey(a.id, c);
+          done();
+        };
+        const done = () => {
+          window.removeEventListener("keydown", take, true);
+          kb.classList.remove("waiting");
+          kb.textContent = showKey(keyOf(a.id));
+          warn.textContent = clash().length ? `Also: ${clash().map((x) => tr(x.label)).join(", ")}` : "";
+          reset.style.visibility = keyOf(a.id) === own(a.id) ? "hidden" : "";
+        };
+        window.addEventListener("keydown", take, true);
+      });
+      const reset = el("button", "icon-btn small", "↺");
+      reset.title = "Its own key again";
+      reset.style.visibility = keyOf(a.id) === own(a.id) ? "hidden" : "";
+      reset.addEventListener("click", () => (setKey(a.id, null), (kb.textContent = showKey(keyOf(a.id))), (reset.style.visibility = "hidden")));
+      const warn = el("span", "shortcuts-warn", clash().length ? `Also: ${clash().map((x) => tr(x.label)).join(", ")}` : "");
+      const label = el("span", "", a.label);
+      row.append(kb, label, warn, reset);
+      body.append(row);
+    }
+  }
+  body.append(el("div", "shortcuts-group", "Fixed keys"));
   for (const [group, rows] of SHORTCUTS) {
     body.append(el("div", "shortcuts-group", group));
     for (const [key, what] of rows) {
@@ -271,7 +336,7 @@ export function showShortcuts(): void {
     window.removeEventListener("keydown", onKey, true);
   };
   const onKey = (e: KeyboardEvent) => {
-    if (e.key === "Escape" || e.key === "?") (e.preventDefault(), close());
+    if (e.key === "Escape") (e.preventDefault(), close());
     e.stopPropagation();
   };
   closeBtn.addEventListener("click", close);

@@ -450,6 +450,17 @@ public class MainActivity extends Activity {
             }
         }
 
+        /** The web app's settings, kept here too: they come back if the WebView's own storage is lost. */
+        @JavascriptInterface
+        public void savePrefs(String json) {
+            getSharedPreferences("sg-prefs", MODE_PRIVATE).edit().putString("prefs", json).apply();
+        }
+
+        @JavascriptInterface
+        public String loadPrefs() {
+            return getSharedPreferences("sg-prefs", MODE_PRIVATE).getString("prefs", "");
+        }
+
         @JavascriptInterface
         public boolean isFullscreen() {
             return fullscreen();

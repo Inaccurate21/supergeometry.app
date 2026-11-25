@@ -49,7 +49,7 @@ import { AssemblyTool } from "./assembly/assemblyTool";
 import { definedCurves } from "./sketch/constraints";
 import { keepSizes } from "./doc/unitChange";
 import { bodiesOf, edgeRefOf, edgesOfFace, faceRefOf, sameSel, sourceFrame, sourcesOf, type AppContext, type Sel, type Tool } from "./tools/tool";
-import { setupRightColumn } from "./ui/panels";
+import { openAppSettings, setupRightColumn } from "./ui/panels";
 import type { ToolItem } from "./ui/ui";
 import { el, UI } from "./ui/ui";
 import { Sentence } from "./ui/sentence";
@@ -70,6 +70,8 @@ import { glb } from "./io/formats";
 import { sketchToDXF } from "./io/dxf";
 import { sketchToSVG } from "./io/svg";
 import { isHeadset } from "./device";
+import { actionsOn, comboOf } from "./keys";
+import { toggleFullscreen } from "./fullscreen";
 import { filtering, filterWindowOpen, toggleFilterWindow } from "./tools/selFilter";
 import { calculatorOpen, onCalculator, setCalculatorToast, toggleCalculator } from "./ui/calculator";
 import { Viewport } from "./view/viewport";
@@ -244,7 +246,11 @@ export class App implements AppContext {
       vr.enter().catch((e: unknown) => this.ui.toast(`${handheld ? "AR" : "VR"} didn't start: ${e instanceof Error ? e.message : e}`));
     });
     // A pinned measurement's label dragged away: kept (its line moved out with it, as Fusion's dimensions).
-    this.pinLayer = new PinLayer(this.view, (i, off) => this.setPins(this.pins.map((p, k) => (k === i ? { ...p, off } : p))));
+    this.pinLayer = new PinLayer(
+      this.view,
+      (i, off) => this.setPins(this.pins.map((p, k) => (k === i ? { ...p, off } : p))),
+      (ids) => this.setPins(this.pins.filter((_, k) => !ids.includes(k))),
+    );
     this.varTags = new VariableTags(this.view, {
       variables: () => this.store.doc.variables,
       check: (name, expr, kind) => {
@@ -643,6 +649,10 @@ export class App implements AppContext {
 
   setPins(p: PinDef[]): void {
     this.store.commit((d) => (d.pins = p));
+  }
+
+  pinsInBox(a: { x: number; y: number }, b: { x: number; y: number }, add: boolean): number {
+    return this.pinLayer.pickInBox(a, b, add);
   }
 
   addPin(pin: PinDef): void {
@@ -1535,28 +1545,17 @@ export class App implements AppContext {
       this.redo();
       return;
     }
-    // Select Through: pick what's behind the faces in front.
-    if (mod && e.shiftKey && k === "s") {
-      e.preventDefault();
-      this.view.setSelectThrough(!this.view.selectThrough);
-      this.ui.toast(this.view.selectThrough ? "Select Through on: edges and sketches behind the faces can be picked" : "Select Through off");
-      return;
-    }
-    if (mod && k === "s") {
-      e.preventDefault();
-      this.save();
-      return;
-    }
+    // The keys that work everywhere, as set in Settings → Keyboard shortcuts (keys.ts).
+    const combo = comboOf(e);
+    // Pinned measurements picked: Delete (or Backspace) removes them.
+    if ((e.key === "Delete" || e.key === "Backspace") && !mod && this.pinLayer.deletePicked()) return void e.preventDefault();
+    // F11 in the Android app (with a keyboard): its full screen, as F11 is in a browser.
+    if (e.key === "F11" && "SGAndroid" in window) return void (e.preventDefault(), toggleFullscreen());
+    for (const id of actionsOn(combo)) if (this.globalKey(id)) return void e.preventDefault();
     // Everything: Ctrl+A (the bodies, or with none the sketches' shapes; in a sketch, its curves).
     if (mod && !e.shiftKey && k === "a") {
       e.preventDefault();
       this.tool.selectAll?.();
-      return;
-    }
-    // Search commands: Ctrl+F anywhere (X too, outside a sketch - see below).
-    if (mod && k === "f") {
-      e.preventDefault();
-      this.searchCommands();
       return;
     }
     // The standard views: Ctrl (or Alt, where the browser keeps Ctrl+1… for its tabs) + 1 to 7.
@@ -1581,29 +1580,64 @@ export class App implements AppContext {
       if (this.runCommand([{ u: "Union", b: "Subtract", i: "Intersect" }[k]])) e.preventDefault();
       return;
     }
-    if (mod || e.altKey) return;
-    if (k === "x") return void (e.preventDefault(), this.searchCommands());
-    if (e.key === "?") return void showShortcuts();
     const none = !this.selection.length;
-    if (k === "s" && none) return void this.setTool(new SketchTool(this));
-    if (k === "f" && none) return void this.fit();
-    // A drawing tool's letter with nothing picked: a sketch, with that tool (once its plane is picked).
-    const draw: Record<string, "line" | "arc" | "circle" | "rect" | "polygon" | "spline" | "offset" | "trim"> = { l: "line", a: "arc", c: "circle", r: "rect", g: "polygon", i: "spline", o: "offset", t: "trim" };
-    if (draw[k] && none && !e.shiftKey) return void this.setTool(new SketchTool(this, { kind: draw[k] }));
-    // A modeling tool's letter: that tool, for what's picked (or waiting for it).
+    // The model's keys (Settings → Keyboard shortcuts): with nothing picked a drawing tool's starts a sketch with it.
+    const draw: Record<string, "line" | "arc" | "circle" | "rect" | "polygon" | "spline" | "trim"> = { "draw-line": "line", "draw-arc": "arc", "draw-circle": "circle", "draw-rect": "rect", "draw-polygon": "polygon", "draw-spline": "spline", "draw-trim": "trim" };
     const tools: Record<string, string[]> = {
-      e: ["Extrude", "Offset Face"],
-      f: ["Fillet"],
-      h: ["Shell"],
-      m: ["Move/Rotate"],
-      n: ["Translate"],
-      p: ["Project as Sketch"],
-      s: ["Scale", "Scale Sketch"],
-      v: ["Revolve"],
-      w: ["Sweep"],
-      o: ["Offset Edge"],
+      extrude: ["Extrude", "Offset Face"],
+      fillet: ["Fillet"],
+      shell: ["Shell"],
+      move: ["Move/Rotate"],
+      translate: ["Translate"],
+      project: ["Project as Sketch"],
+      scale: ["Scale", "Scale Sketch"],
+      revolve: ["Revolve"],
+      sweep: ["Sweep"],
+      offsetEdge: ["Offset Edge"],
     };
-    if (tools[k] && !e.shiftKey && this.runCommand(tools[k])) e.preventDefault();
+    for (const id of actionsOn(combo)) {
+      if (id === "fit" && none) return void (e.preventDefault(), this.fit());
+      if (id === "sketch") return void (e.preventDefault(), this.setTool(new SketchTool(this)));
+      if (draw[id] && none) return void (e.preventDefault(), this.setTool(new SketchTool(this, { kind: draw[id] })));
+      if (tools[id] && this.runCommand(tools[id])) return void e.preventDefault();
+    }
+  }
+
+  /** A key that works whatever tool is on (Measure, the S box, full screen...): true if it was one. */
+  private globalKey(id: string): boolean {
+    switch (id) {
+      case "toolbox":
+        this.searchCommands(true);
+        return true;
+      case "search":
+        if (this.tool instanceof SketchTool) return false;
+        this.searchCommands();
+        return true;
+      case "measure":
+        if (this.tool instanceof SketchTool) this.toggleMeasureOver();
+        else this.setTool(this.tool instanceof MeasureTool ? null : new MeasureTool(this));
+        return true;
+      case "calculator":
+        toggleCalculator();
+        return true;
+      case "filter":
+        toggleFilterWindow(() => document.querySelector('[data-left="selFilter"]')?.classList.toggle("on", filtering() || filterWindowOpen()));
+        return true;
+      case "save":
+        this.save();
+        return true;
+      case "shortcuts":
+        showShortcuts();
+        return true;
+      case "fullscreen":
+        toggleFullscreen();
+        return true;
+      case "selectThrough":
+        this.view.setSelectThrough(!this.view.selectThrough);
+        this.ui.toast(this.view.selectThrough ? "Select Through on: edges and sketches behind the faces can be picked" : "Select Through off");
+        return true;
+    }
+    return false;
   }
 
   /** Where the pointer was last over the view (Space zooms to the face there). */
@@ -1636,10 +1670,13 @@ export class App implements AppContext {
     return true;
   }
 
-  private searchCommands(): void {
+  /** The command search; `near`: the S box, by the pointer, its favourites first. */
+  private searchCommands(near = false): void {
+    const r = this.view.canvas.getBoundingClientRect();
     openCommandSearch(
       () => this.ui.offered(),
       () => [...this.mainTools(), { id: "shortcuts", label: "Keyboard shortcuts", icon: "menu", shortcut: "?", run: () => showShortcuts() }],
+      near ? (this.pointerAt ? { x: r.left + this.pointerAt[0], y: r.top + this.pointerAt[1] } : { x: window.innerWidth / 2, y: window.innerHeight / 3 }) : undefined,
     );
   }
 
@@ -1689,6 +1726,7 @@ export class App implements AppContext {
     // On a computer: the Claude button, bottom right.
     initAssistant();
     const moreItem = (id: string, fn: () => void) => on(id, () => ((more.hidden = true), fn()));
+    moreItem("m-settings", () => openAppSettings());
     // Fullscreen (the label follows the state; Esc also leaves it).
     const fs = document.getElementById("m-fullscreen")!;
     const doc = document as Document & { webkitFullscreenElement?: Element; webkitExitFullscreen?: () => void };
@@ -2056,6 +2094,9 @@ export class App implements AppContext {
 
   /** Which library project is open; null until the saved project is read. */
   private projectId: string | null = null;
+  /** A save not yet copied into the project list, and when the last copy went in. */
+  private unkept: string | null = null;
+  private keptAt = Date.now();
   /** The open project has an entry in the library (an empty new one doesn't, yet). */
   private projectKept = false;
 
@@ -2071,7 +2112,19 @@ export class App implements AppContext {
     // The library's copy follows when the app goes to the background (the
     // autosave holds the newest state meanwhile, and is copied in at the next
     // start if need be) - no extra saving or drawing while modelling.
-    this.store.onSaved = (text) => document.visibilityState === "hidden" && void this.keepInLibrary(text);
+    this.store.onSaved = (text) => {
+      this.unkept = text;
+      if (document.visibilityState === "hidden") void this.keepInLibrary(text);
+    };
+    // Autosave into the project list too, every few minutes (Settings → Project → Autosave).
+    window.setInterval(() => {
+      const m = settings.value.autosaveMinutes;
+      if (!m || !this.unkept || Date.now() - this.keptAt < m * 60_000) return;
+      const text = this.unkept;
+      this.unkept = null;
+      this.keptAt = Date.now();
+      void this.keepInLibrary(text);
+    }, 15_000);
     // Its newest state is the autosave (a page closed mid-save left the library a step behind).
     const text = JSON.stringify(this.store.doc);
     // (No picture: nothing is drawn yet.)

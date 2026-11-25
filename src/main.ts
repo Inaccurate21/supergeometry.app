@@ -1,4 +1,5 @@
 // First: the language (the page's texts are translated as they appear).
+import { backupPrefs, restoreFromCache } from "./prefsBackup";
 import "./diagnostics";
 import "./i18n";
 import "./theme";
@@ -44,3 +45,8 @@ addReportSection(() => {
   const failed = app.store.features.filter((f) => (f as { error?: unknown }).error).length;
   return { steps, failedSteps: failed || undefined, tool: ((app as unknown as { tool: { id?: string } }).tool).id ?? "?", language: lang, uiScale: uiScale(), settings: settings.value };
 });
+
+// Settings kept in their copies too (see prefsBackup.ts): now, whenever the app goes to the background, and back from the cache if they were lost.
+void restoreFromCache();
+backupPrefs();
+document.addEventListener("visibilitychange", () => document.hidden && backupPrefs());

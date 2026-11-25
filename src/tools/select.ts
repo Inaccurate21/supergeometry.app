@@ -375,6 +375,8 @@ export class SelectTool implements Tool {
     }
     this.boxing = false;
     this.app.ui.setHint(null);
+    // Pinned measurements inside the box are picked too (Delete removes them).
+    this.app.pinsInBox?.(a, b, add);
     const kind = this.boxKind;
     this.boxKind = "all";
     const touching = b.x < a.x;

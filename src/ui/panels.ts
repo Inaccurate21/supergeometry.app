@@ -19,13 +19,19 @@ import { androidInfo, buildReport, clearLog, logLines, sendReport } from "../dia
 import { setUiScale, uiScale, uiScaleWorks, UI_SCALE_MAX, UI_SCALE_MIN } from "../uiScale";
 import { lang, LANGS, saveLang, type Lang } from "../i18n";
 import { saveTheme, theme, THEMES, type Theme } from "../theme";
+import { prefsSnapshot, restorePrefs } from "../prefsBackup";
 import { loadPackage, packageInUse, packagesSupported, removePackage, type PackageInfo } from "./package";
+
+/** More → App settings (set up with the right column). */
+export let openAppSettings: () => void = () => undefined;
 
 export function setupRightColumn(ui: UI, view: Viewport, store: DocStore, onUnits: (u: Units) => void, isolatedNames: () => string[] = () => []): void {
   ui.addRight("fit", "fit", "Zoom to fit (F)", () => view.fitAll(), () => "Fit");
   // (Kept by id, with no button in the column: opened from Settings.)
   const stash = { host: el("div", ""), className: "right-btn" };
   const lists: Record<string, (host: HTMLElement) => void> = {};
+  // (A list shown in the app settings window is drawn again there; in the gear's popover, there.)
+  let refresh = () => ui.refreshPopover();
   const kept = (id: string, open: (host: HTMLElement) => void) => (lists[id] = open);
   ui.addRight("snap", "magnet", "Snapping", kept("snap", (host) => {
     const s = settings.value;
@@ -54,14 +60,14 @@ export function setupRightColumn(ui: UI, view: Viewport, store: DocStore, onUnit
         ["in", "Inch"],
         ["ft", "Foot"],
       ];
-      for (const [u, label] of list) host.append(choiceRow(label, units() === u, () => (onUnits(u), ui.refreshPopover())));
+      for (const [u, label] of list) host.append(choiceRow(label, units() === u, () => (onUnits(u), refresh())));
       host.append(heading("Grid"));
       const s = settings.value;
       // Switched on, it keeps the squares as they are right now, at this zoom.
       const lockRow = toggleRow(s.gridLocked ? `Lock grid size (${fmtStep(s.gridStep)})` : `Lock grid size (now ${fmtStep(view.grid.step)})`, s.gridLocked, (v) => {
         if (v) settings.set("gridStep", +view.grid.step.toPrecision(6));
         settings.set("gridLocked", v);
-        ui.refreshPopover();
+        refresh();
       });
       host.append(lockRow);
       const stepRow = el("label", "pop-row");
@@ -95,7 +101,7 @@ export function setupRightColumn(ui: UI, view: Viewport, store: DocStore, onUnit
         view.frameHooks.add(follow);
       }
       host.append(heading("Degree format"));
-      host.append(choiceRow("Decimal (27.15°)", s.degrees === "decimal", () => (settings.set("degrees", "decimal"), ui.refreshPopover())), choiceRow("Fractional (27° 15′)", s.degrees === "fractional", () => (settings.set("degrees", "fractional"), ui.refreshPopover())));
+      host.append(choiceRow("Decimal (27.15°)", s.degrees === "decimal", () => (settings.set("degrees", "decimal"), refresh())), choiceRow("Fractional (27° 15′)", s.degrees === "fractional", () => (settings.set("degrees", "fractional"), refresh())));
     }),
     () => UNIT_LABEL[units()],
     stash,
@@ -120,7 +126,7 @@ export function setupRightColumn(ui: UI, view: Viewport, store: DocStore, onUnit
     const now = mousePreset(s.mouse);
     host.append(heading("Mouse like in"));
     for (const m of MOUSE_PRESETS) {
-      const row = choiceRow(m.apps, now.id === m.id, () => (settings.set("mouse", m.id), ui.refreshPopover()));
+      const row = choiceRow(m.apps, now.id === m.id, () => (settings.set("mouse", m.id), refresh()));
       row.title = m.text;
       host.append(row);
     }
@@ -170,14 +176,14 @@ export function setupRightColumn(ui: UI, view: Viewport, store: DocStore, onUnit
     const s = settings.value;
     host.append(heading("Shaders"));
     for (const [id, label] of [["wireframe", "Wireframe"], ["xray", "X-Ray"], ["shaded", "Shaded"]] as const) {
-      host.append(choiceRow(label, s.shader === id, () => (settings.set("shader", id), ui.refreshPopover())));
+      host.append(choiceRow(label, s.shader === id, () => (settings.set("shader", id), refresh())));
     }
     host.append(heading("Options"));
     host.append(toggleRow("Show edges", s.showEdges, (v) => settings.set("showEdges", v)), toggleRow("Show hidden edges", s.showHiddenEdges, (v) => settings.set("showHiddenEdges", v)));
     // Surface analysis: how smoothly faces meet (zebra), how much they bend (curvature).
     host.append(heading("Analysis"));
     for (const [id, label] of [["none", "Off"], ["zebra", "Zebra stripes"], ["curvature", "Curvature map"]] as const) {
-      host.append(choiceRow(label, s.analysis === id, () => (settings.set("analysis", id), ui.refreshPopover())));
+      host.append(choiceRow(label, s.analysis === id, () => (settings.set("analysis", id), refresh())));
     }
     if (s.analysis === "zebra") {
       host.append(
@@ -264,15 +270,15 @@ export function setupRightColumn(ui: UI, view: Viewport, store: DocStore, onUnit
         const file = input.files?.[0];
         if (!file) return;
         pkgBusy = "0%";
-        ui.refreshPopover();
+        refresh();
         try {
-          await loadPackage(file, (t) => ((pkgBusy = t), ui.refreshPopover()));
+          await loadPackage(file, (t) => ((pkgBusy = t), refresh()));
           ui.toast("Update package loaded: the app restarts in it.");
           await store.flush();
           setTimeout(() => location.reload(), 600);
         } catch (e) {
           pkgBusy = "";
-          ui.refreshPopover();
+          refresh();
           ui.toast(e instanceof Error ? e.message : String(e), "error");
         }
       });
@@ -322,7 +328,7 @@ export function setupRightColumn(ui: UI, view: Viewport, store: DocStore, onUnit
     };
     const send = button(diagBusy ? "Sending…" : "Send the report for analysis", async () => {
       diagBusy = true;
-      ui.refreshPopover();
+      refresh();
       try {
         diagCode = await sendReport(await buildReport(diagNote));
         ui.toast(`Report sent - its code is ${diagCode}`);
@@ -330,7 +336,7 @@ export function setupRightColumn(ui: UI, view: Viewport, store: DocStore, onUnit
         ui.toast(`The report couldn't be sent (${e instanceof Error ? e.message : String(e)}): copy or save it instead`, "error");
       }
       diagBusy = false;
-      ui.refreshPopover();
+      refresh();
     });
     send.disabled = diagBusy;
     if (diagCode) host.append(el("div", "pop-note diag-code", `Sent - report code: ${diagCode}. Give this code in the chat.`));
@@ -360,7 +366,7 @@ export function setupRightColumn(ui: UI, view: Viewport, store: DocStore, onUnit
     button("Clear the log", () => {
       clearLog();
       diagCode = "";
-      ui.refreshPopover();
+      refresh();
     });
   });
 
@@ -385,12 +391,12 @@ export function setupRightColumn(ui: UI, view: Viewport, store: DocStore, onUnit
   const penNav = (label: string, now: string, to: typeof penPage) => {
     const row = el("button", "pop-row pop-nav");
     row.append(el("span", "", label), el("span", "pop-value", now), el("span", "pop-chev", "›"));
-    row.addEventListener("click", () => ((penPage = to), ui.refreshPopover()));
+    row.addEventListener("click", () => ((penPage = to), refresh()));
     return row;
   };
   const penBack = (label: string, to: typeof penPage) => {
     const b = el("button", "pop-row pop-back", `‹  ${label}`);
-    b.addEventListener("click", () => ((penPage = to), ui.refreshPopover()));
+    b.addEventListener("click", () => ((penPage = to), refresh()));
     return b;
   };
   kept("pen", (host) => {
@@ -424,7 +430,7 @@ export function setupRightColumn(ui: UI, view: Viewport, store: DocStore, onUnit
     const k = penPage;
     const g = GESTURES[k];
     host.append(penBack(g.group === "screen" ? "At the screen" : "From afar (Air actions)", g.group), heading(g.label));
-    for (const [id, label] of (g.drag ? PEN_DRAGS : PEN_TAPS) as [string, string][]) host.append(choiceRow(label, p[k] === id, () => (setPenButton({ [k]: id } as Partial<typeof p>), (penPage = g.group), ui.refreshPopover())));
+    for (const [id, label] of (g.drag ? PEN_DRAGS : PEN_TAPS) as [string, string][]) host.append(choiceRow(label, p[k] === id, () => (setPenButton({ [k]: id } as Partial<typeof p>), (penPage = g.group), refresh())));
   });
 
   // Settings: one row for each thing set now and then, saying how it is set; a tap opens its list (and back).
@@ -437,7 +443,7 @@ export function setupRightColumn(ui: UI, view: Viewport, store: DocStore, onUnit
       const s = settings.value;
       if (page) {
         const back = el("button", "pop-row pop-back", "‹  Settings");
-        back.addEventListener("click", () => ((page = null), ui.refreshPopover()));
+        back.addEventListener("click", () => ((page = null), refresh()));
         host.append(back);
         lists[page](host);
         return;
@@ -445,29 +451,150 @@ export function setupRightColumn(ui: UI, view: Viewport, store: DocStore, onUnit
       const nav = (label: string, now: string, to: NonNullable<typeof page>) => {
         const row = el("button", "pop-row pop-nav");
         row.append(el("span", "", label), el("span", "pop-value", now), el("span", "pop-chev", "›"));
-        row.addEventListener("click", () => ((page = to), (penPage = null), ui.refreshPopover()));
+        row.addEventListener("click", () => ((page = to), (penPage = null), refresh()));
         return row;
       };
       const snaps = Object.values(s.snap).filter(Boolean).length;
+      // The drawing's own settings here; the app's (its look, the mouse and pen, keys, updates...) are in More →
+      // App settings (asked for: "the settings at the right only for the drawing: units, grid, snapping, look").
       host.append(
-        heading("Settings"),
+        heading("Drawing settings"),
         nav("Units & grid", `${UNIT_LABEL[units()]}${s.gridLocked ? ` · grid ${s.gridStep} mm` : ""}`, "units"),
         nav("Snapping", snaps ? `${snaps} of ${Object.keys(s.snap).length} on` : "Off", "snap"),
-        toggleRow("Number pad on screen", s.numpad, (v) => settings.set("numpad", v)),
         nav("Appearance", `${s.ortho ? "Orthographic" : "Perspective"}${s.showGrid ? "" : " · no grid"}`, "appearance"),
-        scaleRow(() => ui.refreshPopover()),
-        nav("Theme", THEMES.find(([t]) => t === theme)![1], "theme"),
-        nav("Language", LANGS.find(([l]) => l === lang)![1], "lang"),
-        nav("Updates", pkg ? "Own package" : `v${__APP_VERSION__}`, "update"),
-        nav("S Pen", "", "pen"),
-        nav("Diagnostics", `${logLines().filter((l) => l.level === "error").length} errors`, "diag"),
       );
-      if (matchMedia("(any-pointer: fine)").matches) host.append(nav("Mouse", mousePreset(s.mouse).apps.split(",")[0], "mouse"));
+      const more = el("button", "pop-row pop-nav");
+      more.append(el("span", "", "App settings…"), el("span", "pop-value", "More"), el("span", "pop-chev", "›"));
+      more.addEventListener("click", () => (ui.closePopover(), appSettings()));
+      host.append(more);
     },
     () => UNIT_LABEL[units()],
   );
   // (Opened afresh: its first page.)
   gear.addEventListener("pointerdown", () => (page = null));
+
+  // More → App settings: everything set now and then that is not the drawing's, sorted into kinds - the screen,
+  // the controls, the project, the app itself. A list in it is the same as the gear's was.
+  type Sect = { id: string; label: string; rows: () => HTMLElement[] };
+  let shown = "screen";
+  let sub: string | null = null;
+  const appSettings = (): void => {
+    const back = el("div", "dialog-back");
+    const box = el("div", "dialog app-settings");
+    const head = el("div", "library-head");
+    head.append(el("div", "panel-title", "App settings"));
+    const x = el("button", "icon-btn library-close", "×");
+    x.title = "Close";
+    head.append(x);
+    const nav = el("div", "aps-nav");
+    const body = el("div", "aps-body");
+    const wrap = el("div", "aps-wrap");
+    wrap.append(nav, body);
+    box.append(head, wrap);
+    back.append(box);
+    const go = (label: string, now: string, to: string) => {
+      const row = el("button", "pop-row pop-nav");
+      row.append(el("span", "", label), el("span", "pop-value", now), el("span", "pop-chev", "›"));
+      row.addEventListener("click", () => ((sub = to), (penPage = null), draw()));
+      return row;
+    };
+    const sects: Sect[] = [
+      {
+        id: "screen",
+        label: "Screen",
+        rows: () => [
+          scaleRow(() => draw()),
+          go("Theme", THEMES.find(([t]) => t === theme)![1], "theme"),
+          go("Language", LANGS.find(([l]) => l === lang)![1], "lang"),
+          toggleRow("Number pad on screen", settings.value.numpad, (v) => settings.set("numpad", v)),
+        ],
+      },
+      {
+        id: "controls",
+        label: "Controls",
+        rows: () => {
+          const keys = el("button", "pop-row pop-nav");
+          keys.append(el("span", "", "Keyboard shortcuts"), el("span", "pop-value", "?"), el("span", "pop-chev", "›"));
+          keys.addEventListener("click", () => void import("./commands").then((m) => m.showShortcuts()));
+          return [
+            ...(matchMedia("(any-pointer: fine)").matches ? [go("Mouse", mousePreset(settings.value.mouse).apps.split(",")[0], "mouse")] : []),
+            go("S Pen", "", "pen"),
+            keys,
+          ];
+        },
+      },
+      {
+        id: "project",
+        label: "Project",
+        rows: () => {
+          const m = settings.value.autosaveMinutes;
+          const out: HTMLElement[] = [heading("Autosave"), el("div", "pop-note", "Every change is saved on this device at once (the ✓ by the project's name). A copy also goes into File → Open's project list:")];
+          for (const [v, label] of [[0, "When the app is left"], [1, "Every minute"], [2, "Every 2 minutes"], [5, "Every 5 minutes"], [10, "Every 10 minutes"]] as [number, string][]) out.push(choiceRow(label, m === v, () => (settings.set("autosaveMinutes", v), draw())));
+          out.push(heading("Settings backup"), el("div", "pop-note", "All these settings (shortcuts, favourites, the pen...) in a file: for another device, or to keep them safe."));
+          const exp = el("button", "pop-row", "Save settings to a file");
+          exp.addEventListener("click", () => {
+            const a = document.createElement("a");
+            a.href = URL.createObjectURL(new Blob([prefsSnapshot()], { type: "application/json" }));
+            a.download = "supergeometry-settings.json";
+            a.click();
+            setTimeout(() => URL.revokeObjectURL(a.href), 5000);
+          });
+          const imp = el("button", "pop-row", "Load settings from a file…");
+          imp.addEventListener("click", () => {
+            const f = document.createElement("input");
+            f.type = "file";
+            f.accept = ".json,application/json";
+            f.addEventListener("change", async () => {
+              const file = f.files?.[0];
+              if (!file) return;
+              const n = restorePrefs(await file.text());
+              if (!n) return ui.toast("That file holds no settings of this app", "error");
+              ui.toast("Settings loaded - the app starts again with them");
+              setTimeout(() => location.reload(), 900);
+            });
+            f.click();
+          });
+          out.push(exp, imp);
+          return out;
+        },
+      },
+      {
+        id: "app",
+        label: "App",
+        rows: () => [go("Updates", `v${__APP_VERSION__}`, "update"), go("Diagnostics", `${logLines().filter((l) => l.level === "error").length} errors`, "diag")],
+      },
+    ];
+    const draw = () => {
+      nav.replaceChildren();
+      for (const sct of sects) {
+        const b = el("button", `aps-tab${sct.id === shown ? " on" : ""}`, sct.label);
+        b.addEventListener("click", () => ((shown = sct.id), (sub = null), draw()));
+        nav.append(b);
+      }
+      body.replaceChildren();
+      if (sub && lists[sub]) {
+        const bk = el("button", "pop-row pop-back", `‹  ${sects.find((x) => x.id === shown)!.label}`);
+        bk.addEventListener("click", () => ((sub = null), draw()));
+        body.append(bk);
+        lists[sub](body);
+      } else body.append(heading(sects.find((x) => x.id === shown)!.label), ...sects.find((x) => x.id === shown)!.rows());
+    };
+    refresh = draw;
+    const close = () => {
+      back.remove();
+      refresh = () => ui.refreshPopover();
+      window.removeEventListener("keydown", onKey, true);
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape" && !(e.target instanceof HTMLInputElement)) (e.preventDefault(), close());
+    };
+    x.addEventListener("click", close);
+    back.addEventListener("pointerdown", (ev) => ev.target === back && close());
+    window.addEventListener("keydown", onKey, true);
+    document.body.append(back);
+    draw();
+  };
+  openAppSettings = appSettings;
   // Sketch mode only (CSS shows it under body.sketching): show/hide the constraint column.
   const cons = ui.addRight("constraints", "constraints", "Constraints (sketch)", () => settings.set("showConstraints", !settings.value.showConstraints));
   cons.classList.add("sketch-only");

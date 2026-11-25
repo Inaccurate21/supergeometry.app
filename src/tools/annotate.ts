@@ -394,14 +394,82 @@ export class PinLayer {
   private pins: PinDef[] = [];
   private visible = true;
   private host = document.getElementById("pins")!;
+  /** The pinned measurements picked (a click on one; Ctrl/Shift+click adds; a box drawn round them): Delete removes them. */
+  private picked = new Set<number>();
+  private bar: HTMLElement | null = null;
 
   constructor(
     private view: Viewport,
     /** A label dragged to a new place: its offset from where it was measured (world units). */
     private onMove: (index: number, off: Vec3) => void = () => undefined,
+    /** These pins deleted. */
+    private onDelete: (indices: number[]) => void = () => undefined,
   ) {
     view.overlay.add(this.group);
     view.frameHooks.add(() => this.layout());
+    // A press on the view elsewhere lets them go.
+    view.canvas.addEventListener("pointerdown", (e) => !e.ctrlKey && !e.shiftKey && !e.metaKey && this.pick([]));
+  }
+
+  /** Some picked? */
+  hasPicked(): boolean {
+    return this.picked.size > 0;
+  }
+
+  /** Delete the picked ones (true if there were any). */
+  deletePicked(): boolean {
+    if (!this.picked.size) return false;
+    const ids = [...this.picked];
+    this.picked.clear();
+    this.onDelete(ids);
+    this.showBar();
+    return true;
+  }
+
+  /** Pick these (replacing what was picked, or `add`ed to it). */
+  pick(ids: number[], add = false): void {
+    if (!add) this.picked.clear();
+    for (const i of ids) {
+      if (add && this.picked.has(i) && ids.length === 1) this.picked.delete(i);
+      else this.picked.add(i);
+    }
+    this.labels.forEach((t, i) => t.classList.toggle("sel", this.picked.has(i)));
+    this.showBar();
+  }
+
+  /** The pins whose labels are inside a box drawn on the view (screen pixels of the view): picked. */
+  pickInBox(a: { x: number; y: number }, b: { x: number; y: number }, add: boolean): number {
+    if (!this.visible) return 0;
+    const [x0, x1] = [Math.min(a.x, b.x), Math.max(a.x, b.x)];
+    const [y0, y1] = [Math.min(a.y, b.y), Math.max(a.y, b.y)];
+    const inside = this.pins.flatMap((p, i) => {
+      const o = p.off ?? [0, 0, 0];
+      const s = this.view.toScreen([p.at[0] + o[0], p.at[1] + o[1], p.at[2] + o[2]]);
+      return s && s[0] >= x0 && s[0] <= x1 && s[1] >= y0 && s[1] <= y1 ? [i] : [];
+    });
+    if (inside.length || !add) this.pick(inside, add);
+    return inside.length;
+  }
+
+  /** With some picked: a small bar to delete them (Delete does it too). */
+  private showBar(): void {
+    if (!this.picked.size) {
+      this.bar?.remove();
+      this.bar = null;
+      return;
+    }
+    if (!this.bar) {
+      this.bar = el("div", "pin-bar");
+      document.body.append(this.bar);
+    }
+    this.bar.replaceChildren();
+    const n = this.picked.size;
+    const del = el("button", "pin-bar-del", `Delete ${n} pinned`);
+    del.addEventListener("click", () => this.deletePicked());
+    const off = el("button", "pin-bar-x", "×");
+    off.title = "Let go";
+    off.addEventListener("click", () => this.pick([]));
+    this.bar.append(el("span", "", `${n} picked (Delete)`), del, off);
   }
 
   /** The dimension line's ends for a label moved by `off`: square off what was measured (the text may slide along it). */
@@ -422,6 +490,7 @@ export class PinLayer {
     this.lines.forEach((l) => (this.group.remove(l.group), l.dispose()));
     this.ext.forEach((l) => (this.group.remove(l), l.geometry.dispose()));
     this.labels.forEach((l) => l.remove());
+    if (pins.length !== this.pins.length) this.picked.clear();
     this.pins = pins.map((p) => ({ ...p }));
     this.visible = visible;
     this.lines = [];
@@ -438,8 +507,8 @@ export class PinLayer {
         this.ext[i] = e;
         this.place(i);
       }
-      const tag = el("div", "pin", p.text);
-      tag.title = "Drag to move it";
+      const tag = el("div", `pin${this.picked.has(i) ? " sel" : ""}`, p.text);
+      tag.title = "Drag to move it · click to pick it (Ctrl: add), Delete removes it";
       tag.addEventListener("pointerdown", (e) => this.drag(i, tag, e));
       this.host.append(tag);
       return tag;
@@ -491,11 +560,13 @@ export class PinLayer {
       this.place(i);
       this.view.requestRender();
     };
-    const up = () => {
+    const up = (ev: PointerEvent) => {
       tag.removeEventListener("pointermove", move);
       tag.removeEventListener("pointerup", up);
       tag.removeEventListener("pointercancel", up);
       if (moved && p.off) this.onMove(i, p.off);
+      // A click (no drag): picked (Ctrl/Shift: added or let go).
+      else if (ev.type === "pointerup") this.pick([i], e.ctrlKey || e.metaKey || e.shiftKey);
     };
     tag.addEventListener("pointermove", move);
     tag.addEventListener("pointerup", up);
