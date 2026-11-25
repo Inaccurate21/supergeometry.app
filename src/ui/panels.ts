@@ -18,6 +18,7 @@ import { PEN_DRAGS, PEN_TAPS, penButtonSettings, setPenButton } from "../penButt
 import { androidInfo, buildReport, clearLog, logLines, sendReport } from "../diagnostics";
 import { setUiScale, uiScale, uiScaleWorks, UI_SCALE_MAX, UI_SCALE_MIN } from "../uiScale";
 import { lang, LANGS, saveLang, type Lang } from "../i18n";
+import { mouseSettings, PRESETS, setMouse, type MousePreset } from "../mouseNav";
 import { saveTheme, theme, THEMES, type Theme } from "../theme";
 import { loadPackage, packageInUse, packagesSupported, removePackage, type PackageInfo } from "./package";
 
@@ -211,6 +212,16 @@ export function setupRightColumn(ui: UI, view: Viewport, store: DocStore, onUnit
     await store.flush();
     location.reload();
   };
+
+  // Mouse: the way of another CAD program to turn and move the view; the wheel's way.
+  kept("mouse", (host) => {
+    const m = mouseSettings();
+    host.append(heading("Mouse"));
+    for (const [id, p] of Object.entries(PRESETS) as [MousePreset, (typeof PRESETS)[MousePreset]][]) host.append(choiceRow(p.label, m.preset === id, () => (setMouse({ preset: id }), ui.refreshPopover())));
+    host.append(el("div", "pop-note", PRESETS[m.preset].says));
+    host.append(toggleRow("Wheel towards you zooms in", m.invertZoom, (v) => setMouse({ invertZoom: v })));
+    host.append(el("div", "pop-note", "In every way: a left drag on empty space picks with a box, a right click opens the menu, the wheel zooms at the pointer."));
+  });
 
   // Theme: dark, light or black; the app reloads in it (the project is saved first).
   kept("theme", (host) => {
@@ -412,7 +423,7 @@ export function setupRightColumn(ui: UI, view: Viewport, store: DocStore, onUnit
   });
 
   // Settings: one row for each thing set now and then, saying how it is set; a tap opens its list (and back).
-  let page: "units" | "snap" | "appearance" | "lang" | "update" | "diag" | "pen" | "theme" | null = null;
+  let page: "units" | "snap" | "appearance" | "lang" | "update" | "diag" | "pen" | "theme" | "mouse" | null = null;
   const gear = ui.addRight(
     "settings",
     "settings",
@@ -441,6 +452,7 @@ export function setupRightColumn(ui: UI, view: Viewport, store: DocStore, onUnit
         nav("Appearance", `${s.ortho ? "Orthographic" : "Perspective"}${s.showGrid ? "" : " · no grid"}`, "appearance"),
         scaleRow(() => ui.refreshPopover()),
         nav("Theme", THEMES.find(([t]) => t === theme)![1], "theme"),
+        nav("Mouse", PRESETS[mouseSettings().preset].label, "mouse"),
         nav("Language", LANGS.find(([l]) => l === lang)![1], "lang"),
         nav("Updates", pkg ? "Own package" : `v${__APP_VERSION__}`, "update"),
         nav("S Pen", "", "pen"),

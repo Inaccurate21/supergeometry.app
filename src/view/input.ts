@@ -1,4 +1,5 @@
 import { isHeadset, isTouchDevice, pickTolerance } from "../device";
+import { mouseNavFor, mouseSettings } from "../mouseNav";
 // One input model for mouse, touch and pen (see docs/ARCHITECTURE.md §5).
 
 import type { Viewport } from "./viewport";
@@ -150,19 +151,26 @@ export class InputRouter {
     }
     if (this.pointers.size > 1) return;
 
-    // Mouse: right-drag orbits, middle-drag (or shift+right) pans, alt+left orbits (trackpads).
-    if (type === "mouse" && (e.button === 1 || (e.button === 2 && e.shiftKey))) {
-      this.mode = "pan";
-      return;
-    }
-    // Right button: a drag orbits, a click is a "context" action (decided on move/up).
-    if (type === "mouse" && e.button === 2) {
-      this.mode = "rpending";
-      return;
-    }
-    if (type === "mouse" && e.button === 0 && e.altKey) {
-      this.mode = "orbit";
-      return;
+    // Mouse: the view turned or moved the way chosen in Settings → Mouse (src/mouseNav.ts) - by default a
+    // right drag turns, a middle drag (or shift+right) moves, alt+left turns (trackpads).
+    if (type === "mouse") {
+      // (The S Pen's button acts as a mouse's right / middle button - src/penButton.ts, pointer 88: always so.)
+      const nav = e.pointerId === 88 ? (e.button === 2 ? "orbit" : e.button === 1 ? "pan" : null) : mouseNavFor(e);
+      // Right button: a click is the menu either way (decided on move/up); a drag turns or moves if it's set to.
+      if (e.button === 2) {
+        this.rightDrag = nav;
+        this.mode = "rpending";
+        return;
+      }
+      if (nav) {
+        this.mode = nav;
+        return;
+      }
+      // A middle press that does nothing in this way: not a tool's press either.
+      if (e.button === 1) {
+        this.mode = "ended";
+        return;
+      }
     }
     this.modifiers = e.ctrlKey || e.metaKey || e.shiftKey;
     if (this.handler.down?.(this.tp(t))) {
@@ -249,7 +257,8 @@ export class InputRouter {
 
     switch (this.mode) {
       case "rpending":
-        if (Math.hypot(x - t.x0, y - t.y0) >= TAP_SLOP.mouse) this.mode = "orbit";
+        // (A right drag that does nothing in the way chosen: still a right click when it comes up.)
+        if (Math.hypot(x - t.x0, y - t.y0) >= TAP_SLOP.mouse && this.rightDrag) this.mode = this.rightDrag;
         return;
       case "pending": {
         if (Math.hypot(x - t.x0, y - t.y0) < TAP_SLOP[t.type]) return;
@@ -340,6 +349,8 @@ export class InputRouter {
     }
   }
 
+  /** What a right drag does in the way chosen (Settings → Mouse); null: nothing, it stays a click. */
+  private rightDrag: "orbit" | "pan" | null = "orbit";
   private hoverAt: ToolPointer | null = null;
   private hoverFrame = 0;
 
@@ -370,7 +381,7 @@ export class InputRouter {
     const [x, y] = this.local(e);
     if (e.ctrlKey || !isTrackpadPan(e)) {
       // Mouse wheel, or trackpad pinch (reported as ctrl+wheel).
-      const factor = Math.exp(e.deltaY * (e.ctrlKey ? 0.01 : 0.0015));
+      const factor = Math.exp((mouseSettings().invertZoom && !e.ctrlKey ? -1 : 1) * e.deltaY * (e.ctrlKey ? 0.01 : 0.0015));
       this.view.cam.zoom(factor, this.view.worldUnder(x, y));
     } else {
       this.view.cam.pan(-e.deltaX, -e.deltaY, this.view.height);
