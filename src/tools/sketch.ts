@@ -915,7 +915,11 @@ export class SketchTool implements Tool {
     this.pendingExpr = isExpression(text) ? text.trim() : null;
     this.setConstraintValue(id, v);
     // (Refused - it contradicts another: said by a toast, the old size stays.)
-    return this.constraints !== before;
+    if (this.constraints === before) return false;
+    // The card on screen says the new size too (it kept the old one: entered again from there, the old size came back).
+    if (this.selConstraint === id) this.selectConstraint(id, false);
+    else if (!this.selConstraint) this.updatePanel();
+    return true;
   }
 
   /** One constraint as a row of the list: its name, what else it involves, its size if it has one. */
@@ -1088,7 +1092,7 @@ export class SketchTool implements Tool {
     this.selectionChanged();
   }
 
-  private selectConstraint(id: string): void {
+  private selectConstraint(id: string, type = true): void {
     this.selConstraint = id;
     this.selected.clear();
     this.selPts = [];
@@ -1116,7 +1120,7 @@ export class SketchTool implements Tool {
         onDone: () => this.deselectConstraint(),
       });
       // Its size is typed where it is, on the drawing (the card keeps its Delete, and the size for a formula).
-      this.glyphs?.beginEdit(id);
+      if (type) this.glyphs?.beginEdit(id);
     } else {
       this.app.ui.showPanel({ title: titled(c.type === "fix" ? "lock" : c.type === "symmetric" ? "symmetry" : `${c.type} constraint`), items: [], actions: [del], onDone: () => this.deselectConstraint() });
     }
