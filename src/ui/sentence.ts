@@ -1281,13 +1281,16 @@ export class Sentence {
     }
     this.sheet.replaceChildren(box);
     let over = false;
-    const end = (keep: boolean) => {
+    const end = (keep: boolean, entered = false) => {
       if (over) return;
       over = true;
       this.typing = null;
       const text = input.value.trim();
-      // (Left as it was: nothing to do - a size that follows a variable is not made a plain number by looking at it.)
-      if (keep && text !== was) {
+      // (Left as it was and walked away from: nothing to do - a size that follows a variable is not made a plain
+      // number by looking at it. Enter on it as it is says "this size": a picked line's Length, entered, is that
+      // line's length from now on - asked for: "if i click on a line and then click length and hit enter, that
+      // dimension should be a dimension constraint". Its formula, if it has one, is entered with it and stays.)
+      if (keep && (text !== was || entered)) {
         const n = evaluate(text, v.kind === "int" ? "number" : v.kind);
         if (n === null) {
           // Said as it is: a name no variable has, else what was typed.
@@ -1309,7 +1312,7 @@ export class Sentence {
     };
     this.typing = { end };
     input.addEventListener("keydown", (e) => {
-      if (e.key === "Enter") (e.preventDefault(), end(true));
+      if (e.key === "Enter") (e.preventDefault(), end(true, true));
       else if (e.key === "Escape") (e.preventDefault(), end(false));
       e.stopPropagation();
     });
