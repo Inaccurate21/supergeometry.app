@@ -12,7 +12,7 @@ import { nearestSnap } from "../sketch/snapPick";
 import { arrangement } from "../sketch/regions";
 import { Gimbal, IN_PLANE, type GimbalPart } from "./gimbal";
 import { buildConstraints, CONSTRAINT_BUTTONS, constraintGlyph, ConstraintGlyphs, dimOf, distanceOf, existingConstraints, setDim } from "./sketchConstraints";
-import { settings } from "../settings";
+import { OSNAP_LIST, settings, type Osnap } from "../settings";
 import { isCoarse, screenClass } from "../device";
 import { arcFrom3, closestOnPrim, entityPolylines, entityPrims, evalPrim, splineHeights } from "../sketch/curves";
 import {
@@ -1280,6 +1280,10 @@ export class SketchTool implements Tool {
       },
       // With curves selected, Delete removes them right away; else it's the tap-to-delete tool.
       t("delete", "Delete", "trash", "Del", { run: () => (this.selected.size || this.selPts.length ? this.deleteSelected() : this.setKind("delete")) }),
+      // OSNAP (as AutoCAD's): each object snap on or off, right on the line - while drawing and while moving.
+      ...OSNAP_LIST.map(([k, label, mark]) => ({ id: `osnap-${k}`, label: `${mark}  ${label}`, icon: "magnet" as const, active: settings.value.osnap[k], run: () => (settings.set("osnap", { ...settings.value.osnap, [k]: !settings.value.osnap[k] }), this.updateMenu()) }) as ToolItem),
+      { id: "osnap-all", label: "All on", icon: "magnet", run: () => (settings.set("osnap", Object.fromEntries(OSNAP_LIST.map(([k]) => [k, true])) as unknown as Osnap), this.updateMenu()) } as ToolItem,
+      { id: "osnap-none", label: "All off", icon: "magnet", run: () => (settings.set("osnap", Object.fromEntries(OSNAP_LIST.map(([k]) => [k, false])) as unknown as Osnap), this.updateMenu()) } as ToolItem,
     ]);
     // With curves selected the button shows (and flips) their type; otherwise the type of new curves.
     const sel = this.entities.filter((e) => this.selected.has(e.id));

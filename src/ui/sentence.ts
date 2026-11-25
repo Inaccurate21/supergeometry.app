@@ -166,6 +166,8 @@ const SK_GROUPS: { id: string; label: string; icon: IconName; tools: string[] }[
   { id: "draw", label: "Draw", icon: "line", tools: ["line", "rect", "circle", "arc", "spline", "polygon", "ellipse", "text", "project", "fill"] },
   { id: "modify", label: "Modify", icon: "trim", tools: ["trim", "fillet", "offset", "extend", "split", "align"] },
   { id: "transform", label: "Transform", icon: "transform", tools: ["move", "mirror", "rotate", "pattern", "scale"] },
+  // Object snaps, each on or off (as AutoCAD's OSNAP): src/tools/sketch.ts puts them in the sketch's column.
+  { id: "osnap", label: "OSNAP", icon: "magnet", tools: ["osnap-endpoint", "osnap-midpoint", "osnap-center", "osnap-quadrant", "osnap-intersection", "osnap-nearest", "osnap-extension", "osnap-perpendicular", "osnap-parallel", "osnap-tangent", "osnap-tracking", "osnap-all", "osnap-none"] },
 ];
 
 export class Sentence {
@@ -509,8 +511,10 @@ export class Sentence {
     const exit = items.find((it) => it.id === "exit");
     const select = items.find((it) => it.id === "select");
     const tools = items.filter((it) => it !== exit && it !== select);
-    const drawing = tools.some((it) => it.active);
-    const at = tools.find((it) => it.active);
+    // (OSNAP's switches are lit while on: they are no tool at work.)
+    const isTool = (it: ToolItem) => !it.id.startsWith("osnap-");
+    const drawing = tools.some((it) => it.active && isTool(it));
+    const at = tools.find((it) => it.active && isTool(it));
     const retapped = (it: ToolItem): Word => {
       const w = this.verb(it);
       // (It acts where the view is tapped. A curve picked: on that piece, where it was picked - and one done at that

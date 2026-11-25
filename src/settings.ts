@@ -193,6 +193,21 @@ export interface Osnap {
   tracking: boolean;
 }
 
+/** The object snaps as the sketch's OSNAP list on the line at the bottom shows them: key, name, mark. */
+export const OSNAP_LIST: [keyof Osnap, string, string][] = [
+  ["endpoint", "Endpoint", "□"],
+  ["midpoint", "Midpoint", "△"],
+  ["center", "Center", "○"],
+  ["quadrant", "Quadrant", "◇"],
+  ["intersection", "Intersection", "✕"],
+  ["nearest", "Nearest (on a curve)", "⧖"],
+  ["extension", "Extension", "⋯"],
+  ["perpendicular", "Perpendicular", "⟂"],
+  ["parallel", "Parallel", "∥"],
+  ["tangent", "Tangent", "◯"],
+  ["tracking", "Tracking (straight across)", "┼"],
+];
+
 export const OSNAP_DEFAULT: Osnap = { endpoint: true, midpoint: true, center: true, quadrant: false, intersection: true, nearest: true, extension: true, perpendicular: true, parallel: true, tangent: false, tracking: true };
 
 const DEFAULTS: Settings = {
