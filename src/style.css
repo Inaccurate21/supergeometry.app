@@ -1431,6 +1431,11 @@ body.tut-on #hint .hint-x {
   pointer-events: none;
   z-index: 7;
 }
+.cglyphs.no-dims .cglyph.dim,
+.cglyphs.no-dims .cdims,
+.cglyphs.no-marks .cglyph:not(.dim) {
+  display: none;
+}
 .cglyphs.passive .cglyph {
   pointer-events: none;
 }

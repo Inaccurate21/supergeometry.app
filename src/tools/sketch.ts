@@ -747,7 +747,7 @@ export class SketchTool implements Tool {
     );
     this.glyphs.selected = this.selConstraint;
     this.glyphs.set(this.plane, this.entities, this.constraints);
-    this.glyphs.setVisible(settings.value.showConstraintGlyphs);
+    this.glyphs.setVisible(settings.value.showConstraintGlyphs, settings.value.showConstraintMarks);
     this.glyphs.setTappable(this.kind === "select");
     document.body.classList.add("sketching");
     this.app.view.setSketchView(settings.value.sketchBodies, !settings.value.sketchModelPick);
@@ -775,10 +775,15 @@ export class SketchTool implements Tool {
     auto.title = "Add horizontal/vertical/coincident constraints automatically while drawing";
     auto.addEventListener("click", () => settings.set("autoConstrain", !settings.value.autoConstrain));
     const glyphs = document.createElement("button");
-    glyphs.className = `cbar-toggle${settings.value.showConstraintGlyphs ? " on" : ""}`;
+    glyphs.className = `cbar-toggle${settings.value.showConstraintMarks ? " on" : ""}`;
     glyphs.innerHTML = `<span class="cl">Show constraints</span><span class="switch"></span>`;
-    glyphs.title = "Show or hide the constraint badges and dimensions on the sketch";
-    glyphs.addEventListener("click", () => settings.set("showConstraintGlyphs", !settings.value.showConstraintGlyphs));
+    glyphs.title = "Show or hide the constraint badges on the sketch";
+    glyphs.addEventListener("click", () => settings.set("showConstraintMarks", !settings.value.showConstraintMarks));
+    const dims = document.createElement("button");
+    dims.className = `cbar-toggle${settings.value.showConstraintGlyphs ? " on" : ""}`;
+    dims.innerHTML = `<span class="cl">Show dimensions</span><span class="switch"></span>`;
+    dims.title = "Show or hide the dimensions on the sketch";
+    dims.addEventListener("click", () => settings.set("showConstraintGlyphs", !settings.value.showConstraintGlyphs));
     // Which of two things a constraint leaves where it is.
     const anchor = document.createElement("button");
     anchor.className = "cbar-toggle";
@@ -792,7 +797,7 @@ export class SketchTool implements Tool {
     const note = document.createElement("div");
     note.className = "cbar-note";
     note.textContent = "Tap lines or points: the constraints that fit show in their card. Tap a badge on the sketch to change or delete it.";
-    this.bar.append(auto, glyphs, anchor, note);
+    this.bar.append(auto, glyphs, dims, anchor, note);
     this.placeBar();
   }
 
@@ -1301,7 +1306,8 @@ export class SketchTool implements Tool {
       ...(([["normal", "Bodies: as they are"], ["ghost", "Bodies: see-through"], ["hidden", "Bodies: hidden"]] as const).map(([v, label]) => ({ id: `skv-${v}`, label, icon: "body" as const, active: settings.value.sketchBodies === v, run: () => (settings.set("sketchBodies", v), this.app.view.setSketchView(v, !settings.value.sketchModelPick), this.updateMenu()) }) as ToolItem)),
       { id: "skv-pick", label: "Pick and snap to the model", icon: "pointer", active: settings.value.sketchModelPick, run: () => (settings.set("sketchModelPick", !settings.value.sketchModelPick), this.app.view.setSketchView(settings.value.sketchBodies, !settings.value.sketchModelPick), this.updateMenu()) } as ToolItem,
       { id: "skv-region", label: "Pick closed shapes (to extrude)", icon: "extrude", active: settings.value.sketchRegionPick, run: () => (settings.set("sketchRegionPick", !settings.value.sketchRegionPick), this.updateMenu()) } as ToolItem,
-      { id: "skv-dims", label: "Show dimensions and constraints", icon: "constraints", active: settings.value.showConstraintGlyphs, run: () => (settings.set("showConstraintGlyphs", !settings.value.showConstraintGlyphs), this.updateMenu()) } as ToolItem,
+      { id: "skv-dims", label: "Show dimensions", icon: "measure", active: settings.value.showConstraintGlyphs, run: () => (settings.set("showConstraintGlyphs", !settings.value.showConstraintGlyphs), this.updateMenu()) } as ToolItem,
+      { id: "skv-marks", label: "Show constraints", icon: "constraints", active: settings.value.showConstraintMarks, run: () => (settings.set("showConstraintMarks", !settings.value.showConstraintMarks), this.updateMenu()) } as ToolItem,
       { id: "skv-grid", label: "Show grid", icon: "grid", active: settings.value.showGrid, run: () => (settings.set("showGrid", !settings.value.showGrid), this.updateMenu()) } as ToolItem,
       { id: "osnap-all", label: "All on", icon: "magnet", run: () => (settings.set("osnap", Object.fromEntries(OSNAP_LIST.map(([k]) => [k, true])) as unknown as Osnap), this.updateMenu()) } as ToolItem,
       { id: "osnap-none", label: "All off", icon: "magnet", run: () => (settings.set("osnap", Object.fromEntries(OSNAP_LIST.map(([k]) => [k, false])) as unknown as Osnap), this.updateMenu()) } as ToolItem,

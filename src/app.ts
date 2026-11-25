@@ -68,7 +68,7 @@ import { exportThreeMF, zip } from "./io/threemf";
 import { glb } from "./io/formats";
 import { sketchToDXF } from "./io/dxf";
 import { sketchToSVG } from "./io/svg";
-import { isHeadset, screenClass } from "./device";
+import { isHeadset } from "./device";
 import { Viewport } from "./view/viewport";
 import { VRMode, vrSupported } from "./view/xr";
 import { tr } from "./i18n";
@@ -297,9 +297,8 @@ export class App implements AppContext {
       askName: async (title, current) => (await this.ui.dialog(title, [{ key: "name", label: "Name", value: current }]))?.name.trim() || null,
       isolated: () => this.isolatedWithSketches(),
     });
-    // Computers and tablets start with Items open (phones: History only, there's no room for both).
-    // (A phone on its side is wider than 720 px but only ~375 tall: Items would cover a third of it.)
-    if (screenClass() !== "phone") this.items.toggle(true);
+    // Items is the panel open at the start, on every screen (History is a tap away) - asked for.
+    this.items.toggle(true);
 
     this.store.onChange(() => this.docChanged());
     window.addEventListener("keydown", (e) => this.onKey(e));
@@ -469,7 +468,29 @@ export class App implements AppContext {
     return null;
   }
 
+  /** Measure opened inside a sketch (as in Fusion): it takes the taps while the sketch stays open under it. */
+  private measureOver: MeasureTool | null = null;
+
+  private toggleMeasureOver(): void {
+    if (this.measureOver) return this.endMeasureOver();
+    const m = new MeasureTool(this, true);
+    this.measureOver = m;
+    this.input.handler = m;
+    m.enter();
+    document.querySelector('[data-left="measure"]')?.classList.add("on", "pulse");
+  }
+
+  endMeasureOver(): void {
+    const m = this.measureOver;
+    if (!m) return;
+    this.measureOver = null;
+    m.exit();
+    this.input.handler = this.tool;
+    document.querySelector('[data-left="measure"]')?.classList.remove("on", "pulse");
+  }
+
   setTool(tool: Tool | null): void {
+    this.endMeasureOver();
     const next = tool ?? this.selectTool;
     const leavingOp = this.tool !== this.selectTool;
     // A sketch left right after a shape was closed in it: that shape is what comes next (see below).
@@ -1460,7 +1481,7 @@ export class App implements AppContext {
     return [
       // The one whose card is open pulses (as a tool does while its window is open).
       { id: "section", label: "Section View", icon: "section", sub: this.section ? "On" : this.lastSection ? "Off · tap to show" : "Off", active: !!this.section, pulse: this.tool instanceof SectionTool, run: () => this.toggleSection() },
-      { id: "measure", label: "Measure", icon: "measure", active: this.tool instanceof MeasureTool, pulse: this.tool instanceof MeasureTool, run: () => this.setTool(this.tool instanceof MeasureTool ? null : new MeasureTool(this)) },
+      { id: "measure", label: "Measure", icon: "measure", active: this.tool instanceof MeasureTool, pulse: this.tool instanceof MeasureTool, run: () => (this.tool instanceof SketchTool ? this.toggleMeasureOver() : this.setTool(this.tool instanceof MeasureTool ? null : new MeasureTool(this))) },
       // On: a tag per variable in the view (tap one to change it), and their card. Off again.
       { id: "variables", label: "Variables", icon: "variable", sub: this.varsOn ? "On" : this.store.doc.variables.length ? `Off · ${this.store.doc.variables.length}` : "Off", active: this.varsOn, pulse: this.tool instanceof VariablesTool, run: () => this.toggleVariables() },
       this.isolated

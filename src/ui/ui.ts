@@ -211,8 +211,7 @@ export class UI {
       const t = e.target as HTMLElement;
       if (!t.closest("#flyout, #toolbar, #bottom-left")) this.closeFlyout();
     });
-    // History opens by default everywhere (on phones it floats and can be closed).
-    this.toggleHistory(true);
+    // (History starts closed: Items is the panel open by default - asked for. The History button opens it.)
     this.holdLabels();
     this.besidePanels();
     window.addEventListener("resize", () => (this.fitToolbar(), this.fitPanel()));

@@ -1,4 +1,7 @@
-import type { PinDef, Vec3 } from "../doc/types";
+import type { PinDef, SketchFeature, Vec2, Vec3 } from "../doc/types";
+import { pointOf } from "../sketch/constraints";
+import { entityPolylines } from "../sketch/curves";
+import { sketchToWorld } from "../view/viewport";
 import { settings } from "../settings";
 import { cross, dist, dot, len, sub } from "../geom";
 import type { BodyMesh } from "../kernel/protocol";
@@ -10,6 +13,8 @@ import { hitToSel, sameSel, type AppContext, type Sel, type Tool } from "./tool"
 export interface MeasureHost extends AppContext {
   readonly pins: PinDef[];
   setPins(p: PinDef[]): void;
+  /** Measure over an open sketch (the sketch stays open under it): ends that, back to the sketch. */
+  endMeasureOver?(): void;
 }
 
 interface Row {
@@ -30,10 +35,27 @@ export class MeasureTool implements Tool {
   private card: HTMLElement | null = null;
   private deltas = false;
 
-  constructor(private app: MeasureHost) {}
+  /** `over`: measuring inside an open sketch, as in Fusion - the sketch and its bar stay, the sizes stay shown. */
+  constructor(
+    private app: MeasureHost,
+    readonly over = false,
+  ) {}
+
+  /** Leave Measure: back to the sketch it was opened over, or to picking. */
+  private close(): void {
+    if (this.over && this.app.endMeasureOver) this.app.endMeasureOver();
+    else this.app.setTool(null);
+  }
 
   enter(): void {
-    this.app.ui.setTools([{ id: "exit", label: "Exit Measure", icon: "exit", shortcut: "Esc", run: () => this.app.setTool(null) }]);
+    if (this.over) {
+      this.app.ui.setHint("Measuring in the sketch: tap curves, points, faces or edges. Measure again (or Esc) goes back to drawing.");
+      this.card = el("div", "measure-card");
+      document.body.append(this.card);
+      this.render();
+      return;
+    }
+    this.app.ui.setTools([{ id: "exit", label: "Exit Measure", icon: "exit", shortcut: "Esc", run: () => this.close() }]);
     // The view tools stay, this one lit and pulsing (tap it again to close it).
     this.app.ui.setBottom(this.app.bottomTools());
     this.app.ui.setHint("Tap faces, edges or points to see their sizes. Double-tap for a whole body.");
@@ -50,14 +72,15 @@ export class MeasureTool implements Tool {
   }
 
   hover(p: ToolPointer | null): void {
-    this.app.setHover(p ? hitToSel(this.app.view.pick(p.x, p.y, { edgeTolPx: p.tol, profiles: false, planes: false })) : null);
+    this.app.setHover(p ? hitToSel(this.app.view.pick(p.x, p.y, { edgeTolPx: p.tol, profiles: false, planes: false, curves: true })) : null);
   }
 
   tap(p: ToolPointer, count: number): void {
-    let s = hitToSel(this.app.view.pick(p.x, p.y, { edgeTolPx: p.tol, profiles: false, planes: false }));
+    let s = hitToSel(this.app.view.pick(p.x, p.y, { edgeTolPx: p.tol, profiles: false, planes: false, curves: true }));
     if (!s) {
       // Empty space: first clears, second leaves Measure.
-      if (!this.items.length) return this.app.setTool(null);
+      // (In a sketch Measure stays till its button or Esc: a tap beside a line is no reason to drop it.)
+      if (!this.items.length) return this.over ? undefined : this.close();
       this.items = [];
     } else {
       if (count >= 2 && (s.kind === "face" || s.kind === "edge" || s.kind === "vertex")) s = { kind: "body", body: s.body };
@@ -75,7 +98,7 @@ export class MeasureTool implements Tool {
         this.items = [];
         this.app.setSelection([]);
         this.render();
-      } else this.app.setTool(null);
+      } else this.close();
       return true;
     }
     return false;
@@ -141,7 +164,67 @@ export class MeasureTool implements Tool {
     return out;
   }
 
+  /** A curve or a point of a sketch: its length, its radius, where it is. */
+  private describeSketch(s: Sel): Described | null {
+    if (s.kind !== "curve" && s.kind !== "point") return null;
+    const plane = this.app.sketchPlane(s.sketch);
+    const e = this.app.store.find<SketchFeature>(s.sketch)?.entities.find((x) => x.id === s.entity);
+    if (!plane || !e) return null;
+    const w = (q: Vec2) => sketchToWorld(plane, q).toArray() as Vec3;
+    const u = UNIT_MM[units()];
+    if (s.kind === "point") {
+      const q = pointOf(e, s.p);
+      if (!q) return null;
+      const v = w(q);
+      return { rows: [{ name: "Point (X, Y in the sketch)", value: `${trim(q[0] / u, 3)}, ${trim(q[1] / u, 3)}`, at: v }], anchor: v, points: [v] };
+    }
+    const polys = entityPolylines(e);
+    // (Straight runs filled in: the nearest distance to a line is then to its middle too, not just its ends.)
+    const pts: Vec3[] = [];
+    for (const pl of polys)
+      for (let i = 0; i < pl.length; i++) {
+        if (i) for (let k = 1; k < 48; k++) pts.push(w([pl[i - 1][0] + ((pl[i][0] - pl[i - 1][0]) * k) / 48, pl[i - 1][1] + ((pl[i][1] - pl[i - 1][1]) * k) / 48]));
+        pts.push(w(pl[i]));
+      }
+    let length = 0;
+    for (const pl of polys) for (let i = 1; i < pl.length; i++) length += Math.hypot(pl[i][0] - pl[i - 1][0], pl[i][1] - pl[i - 1][1]);
+    const mid = pts.length ? pts[Math.floor(pts.length / 2)] : w([0, 0]);
+    const rows: Row[] = [];
+    let dir: Vec3 | undefined;
+    let anchor = mid;
+    if (e.kind === "line") {
+      const a = w(e.a);
+      const b = w(e.b);
+      const d = sub(b, a);
+      const l = len(d) || 1;
+      dir = [d[0] / l, d[1] / l, d[2] / l];
+      anchor = [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2, (a[2] + b[2]) / 2];
+      rows.push({ name: "Length · line", value: fmtLen(len(d)), at: anchor, a, b });
+      const ang = (Math.atan2(e.b[1] - e.a[1], e.b[0] - e.a[0]) * 180) / Math.PI;
+      rows.push({ name: "Angle to X", value: `${trim(((ang % 180) + 180) % 180, 2)}°`, at: anchor });
+    } else if (e.kind === "circle") {
+      anchor = w(e.center);
+      const a = w([e.center[0] - e.radius, e.center[1]]);
+      const b = w([e.center[0] + e.radius, e.center[1]]);
+      rows.push({ name: "Diameter", value: `Ø ${fmtLen(2 * e.radius)}`, at: anchor, a, b });
+      rows.push({ name: "Radius", value: `R ${fmtLen(e.radius)}`, at: b, a: anchor, b });
+      rows.push({ name: "Circumference", value: fmtLen(2 * Math.PI * e.radius), at: b });
+      rows.push({ name: "Area", value: fmtArea(Math.PI * e.radius * e.radius), at: anchor });
+    } else if (e.kind === "arc" && pts.length >= 3) {
+      const r = circumradius(w(e.a), w(e.m), w(e.b));
+      rows.push({ name: "Length · arc", value: fmtLen(length), at: mid });
+      if (r) rows.push({ name: "Radius", value: `R ${fmtLen(r)}`, at: mid });
+    } else if (e.kind === "rect") {
+      anchor = w(e.center);
+      rows.push({ name: "Width × height", value: `${trim(e.w / u, 3)} × ${fmtLen(e.h)}`, at: anchor });
+      rows.push({ name: "Perimeter", value: fmtLen(length), at: anchor });
+      rows.push({ name: "Area", value: fmtArea(e.w * e.h), at: anchor });
+    } else rows.push({ name: "Length", value: fmtLen(length), at: mid });
+    return { rows, anchor, points: pts, dir };
+  }
+
   private describe(s: Sel): Described | null {
+    if (s.kind === "curve" || s.kind === "point") return this.describeSketch(s);
     if (s.kind !== "face" && s.kind !== "edge" && s.kind !== "body" && s.kind !== "vertex") return null;
     const b = this.app.view.body(s.body);
     if (!b) return null;

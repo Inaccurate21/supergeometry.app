@@ -51,6 +51,8 @@ export interface Settings {
   sketchAnchor: "first" | "last";
   /** Sketch: draw the constraint badges (H, V, ∥, dimensions…) on the geometry. */
   showConstraintGlyphs: boolean;
+  /** In a sketch: the constraint marks (horizontal, parallel…) shown; showConstraintGlyphs is the dimensions. */
+  showConstraintMarks: boolean;
   /** Bumped when defaults change for everyone (see the constructor). */
   version: number;
   /** Angle display: decimal degrees or degrees + minutes. */
@@ -245,6 +247,7 @@ const DEFAULTS: Settings = {
   autoConstrain: true,
   sketchAnchor: "first",
   showConstraintGlyphs: true,
+  showConstraintMarks: true,
   // On by default on touch screens (phones, tablets, headsets).
   numpad: isTouchDevice,
   showHints: true,

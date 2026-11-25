@@ -302,16 +302,18 @@ export class ConstraintGlyphs {
   hitAt(x: number, y: number): string | null {
     if (this.host.hidden) return null;
     for (const [id, chip] of this.chips) {
-      if (chip.hidden || chip.classList.contains("dim")) continue;
+      if (chip.hidden || chip.classList.contains("dim") || this.host.classList.contains("no-marks")) continue;
       const r = chip.getBoundingClientRect();
       if (x > r.left - 4 && x < r.right + 4 && y > r.top - 4 && y < r.bottom + 4) return id;
     }
     return null;
   }
 
-  /** Show or hide all the badges (the "Show constraints" switch). */
-  setVisible(on: boolean): void {
-    this.host.hidden = !on;
+  /** Show or hide the dimensions and the constraint marks, each on its own (the sketch's View switches). */
+  setVisible(dims: boolean, marks = dims): void {
+    this.host.hidden = !dims && !marks;
+    this.host.classList.toggle("no-dims", !dims);
+    this.host.classList.toggle("no-marks", !marks);
   }
 
   /**
