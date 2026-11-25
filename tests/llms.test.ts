@@ -9,7 +9,7 @@ import { resolveDoc } from "../src/doc/params";
 import type { Feature } from "../src/doc/types";
 import { after, check, done, health, near, volume } from "./kit";
 
-const page = readFileSync(new URL("../public/llms.txt", import.meta.url), "utf8");
+const page = readFileSync(new URL("../public/llms-full.txt", import.meta.url), "utf8");
 
 // ---------------------------------------------------------------- the complete examples
 const examples = [...page.matchAll(/<!-- example: (\w+)((?: \w+=[\d.]+)*) -->\s*```json\n([\s\S]*?)\n```/g)];
@@ -167,6 +167,46 @@ const build = async (features: unknown[], body: string) => after(features as Fea
   const base = [sk("s", [{ id: "x", kind: "rect", center: [0, 0], w: 20, h: 20, rotation: 0 }]), ex("E", "s", ["x"], 5)];
   const bad: any = await regenerate([...base, { id: "H", name: "H", type: "hole", face: { body: "E", center: [0, 0, 5], normal: [0, 0, 1], area: 400 }, at: [200, 0, 5], size: "M4", diameter: 4.5, through: true, depth: 5, head: "none", headDiameter: 8, headDepth: 4.4 }] as unknown as Feature[]);
   check("a hole off the face: that step says so in a sentence, the body stays", bad.errors.length === 1 && bad.errors[0].featureId === "H" && /off the body/.test(bad.errors[0].message) && bad.bodies.length === 1, bad.errors);
+}
+
+// ---------------------------------------------------------------- the short page, and steps written short
+{
+  // The start page (public/llms.txt) is what an assistant in the tab reads first, and pays for: it stays short.
+  const start = readFileSync(new URL("../public/llms.txt", import.meta.url), "utf8");
+  check("the start page is short: under 6000 characters", start.length < 6000, start.length);
+  check("the start page names the full reference, and the commands", /llms-full\.txt/.test(start) && ["sg.make", "sg.add", "sg.change", "sg.remove", "sg.vars", "sg.check", "sg.ref.faces", "sg.ref.edges", "sg.guide"].every((w) => start.includes(w)), "");
+  const { fullStep } = await import("../src/assist");
+  // Its "A whole part in one call", as sg would run it: the steps written short, the edges and face it asks sg.ref for.
+  const full = (steps: Record<string, unknown>[]) => parseProject(JSON.stringify({ format: "super", version: 2, name: "x", features: steps.map((s, i) => ({ id: `x${i}`, name: `x${i}`, ...fullStep(s) })) })).features as Feature[];
+  const base = [
+    { id: "s", type: "sketch", plane: "XY", entities: [{ id: "r", kind: "rect", center: [0, 0], w: 60, h: 40 }] },
+    { id: "plate", type: "extrude", source: { sketch: "s", regions: ["r"] }, distance: 6 },
+  ];
+  const r0: any = await regenerate(full(base));
+  const ups = r0.bodies[0].edges.filter((e: any) => e.type === "LINE" && Math.abs(e.end[2] - e.start[2]) > 5).map((e: any) => ({ body: "plate", mid: e.mid, dir: [0, 0, 1], length: e.length }));
+  const top = { body: "plate", center: [0, 0, 6], normal: [0, 0, 1], area: 2400 };
+  const all = full([...base, { type: "fillet", radius: 5, edges: ups }, ...[[22, 12], [-22, 12], [22, -12], [-22, -12]].map(([x, y]) => ({ type: "hole", face: top, at: [x, y, 6], size: "M4" }))]);
+  const a = await after(all, "plate");
+  check("the start page's plate, written short: the plate of the full page's example", !a.err && near(volume(a.body), (2400 - (4 - Math.PI) * 25) * 6 - 4 * Math.PI * 2.25 ** 2 * 6, 1e-3), `${volume(a.body)} ${a.errors}`);
+  // The short ways, one by one.
+  const up = fullStep({ type: "sketch", plane: "XY@10", entities: [] }).plane as any;
+  check('plane "XY@10": the ground, 10 up', up.origin[2] === 10 && up.normal[2] === 1, up);
+  const xz = fullStep({ type: "sketch", plane: "xz", entities: [] }).plane as any;
+  check('plane "XZ": upright, its normal -Y', xz.normal[1] === -1 && xz.xDir[0] === 1, xz);
+  let said = "";
+  try { fullStep({ type: "sketch", plane: "top", entities: [] }); } catch (e) { said = (e as Error).message; }
+  check("a plane it does not know: says which there are", /"XY", "XZ", "YZ"/.test(said), said);
+  const ring = await after(full([{ id: "s", type: "sketch", plane: "XY", entities: [{ id: "r", kind: "rect", center: [0, 0], w: 60, h: 40 }, { id: "c", kind: "circle", center: [0, 0], radius: 5 }] }, { id: "E", type: "extrude", source: { sketch: "s", regions: [["r", "c"]] }, distance: 6 }]), "E");
+  check("a shape with a hole drawn in it, named by both curves (in any order)", !ring.err && near(volume(ring.body), (2400 - Math.PI * 25) * 6, 1e-3), `${volume(ring.body)} ${ring.errors}`);
+  const sink = fullStep({ type: "hole", face: top, size: "M5", head: "countersink" }) as any;
+  check("a hole by its screw and head alone: the table's sizes, right through, in the middle of the face", sink.diameter === 5.5 && sink.headDiameter === 10.6 && sink.through === true && JSON.stringify(sink.at) === "[0,0,6]", sink);
+  const blind = fullStep({ type: "hole", face: top, at: [1, 2, 6], diameter: 6, depth: 3 }) as any;
+  check("a hole by a diameter and a depth: that deep, not through", blind.diameter === 6 && blind.through === false && blind.depth === 3 && blind.head === "none", blind);
+  const b = await after(full([...base, blind]), "plate");
+  check("... and it builds", !b.err && near(volume(b.body), 14400 - Math.PI * 9 * 3, 1e-3), `${volume(b.body)} ${b.errors}`);
+  said = "";
+  try { fullStep({ type: "hole", face: top, size: "M7" }); } catch (e) { said = (e as Error).message; }
+  check("a screw size there is not: says which there are", /M2, M2\.5, M3/.test(said), said);
 }
 
 done();

@@ -507,9 +507,11 @@ can't be rebuilt after a change, it's marked and the reason is shown.
 This section describes the app so an assistant can explain it, guide a user
 step by step, or read and write project files.
 
-**Assistants: start at https://supergeometry.app/llms.txt** (`public/llms.txt` here). It is written for you:
-how to build a model in the person's open tab with the page's `sg` handle, the step format, and complete
-examples that are tested against the app on every change (`tests/llms.test.ts`).
+**Assistants: start at https://supergeometry.app/llms.txt** (`public/llms.txt` here), a short page written for
+you: how to build a model in the person's open tab with the page's `sg` handle, one call per change
+(`sg.make`, `sg.add`, `sg.change`; see `src/assist.ts`). The full reference, with the project file format and
+complete examples, is https://supergeometry.app/llms-full.txt; everything both pages say is tested against the
+app on every change (`tests/llms.test.ts`).
 
 **People:** on a computer, the **Claude** button at the bottom right shows how to model by asking. It needs
 Claude's extension for Chrome: open it beside the app, say what you want, and Claude builds the model in your

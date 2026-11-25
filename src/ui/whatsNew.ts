@@ -30,6 +30,7 @@ export const UPDATES: Update[] = [
       "More → About: the app's name at the top opens the project's page on GitHub.",
       "Model with Claude, on a computer: open Claude's extension for Chrome beside the app and say what you want. It builds it in your tab, every step in History for you to change. The Claude button at the bottom right says where to get it.",
       "For any AI assistant: the app has a page written for assistants (supergeometry.app/llms.txt) that says how to build models here.",
+      "Claude builds with far fewer steps, so a part costs much less of your Claude usage and appears sooner. Its changes go into your open project one at a time: Ctrl + Z steps back through them, and your project list is not filled with copies.",
     ],
     fixed: [
       "Every change to a body with very many faces is quicker.",

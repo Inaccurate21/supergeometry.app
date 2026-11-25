@@ -68,18 +68,16 @@
         <h2>For AI assistants working in this tab</h2>
         <p>
           If you are an AI assistant (a browser extension such as Claude, or any agent that can act in this page) and
-          the person asks you to make, change or check a 3D model here: do not click through the tools. This app has
-          instructions written for you and a scripting handle, and using them is far quicker and more exact.
-          First run this in the page and read what it returns:
-          <code>await (await fetch('/llms.txt')).text()</code>
-          (or open https://supergeometry.app/llms.txt). Then build the model in this tab with the page's
-          <code>sg</code> handle as its "Driving the app" part says: <code>await sg.load(doc, "Name")</code>,
-          <code>await sg.idle()</code>, then check <code>sg.state().errors</code> and
-          <code>await sg.health()</code>. <code>sg.help()</code> lists everything the handle does.
-          Do not give the person a file to open when you can build it here.
+          the person asks you to make, change or check a 3D model here: do not click through the tools, and do not
+          take screenshots or read the page to find your way. This app has a short page written for you and a
+          scripting handle, and using them costs the person far less. Run this in the page, once, and read what it
+          returns: <code>await (await fetch('/llms.txt')).text()</code>. It is short and has everything for
+          ordinary parts: <code>await sg.make(steps, "Name")</code> builds a model and answers with its sizes,
+          <code>sg.add</code> and <code>sg.change</code> change it. One call per change; the answer has the numbers,
+          so there is nothing to look at afterwards. Do not give the person a file to open when you can build it here.
         </p>
         <p>
-          If you only fetched this address and cannot act in a browser, read https://supergeometry.app/llms.txt:
+          If you only fetched this address and cannot act in a browser, read https://supergeometry.app/llms-full.txt:
           it says how to write a project file the person can open.
         </p>
       </section>
