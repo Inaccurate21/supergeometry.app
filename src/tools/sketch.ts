@@ -342,7 +342,14 @@ export class SketchTool implements Tool {
   private edit: {
     pivot?: Vec2;
     mirrorLine?: [Vec2, Vec2];
-    picking?: "pivot" | "mirror" | "refA" | "refB";
+    picking?: "pivot" | "mirror" | "refA" | "refB" | "moveFrom" | "moveTo";
+    /**
+     * Move/Rotate point to point (as Fusion's): the point of the curves that is taken - any snap point of them, a
+     * circle's edge as well as its centre - and the point it goes to. The gimbal sits on the first, and a drag of it
+     * catches that point on the snaps.
+     */
+    moveFrom?: Vec2;
+    moveTo?: Vec2;
     /** Scale by reference: the point that stays put and the second point (their distance becomes what's typed). */
     refA?: Vec2;
     refB?: Vec2;
@@ -1639,7 +1646,14 @@ export class SketchTool implements Tool {
           items.push(apply("Apply", () => this.applyOffset()));
         }
         break;
-      case "move":
+      case "move": {
+        const { moveFrom: mf, moveTo: mt } = this.edit;
+        const at = (q: Vec2) => `${trimNum(q[0])}, ${trimNum(q[1])}`;
+        items.push(
+          // Point to point (as Fusion's Move): which point of the curves is taken, and where it goes.
+          { type: "slot", label: "From point", value: mf ? at(mf) : "Tap a point", active: this.edit.picking === "moveFrom", filled: !!mf, onClick: () => this.pickMovePoint("moveFrom") },
+          { type: "slot", label: "To point", value: mt ? at(mt) : "Tap a point", active: this.edit.picking === "moveTo", filled: !!mt, onClick: () => this.pickMovePoint(mf ? "moveTo" : "moveFrom") },
+        );
         items.push(
           // Exact moves (dragging is all a finger can do otherwise).
           { type: "number", label: "ΔX", value: this.edit.dx, kind: "length", onInput: (v) => ((this.edit.dx = v), this.refreshPreview()) },
@@ -1649,6 +1663,7 @@ export class SketchTool implements Tool {
           apply(`Apply (${selCount})`, () => this.applyTransform()),
         );
         break;
+      }
       case "scale": {
         // By reference: two points, then the distance they should be apart.
         const { refA: ra, refB: rb } = this.edit;
@@ -1907,6 +1922,11 @@ export class SketchTool implements Tool {
       return;
     }
     this.cursor = this.snap(p);
+    // Move point to point, the first point taken: the curves follow the pointer to where that point would go.
+    if (this.kind === "move" && this.edit.picking === "moveTo" && this.edit.moveFrom && this.cursor) {
+      this.edit.dx = this.cursor.uv[0] - this.edit.moveFrom[0];
+      this.edit.dy = this.cursor.uv[1] - this.edit.moveFrom[1];
+    }
     this.refreshPreview(p);
   }
 
@@ -2277,7 +2297,7 @@ export class SketchTool implements Tool {
   private swipe: { base: SketchEntity[]; last: { x: number; y: number }; cut: number; now?: SketchEntity[] } | null = null;
 
   dragStart(p: ToolPointer): boolean {
-    if (this.phase === "draw" && (this.kind === "select" || this.kind === "move") && this.startGimbalDrag(p)) return true;
+    if (this.phase === "draw" && (this.kind === "select" || this.kind === "move") && !this.edit.picking && this.startGimbalDrag(p)) return true;
     // Trim (Cut): a swipe that starts on a curve trims every piece it crosses
     // (one undo step). A swipe from empty space still moves the view.
     if (this.phase === "draw" && this.kind === "trim" && memory.trim === "cut" && this.sketchId) {
@@ -2404,7 +2424,7 @@ export class SketchTool implements Tool {
     if (!a || !b) return;
     let d: Vec2 = [b[0] - a[0], b[1] - a[1]];
     if (dr.part.kind === "axis") d = dr.part.i === 0 ? [snap(d[0]), 0] : [0, snap(d[1])];
-    else d = this.moveSnap(dr.refs, a, p) ?? this.snapDrop(dr.refs, [snap(d[0]), snap(d[1])], p);
+    else d = this.moveSnap(dr.refs, a, p, this.kind === "move" ? this.edit.moveFrom : undefined) ?? this.snapDrop(dr.refs, [snap(d[0]), snap(d[1])], p);
     this.applyGimbal(d, 0);
     this.app.ui.setLabel(p.x, p.y, this.dropOn ? "Joins here" : this.cursor?.label ? `${this.cursor.label} · ${fmtLen(Math.hypot(...d))}` : `${fmtLen(Math.hypot(...d))}  · type a value`);
   }
@@ -2511,9 +2531,9 @@ export class SketchTool implements Tool {
    * (AutoCAD's OSNAP, with its tracking lines), the snap mark and guide lines shown as when drawing. The move that
    * puts it there, or null when nothing catches it (the plain move goes on, on the grid).
    */
-  private moveSnap(refs: DragRef[], from: Vec2, p: ToolPointer): Vec2 | null {
-    let base = refs[0]?.at;
-    for (const r of refs) if (base && Math.hypot(r.at[0] - from[0], r.at[1] - from[1]) < Math.hypot(base[0] - from[0], base[1] - from[1])) base = r.at;
+  private moveSnap(refs: DragRef[], from: Vec2, p: ToolPointer, held?: Vec2): Vec2 | null {
+    let base = held ?? refs[0]?.at;
+    if (!held) for (const r of refs) if (base && Math.hypot(r.at[0] - from[0], r.at[1] - from[1]) < Math.hypot(base[0] - from[0], base[1] - from[1])) base = r.at;
     const s = base ? this.snapAt(p) : null;
     if (!s || !s.label || !base) {
       if (this.cursor) {
@@ -2553,6 +2573,12 @@ export class SketchTool implements Tool {
 
   private endGeometryDrag(): void {
     this.snapEnts = null;
+    // The point moved from goes along with the curves (the gimbal stays on it); a target set before is done with.
+    if (this.sdrag?.kind === "gimbal" && this.kind === "move" && this.edit.moveFrom && !copyMode.on) {
+      const [dx, dy] = this.sdrag.last.d;
+      this.edit.moveFrom = [this.edit.moveFrom[0] + dx, this.edit.moveFrom[1] + dy];
+      this.edit.moveTo = undefined;
+    }
     if (this.cursor) {
       this.cursor = null;
       this.refreshPreview();
@@ -2671,6 +2697,8 @@ export class SketchTool implements Tool {
       const t = this.pivotT?.line === line.id ? this.pivotT.t : 0.5;
       c = [line.a[0] + (line.b[0] - line.a[0]) * t, line.a[1] + (line.b[1] - line.a[1]) * t];
     }
+    // Move with a point taken to move from: the gimbal is on it (a drag catches that point on the snaps).
+    if (this.kind === "move" && this.edit.moveFrom) c = [...this.edit.moveFrom] as Vec2;
     const plane = this.plane!;
     // Points of a spline: the arrow off the plane too, and the gimbal where they are (up off the plane with them).
     const lift = this.liftable();
@@ -5089,7 +5117,39 @@ export class SketchTool implements Tool {
     this.refDim.set(w(a), w([a[0] + (b[0] - a[0]) * k, a[1] + (b[1] - a[1]) * k]));
   }
 
+  /** Move point to point: the next tap takes the point to move from (on the curves) or to (anywhere it snaps). */
+  private pickMovePoint(which: "moveFrom" | "moveTo"): void {
+    this.edit.picking = which;
+    // Where it goes: the curves that move are no place to catch on.
+    this.snapEnts = which === "moveTo" ? this.entities.filter((e) => !this.selected.has(e.id)) : null;
+    this.setHint(which === "moveFrom" ? "Tap the point of the curves to move by - an end, a middle, a centre, a point of its edge (snaps in OSNAP)." : "Now tap where that point goes.");
+    this.updatePanel();
+  }
+
   private pickForEdit(p: ToolPointer): void {
+    if (this.edit.picking === "moveFrom" || this.edit.picking === "moveTo") {
+      const s = this.snap(p);
+      if (!s) return;
+      if (this.edit.picking === "moveFrom") {
+        this.edit.moveFrom = s.uv;
+        this.edit.moveTo = undefined;
+        this.edit.dx = this.edit.dy = 0;
+        this.pickMovePoint("moveTo");
+      } else {
+        const from = this.edit.moveFrom!;
+        this.edit.moveTo = s.uv;
+        this.edit.dx = s.uv[0] - from[0];
+        this.edit.dy = s.uv[1] - from[1];
+        this.edit.picking = undefined;
+        this.snapEnts = null;
+        this.setHint("Apply moves it there (Copy on: a copy). Or drag the gimbal: it holds that point.");
+        this.updatePanel();
+      }
+      this.cursor = null;
+      this.refreshPreview();
+      this.refreshGimbal();
+      return;
+    }
     if (this.edit.picking === "refA" || this.edit.picking === "refB") {
       const s = this.snap(p);
       if (!s) return;
@@ -5277,6 +5337,14 @@ export class SketchTool implements Tool {
       if (this.edit.picking === "refA" || this.edit.picking === "refB") this.edit.picking = undefined;
     }
     this.commit([...base, ...results], [...cons, ...links]);
+    // Moved point to point: done with those two points (the next move takes new ones).
+    if (this.kind === "move") {
+      this.edit.moveFrom = this.edit.moveTo = undefined;
+      this.edit.dx = this.edit.dy = 0;
+      if (this.edit.picking === "moveFrom" || this.edit.picking === "moveTo") this.edit.picking = undefined;
+      this.snapEnts = null;
+      this.updatePanel();
+    }
     if (this.kind === "scale") {
       this.refreshRefDim();
       this.updatePanel();
