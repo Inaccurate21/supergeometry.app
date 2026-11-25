@@ -74,7 +74,12 @@ public class MainActivity extends Activity {
             public boolean shouldOverrideUrlLoading(WebView view, WebResourceRequest req) {
                 Uri u = req.getUrl();
                 if (Uri.parse(HOME).getHost().equals(u.getHost())) return false;
-                // Other sites (help pages, support links, Reddit): in the browser.
+                // A redirect on the way to the app (a sign-in the site asks for first) stays in the app;
+                // only a link tapped to another site (help pages, support links, Reddit) opens in the browser.
+                if (!req.hasGesture() || req.isRedirect()) {
+                    report("info", "stays in the app: " + u);
+                    return false;
+                }
                 try {
                     startActivity(new Intent(Intent.ACTION_VIEW, u));
                 } catch (ActivityNotFoundException e) {
