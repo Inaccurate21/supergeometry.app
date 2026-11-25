@@ -8018,15 +8018,16 @@ html.android-app body.items-open #topbar {
   border-color: #ffd34d;
 }
 .cglyph-input {
-  width: 9ch;
-  height: 20px;
-  border: 0;
+  box-sizing: border-box;
+  border: 1.5px solid #ffd34d;
+  border-radius: 6px;
   outline: none;
-  padding: 0 4px;
-  background: transparent;
-  color: inherit;
-  font: inherit;
+  padding: 0 6px;
+  background: rgba(24, 26, 30, 0.96);
+  color: #ffd34d;
+  font: 13px ui-monospace, monospace;
   text-align: center;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.45);
 }
 
 /* A sketch's Move / Copy window, as Fusion's (src/tools/sketch.ts renderMoveDialog). */

@@ -164,7 +164,7 @@ const SK_ONCE = new Set(["trim", "split", "break"]);
 const GROUPS = ["create", "combine", "modify", "construct", "transform", "freeform", "sketch"];
 /** A sketch's groups (as its wheel has them): what each holds, most used first; anything else is under More. */
 const SK_GROUPS: { id: string; label: string; icon: IconName; tools: string[] }[] = [
-  { id: "draw", label: "Draw", icon: "line", tools: ["line", "rect", "circle", "arc", "spline", "polygon", "ellipse", "slot", "point", "text", "project", "fill"] },
+  { id: "draw", label: "Draw", icon: "line", tools: ["line", "rect", "circle", "arc", "spline", "polygon", "ellipse", "slot", "point", "dimension", "text", "project", "fill"] },
   { id: "modify", label: "Modify", icon: "trim", tools: ["trim", "fillet", "offset", "extend", "break", "split", "align"] },
   { id: "transform", label: "Transform", icon: "transform", tools: ["move", "mirror", "rotate", "pattern", "scale"] },
   // Object snaps, each on or off (as AutoCAD's OSNAP): src/tools/sketch.ts puts them in the sketch's column.

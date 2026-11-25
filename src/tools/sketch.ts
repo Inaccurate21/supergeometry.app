@@ -82,6 +82,7 @@ type Kind =
   | "circle"
   | "ellipse"
   | "point"
+  | "dimension"
   | "slot"
   | "break"
   | "polygon"
@@ -118,6 +119,7 @@ const HINTS: Record<Kind, string> = {
   rect: "Tap one corner, then the opposite corner.",
   circle: "Tap the centre, then tap again to set the size.",
   ellipse: "Tap the centre, then the end of the long side, then tap to set the width.",
+  dimension: "Tap a line (its length), a circle or arc (its size), or two things: two points or a point and a line (the distance), two lines (the distance, or the angle). Then type the size.",
   point: "Tap where a point goes (it snaps to ends, middles and centres). Each tap is a point.",
   slot: "Tap the centre of one rounded end, then of the other, then tap to set the width.",
   break: "Tap a curve where another crosses it: it is cut there, and every piece stays (Trim would take one away).",
@@ -1291,6 +1293,7 @@ export class SketchTool implements Tool {
       t("ellipse", "Ellipse", "ellipse", undefined, { sub: { center: "Center", axis: "Axis ends", box: "In a box" }[memory.ellipse], children: variant("ellipse", "ellipse", [["center", "Center"], ["axis", "Axis ends"], ["box", "In a box (2 corners)"]]) }),
       t("slot", "Slot", "slot", undefined, { sub: { cc: "Centre to centre", overall: "Overall", center: "Center" }[memory.slot], children: variant("slot", "slot", [["cc", "Centre to centre"], ["overall", "Overall (end to end)"], ["center", "Center"]]) }),
       t("point", "Point", "sketchPoint"),
+      t("dimension", "Dimension", "dimension", undefined, { sub: "a size held on what you tap" }),
       t("polygon", "Polygon", "polygon", "G", {
         sub: POLYGON_NAMES[memory.sides] ?? `${memory.sides} sides`,
         // The usual ones a tap away (any other count: type it on the drawing).
@@ -1387,6 +1390,7 @@ export class SketchTool implements Tool {
   }
 
   setKind(kind: Kind): void {
+    this.dimFirst = null;
     // Phones: once a tool is picked the column shows just icons (names are back on the next sketch).
     document.body.classList.add("sketch-compact");
     // A shape tapped (its extrude arrow up) and then Project: its outline is what gets projected.
@@ -1947,7 +1951,7 @@ export class SketchTool implements Tool {
       else this.app.setHover(null);
       return;
     }
-    if (["trim", "delete", "extend", "offset", "split", "break", "fillet", "align"].includes(this.kind) || this.isSelectionTool()) {
+    if (["trim", "delete", "extend", "offset", "split", "break", "dimension", "fillet", "align"].includes(this.kind) || this.isSelectionTool()) {
       const hit = this.app.view.pick(p.x, p.y, { curves: this.sketchId ?? true, profiles: false, bodies: false, planes: false, axes: false, edgeTolPx: p.tol });
       const onCurve = hit?.kind === "curve" && hit.sketch === this.sketchId;
       this.app.setHover(onCurve ? { kind: "curve", sketch: hit.sketch, entity: hit.entity } : null);
@@ -2314,8 +2318,16 @@ export class SketchTool implements Tool {
   }
 
   private startGimbalDrag(p: ToolPointer): boolean {
-    const part = this.gimbal?.hit(p);
+    let part = this.gimbal?.hit(p);
     if (!part || !this.gimbal) return false;
+    // Picked curves' arrows or ring taken in Select: Move with its window, as Fusion's (it was M only). The drag
+    // goes on there - OK (or the line's Apply) puts it in, Cancel leaves the curves where they were.
+    if (this.kind === "select" && this.phase === "draw") {
+      this.setKind("move");
+      this.refreshGimbal();
+      part = this.gimbal?.hit(p) ?? part;
+      if (!this.gimbal) return false;
+    }
     // Setting the pivot: an arrow slides it along its own direction (the curves stay put); the rings do nothing.
     if (this.pivotEdit && part.kind === "axis" && (part.i === 0 || part.i === 1)) {
       const from = this.uvAt(p);
@@ -2986,6 +2998,8 @@ export class SketchTool implements Tool {
         return this.tapCurve(p, (id, uv) => this.tapSplit(id, uv, p.shift));
       case "break":
         return this.tapCurve(p, (id, uv) => this.tapBreak(id, uv));
+      case "dimension":
+        return this.tapDimension(p);
       case "fill": {
         // Inside a closed shape: that shape is the one to fill (one with a pattern already: that pattern, to change).
         const uv = this.uvAt(p);
@@ -4956,6 +4970,84 @@ export class SketchTool implements Tool {
   }
 
   /** Split: cut a line/arc at its midpoint (Shift: where tapped). The pieces stay joined. */
+  /** Dimension tool: what was tapped first (a curve, or a point), waiting for a second (or for a tap on nothing). */
+  private dimFirst: { curve?: string; pt?: PointRef; uv: Vec2 } | null = null;
+
+  /**
+   * Dimension (as Fusion's Sketch Dimension): a line its length, a circle its diameter, an arc its radius, a
+   * rectangle the side tapped; two points, a point and a line, or two lines that run the same way the distance; two
+   * lines that cross the angle between them. The size's box opens at once, to type the size wanted.
+   */
+  private tapDimension(p: ToolPointer): void {
+    const hit = this.app.view.pick(p.x, p.y, { curves: this.sketchId ?? true, profiles: false, bodies: false, planes: false, axes: false, edgeTolPx: p.tol });
+    const uv = this.uvAt(p) ?? [0, 0];
+    const mine = hit && (hit.kind === "curve" || hit.kind === "point") && (!this.sketchId || hit.sketch === this.sketchId) && this.entities.some((e) => e.id === hit.entity);
+    const pick = mine ? (hit!.kind === "point" ? { pt: { e: hit!.entity, p: (hit as { p: string }).p }, uv } : { curve: hit!.entity, uv }) : null;
+    const first = this.dimFirst;
+    if (!first) {
+      if (!pick) return void this.app.ui.toast("Tap a line, a circle or a point of the sketch");
+      // A point needs a second thing; a curve may be dimensioned by itself (a tap on nothing next).
+      this.dimFirst = pick;
+      if (pick.curve) this.selected = new Set([pick.curve]);
+      else this.selPts = [pick.pt!];
+      this.showSelection();
+      return this.setHint(pick.pt ? "Now tap the second point, or a line (the distance)." : "Now tap a second line or point (a distance or an angle) - or empty space: this one's own size.");
+    }
+    this.dimFirst = null;
+    const cs = this.dimensionFor(first, pick);
+    this.selected.clear();
+    this.selPts = [];
+    this.showSelection();
+    this.setHint();
+    if (!cs.length) return void this.app.ui.toast("No size to give those - try a line, a circle, or two points");
+    const res = addForUser(this.entities, this.constraints, cs, undefined);
+    if (!res.ok) return void this.app.ui.toast("That size can't be held with the shape as it is constrained - take a constraint off it first", "error");
+    this.commit(res.result.entities, res.constraints);
+    // Its box, to type the size wanted.
+    const id = cs[0].id;
+    requestAnimationFrame(() => requestAnimationFrame(() => this.glyphs?.beginEdit(id)));
+  }
+
+  /** The dimension for one thing tapped (`b` null) or two. */
+  private dimensionFor(a: { curve?: string; pt?: PointRef; uv: Vec2 }, b: { curve?: string; pt?: PointRef; uv: Vec2 } | null): SketchConstraint[] {
+    const E = (id?: string) => (id ? this.entities.find((e) => e.id === id) : undefined);
+    if (!b || (a.curve && b.curve === a.curve)) {
+      const e = E(a.curve);
+      if (!e) return [];
+      const dim = (prop: string, value: number): SketchConstraint[] => [{ id: uid(), type: "dim", curves: [e.id], prop, value }];
+      if (e.kind === "line") return dim("length", Math.hypot(e.b[0] - e.a[0], e.b[1] - e.a[1]));
+      if (e.kind === "circle") return dim("diameter", 2 * e.radius);
+      if (e.kind === "arc") {
+        const c = arcFrom3(e.a, e.m, e.b);
+        return c ? dim("radius", c.r) : [];
+      }
+      if (e.kind === "ellipse") return dim("dx", 2 * e.rx);
+      if (e.kind === "polygon") return dim("radius", e.radius);
+      if (e.kind === "rect") {
+        // The side tapped: across it the width, up it the height.
+        const q = [a.uv[0] - e.center[0], a.uv[1] - e.center[1]];
+        const c = Math.cos(-e.rotation);
+        const s = Math.sin(-e.rotation);
+        const lx = Math.abs(q[0] * c - q[1] * s) / (e.w / 2 || 1);
+        const ly = Math.abs(q[0] * s + q[1] * c) / (e.h / 2 || 1);
+        return ly >= lx ? dim("w", e.w) : dim("h", e.h);
+      }
+      return [];
+    }
+    const pts = [a.pt, b.pt].filter((x): x is PointRef => !!x);
+    const curves = [E(a.curve), E(b.curve)].filter((x): x is SketchEntity => !!x);
+    // Two lines: running the same way, how far apart; crossing, the angle between them.
+    if (!pts.length && curves.length === 2 && curves.every((x) => x.kind === "line")) {
+      const [l1, l2] = curves as Extract<SketchEntity, { kind: "line" }>[];
+      const d1 = [l1.b[0] - l1.a[0], l1.b[1] - l1.a[1]];
+      const d2 = [l2.b[0] - l2.a[0], l2.b[1] - l2.a[1]];
+      const ang = Math.abs(Math.atan2(d1[0] * d2[1] - d1[1] * d2[0], d1[0] * d2[0] + d1[1] * d2[1]));
+      const deg = (ang * 180) / Math.PI;
+      if (Math.min(deg, 180 - deg) > 1) return [{ id: uid(), type: "dim", curves: [l1.id, l2.id], prop: "angle", value: deg }];
+    }
+    return buildConstraints("distance", pts, curves, this.entities);
+  }
+
   /** Break: the curve cut where the curves nearest the tap cross it; all its pieces stay, joined end to end. */
   private tapBreak(id: string, uv: Vec2): void {
     const out = breakAt(this.entities, id, uv);

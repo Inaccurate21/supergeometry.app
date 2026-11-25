@@ -1,6 +1,7 @@
 // Sketch constraint UI: the constraint button column, building constraints from
 // the selection, and the badges/dimension labels drawn next to the geometry.
 
+import { closeNumpadOn, numpadInput, typingInto } from "../ui/numpad";
 import type { ConstraintType, PlaneDef, PointRef, SketchConstraint, SketchEntity, Vec2 } from "../doc/types";
 import { applicable, pointOf, pointsOf, sizeOf } from "../sketch/constraints";
 import { arcFrom3 } from "../sketch/curves";
@@ -280,12 +281,18 @@ export class ConstraintGlyphs {
           // (A drag of a dimension's text is not a tap on it.)
           if (chip!.dataset.dragged) return void delete chip!.dataset.dragged;
           // A dimension: typed into right where it is, as in Fusion.
-          if (chip!.classList.contains("dim")) return this.editDim(c.id, chip!);
+          if (chip!.classList.contains("dim")) {
+            // (Already being typed into - opened by the tap itself: the box keeps the focus.)
+            if (this.editing?.isConnected) return void this.editing.focus();
+            return this.editDim(c.id, chip!);
+          }
           this.onClick(c.id);
         });
         this.host.append(chip);
         this.chips.set(c.id, chip);
       }
+      // (Being typed into: left as it is - a layout made meanwhile, as the screen keyboard came up, wiped the box.)
+      if (chip.classList.contains("editing")) continue;
       chip.className = `cglyph${c.type === "dim" || c.type === "distance" ? " dim" : ""}${c.id === this.selected ? " sel" : ""}${c.expr ? " expr" : ""}`;
       chip.textContent = label(c, get);
       // Each kind its own colour (recognised at a glance).
@@ -327,8 +334,17 @@ export class ConstraintGlyphs {
   }
 
   /** A dimension typed into in place: Enter (or clicking away) takes the size, Esc leaves it. */
+  /** Open a dimension's box to type into (a dimension just made with the Dimension tool). */
+  beginEdit(id: string): void {
+    const chip = this.chips.get(id);
+    if (chip && chip.classList.contains("dim") && !chip.hidden) this.editDim(id, chip);
+  }
+
+  /** The box a dimension is being typed into (over its text; not inside it - a button's box takes no focus on touch). */
+  private editing: HTMLInputElement | null = null;
+
   private editDim(id: string, chip: HTMLElement): void {
-    if (chip.querySelector("input")) return;
+    if (this.editing?.isConnected) return void this.editing.focus();
     const it = this.items.find((i) => i.c.id === id);
     if (!it) return;
     const c = it.c;
@@ -338,18 +354,22 @@ export class ConstraintGlyphs {
     // (In the project's unit, as it is shown.)
     const shown = c.value === undefined ? "" : c.prop === "angle" ? trim(c.value, 4) : trim(toDisplay(c.value), 4);
     input.value = c.expr ?? shown;
-    const was = chip.textContent ?? "";
-    chip.textContent = "";
-    chip.append(input);
+    const r = chip.getBoundingClientRect();
+    Object.assign(input.style, { position: "fixed", left: `${r.left - 6}px`, top: `${r.top - 2}px`, width: `${Math.max(64, r.width + 12)}px`, height: `${r.height + 4}px`, zIndex: "60" });
+    document.body.append(input);
+    this.editing = input;
     chip.classList.add("editing");
     let done = false;
+    let away: ((ev: PointerEvent) => void) | null = null;
     const end = (take: boolean) => {
       if (done) return;
       done = true;
+      if (away) document.removeEventListener("pointerdown", away, true);
+      closeNumpadOn(input);
       const text = input.value.trim();
       chip.classList.remove("editing");
       input.remove();
-      chip.textContent = was;
+      if (this.editing === input) this.editing = null;
       if (take && text && text !== (c.expr ?? shown)) this.onEdit(id, text);
     };
     input.addEventListener("keydown", (e) => {
@@ -358,9 +378,25 @@ export class ConstraintGlyphs {
       if (e.key === "Escape") end(false);
     });
     input.addEventListener("pointerdown", (e) => e.stopPropagation());
-    input.addEventListener("blur", () => end(true));
+    input.addEventListener("click", (e) => e.stopPropagation());
+    // (The app's number pad keeps the box as its target even when the focus goes elsewhere: ↵ there ends it.)
+    input.addEventListener("blur", () => setTimeout(() => !typingInto(input) && end(true), 0));
+    input.addEventListener("change", () => !typingInto(input) && end(true));
+    numpadInput(input);
+    // A tap elsewhere ends it too.
+    away = (ev: PointerEvent) => {
+      if (chip.contains(ev.target as Node) || ev.target === input || (ev.target as HTMLElement).closest?.(".numpad")) return;
+      end(true);
+    };
+    document.addEventListener("pointerdown", away, true);
     input.focus();
     input.select();
+    // (A tap's own click comes after and can take the focus: given back once it has.)
+    requestAnimationFrame(() => {
+      if (done || document.activeElement === input) return;
+      input.focus();
+      input.select();
+    });
   }
 
   /** A point of the screen (page pixels) on the sketch's plane, in sketch units. */
@@ -383,14 +419,16 @@ export class ConstraintGlyphs {
     } catch {
       // (a synthetic pointer)
     }
+    // (A finger or a pen wobbles: a few pixels is still a tap on it, to type into it.)
+    const slop = e.pointerType === "mouse" ? 4 : 12;
     const move = (ev: PointerEvent) => {
-      if (!moved && Math.hypot(ev.clientX - x0, ev.clientY - y0) < 4) return;
+      if (!moved && Math.hypot(ev.clientX - x0, ev.clientY - y0) < slop) return;
       moved = true;
       chip.classList.add("dragging");
       const q = this.toSketch(ev.clientX, ev.clientY);
       if (q) (it.place = q), this.layout();
     };
-    const up = () => {
+    const up = (ev: PointerEvent) => {
       chip.removeEventListener("pointermove", move);
       chip.removeEventListener("pointerup", up);
       chip.removeEventListener("pointercancel", up);
@@ -398,6 +436,9 @@ export class ConstraintGlyphs {
       if (moved && it.place) {
         chip.dataset.dragged = "1";
         this.onPlace(id, it.place);
+      } else if (ev.type === "pointerup" && e.pointerType !== "mouse") {
+        // A tap with a finger or a pen: typed into now (its click may not come after the pointer was held).
+        this.editDim(id, chip);
       }
     };
     chip.addEventListener("pointermove", move);

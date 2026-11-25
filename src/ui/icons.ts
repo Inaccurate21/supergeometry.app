@@ -28,6 +28,7 @@ export const icons = {
   rect: svg('<rect x="4" y="6" width="16" height="12" rx="0.5"/>'),
   circle: svg('<circle cx="12" cy="12" r="7.5"/><circle cx="12" cy="12" r="0.8" fill="currentColor"/>'),
   ellipse: svg('<ellipse cx="12" cy="12" rx="9" ry="5.5"/>'),
+  dimension: svg('<path d="M4 7v10M20 7v10"/><path d="M4 12h16"/><path d="M7 9.5L4 12l3 2.5M17 9.5l3 2.5-3 2.5"/>'),
   slot: svg('<path d="M8 7h8a5 5 0 0 1 0 10H8a5 5 0 0 1 0-10z"/><path d="M8 12h8" stroke-dasharray="2 2"/>'),
   sketchPoint: svg('<path d="M12 5v4M12 15v4M5 12h4M15 12h4"/><circle cx="12" cy="12" r="2" fill="currentColor"/>'),
   breakLine: svg('<path d="M3 12h7M14 12h7"/><path d="M12 4v16"/><circle cx="10" cy="12" r="1.4" fill="currentColor"/><circle cx="14" cy="12" r="1.4" fill="currentColor"/>'),

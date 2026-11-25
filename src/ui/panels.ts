@@ -463,10 +463,6 @@ export function setupRightColumn(ui: UI, view: Viewport, store: DocStore, onUnit
         nav("Snapping", snaps ? `${snaps} of ${Object.keys(s.snap).length} on` : "Off", "snap"),
         nav("Appearance", `${s.ortho ? "Orthographic" : "Perspective"}${s.showGrid ? "" : " · no grid"}`, "appearance"),
       );
-      const more = el("button", "pop-row pop-nav");
-      more.append(el("span", "", "App settings…"), el("span", "pop-value", "More"), el("span", "pop-chev", "›"));
-      more.addEventListener("click", () => (ui.closePopover(), appSettings()));
-      host.append(more);
     },
     () => UNIT_LABEL[units()],
   );

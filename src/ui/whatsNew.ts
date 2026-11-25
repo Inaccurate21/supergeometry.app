@@ -21,6 +21,16 @@ interface Update {
 export const UPDATES: Update[] = [
   {
     date: "2026-11-25",
+    version: "0.10.1.0",
+    added: [
+      "A sketch's dimension is typed into by a tap on it again on phones and with a pen: the box comes up over it, with the number pad, and a slight wobble of the finger no longer drags it away.",
+      "Dimension in a sketch (Draw → Dimension, as Fusion's Sketch Dimension): a line's length, a circle's diameter, an arc's radius, a rectangle's side, the distance between points or lines, the angle between two lines - then type the size.",
+      "Taking the arrows or the ring of picked sketch curves opens Move / Copy with its window at once (no M needed); OK puts the move in.",
+      "App settings only in More (the gear at the right keeps just the drawing's).",
+    ],
+  },
+  {
+    date: "2026-11-25",
     version: "0.10.0.0",
     added: [
       "Create has the solid tools in one place, as in Fusion: Extrude, Revolve, Sweep, Loft, Hole, Thread, Primitives, Press Pull, Combine, Split Body, Split Face, Shell, Fillet and Chamfer.",

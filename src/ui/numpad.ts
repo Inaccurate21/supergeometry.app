@@ -397,6 +397,11 @@ let pad: Numpad | null = null;
  * focus)? Then its text is left as it is: "1." is on its way to 1.5, and a
  * box that rewrote itself from the value on each key made it 1, then 15.
  */
+/** Put the number pad away if it is open on this box (the box is gone). */
+export function closeNumpadOn(input: HTMLInputElement): void {
+  pad?.closeIf(input);
+}
+
 export function typingInto(input: HTMLInputElement): boolean {
   return document.activeElement === input || pad?.typingInto(input) === true;
 }
