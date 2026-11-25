@@ -1849,7 +1849,7 @@ export class App implements AppContext {
     if (name.contentEditable !== "plaintext-only") name.contentEditable = "true";
     const typed = () => (name.textContent ?? "").replace(/\s+/g, " ").trim();
     // (A new project's name is said in the app's language; left as it is, it stays the same name.)
-    const shown = () => tr(this.store.doc.name === "Untitled" ? "Untitled" : "") || this.store.doc.name;
+    const shown = () => (/^Untitled\b/.test(this.store.doc.name) ? tr(this.store.doc.name) : this.store.doc.name);
     const show = () => {
       if (document.activeElement !== name) name.textContent = shown();
       // A new, unnamed project keeps the page's own title (what search results show).

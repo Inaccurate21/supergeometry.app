@@ -7452,3 +7452,15 @@ a.pop-row {
   color: inherit;
   text-decoration: none;
 }
+
+/* The Android app: the phone's own edges (the camera's cutout in full screen), as the app reports them
+   (src/android.ts) - its window gives the page no safe-area insets of its own. */
+html.android-app body,
+html.android-app body.is-fullscreen {
+  --safe-t: var(--native-safe-t, 0px);
+  --safe-l: var(--native-safe-l, 0px);
+  --safe-r: var(--native-safe-r, 0px);
+}
+html.android-app body.is-fullscreen {
+  --safe-b: max(4px, var(--native-safe-b, 0px));
+}

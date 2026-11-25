@@ -43,6 +43,17 @@ if (native) {
     true,
   );
 
+  // Where the phone's camera cutout is, in full screen: the buttons keep clear of it (CSS --native-safe-*).
+  (window as unknown as { sgNativeInsets: (t: number, l: number, r: number, b: number, w: number) => void }).sgNativeInsets = (t, l, r, b, w) => {
+    const k = (window.visualViewport?.width ?? innerWidth) / (w || innerWidth);
+    const root = document.documentElement.style;
+    root.setProperty("--native-safe-t", `${Math.round(t * k)}px`);
+    root.setProperty("--native-safe-l", `${Math.round(l * k)}px`);
+    root.setProperty("--native-safe-r", `${Math.round(r * k)}px`);
+    root.setProperty("--native-safe-b", `${Math.round(b * k)}px`);
+    window.dispatchEvent(new Event("resize"));
+  };
+
   let over: Element | null = null;
   (window as unknown as { sgNativeHover: (x: number | null, y?: number, w?: number) => void }).sgNativeHover = (x, y, w) => {
     const vv = window.visualViewport;

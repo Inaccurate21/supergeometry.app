@@ -14,7 +14,9 @@ import android.os.Environment;
 import android.provider.MediaStore;
 import android.util.Base64;
 import android.view.MotionEvent;
+import android.view.DisplayCutout;
 import android.view.View;
+import android.view.WindowManager;
 import android.view.WindowInsets;
 import android.view.WindowInsetsController;
 import android.webkit.CookieManager;
@@ -63,6 +65,16 @@ public class MainActivity extends Activity {
         super.onCreate(saved);
         web = new PenWebView(this);
         setContentView(web);
+        // Full screen takes the strip by the camera too (it stayed black): the page keeps its buttons clear of it.
+        WindowManager.LayoutParams lp = getWindow().getAttributes();
+        lp.layoutInDisplayCutoutMode = Build.VERSION.SDK_INT >= 30
+                ? WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_ALWAYS
+                : WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES;
+        getWindow().setAttributes(lp);
+        web.setOnApplyWindowInsetsListener((v, insets) -> {
+            sendInsets(insets);
+            return v.onApplyWindowInsets(insets);
+        });
 
         WebSettings s = web.getSettings();
         s.setJavaScriptEnabled(true);
@@ -98,6 +110,12 @@ public class MainActivity extends Activity {
                     toast("No app can open " + u);
                 }
                 return true;
+            }
+
+            @Override
+            public void onPageFinished(WebView view, String url) {
+                WindowInsets wi = view.getRootWindowInsets();
+                if (wi != null) sendInsets(wi);
             }
 
             @Override
@@ -165,6 +183,20 @@ public class MainActivity extends Activity {
                     ? View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY | View.SYSTEM_UI_FLAG_FULLSCREEN | View.SYSTEM_UI_FLAG_HIDE_NAVIGATION | View.SYSTEM_UI_FLAG_LAYOUT_STABLE | View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION | View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN
                     : View.SYSTEM_UI_FLAG_VISIBLE);
         }
+    }
+
+    /** Where the camera's cutout is (in full screen): the page keeps clear of it. In the view's pixels, with its width. */
+    void sendInsets(WindowInsets wi) {
+        int t = 0, l = 0, r = 0, b = 0;
+        DisplayCutout dc = wi.getDisplayCutout();
+        if (fullscreen() && dc != null) {
+            t = dc.getSafeInsetTop();
+            l = dc.getSafeInsetLeft();
+            r = dc.getSafeInsetRight();
+            b = dc.getSafeInsetBottom();
+        }
+        String js = "window.sgNativeInsets&&sgNativeInsets(" + t + "," + l + "," + r + "," + b + "," + web.getWidth() + ")";
+        web.post(() -> web.evaluateJavascript(js, null));
     }
 
     @Override
@@ -416,7 +448,13 @@ public class MainActivity extends Activity {
         @JavascriptInterface
         public void setFullscreen(boolean on) {
             getPreferences(MODE_PRIVATE).edit().putBoolean("fullscreen", on).apply();
-            runOnUiThread(MainActivity.this::applyFullscreen);
+            runOnUiThread(() -> {
+                applyFullscreen();
+                web.postDelayed(() -> {
+                    WindowInsets wi = web.getRootWindowInsets();
+                    if (wi != null) sendInsets(wi);
+                }, 300);
+            });
         }
 
         @JavascriptInterface
