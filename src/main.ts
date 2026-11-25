@@ -9,6 +9,7 @@ import "./penButton";
 import "./style.css";
 import { App } from "./app";
 import { outerScrollbars } from "./ui/scrollbars";
+import { setupTooltips } from "./ui/tooltips";
 import { installDebug } from "./debug";
 import { addReportSection } from "./diagnostics";
 import { lang } from "./i18n";
@@ -50,3 +51,6 @@ addReportSection(() => {
 void restoreFromCache();
 backupPrefs();
 document.addEventListener("visibilitychange", () => document.hidden && backupPrefs());
+
+// Tool tips with a picture, as Fusion's (a mouse or a pen held over a tool).
+setupTooltips();

@@ -11,6 +11,7 @@
 // end, where lines meet, a circle's centre - see holeSnaps.ts): put exactly there, and held from the edges as
 // anywhere else.
 
+import { settings } from "../settings";
 import type { EdgeRef, FaceRef, HoleFeature, Vec3 } from "../doc/types";
 import { distanceFrom, headFor, holeFor, holeFromLines, screwSize, SCREW_SIZES, sideOf, sinkDepth } from "../doc/holeSizes";
 import { add, cross, dist, dot, len, niceStep, norm, scale, sub } from "../geom";
@@ -173,6 +174,18 @@ export class HoleOp extends FeatureOp<HoleFeature> {
    * Put down at a point of the face: on the face's middle or a round edge's centre when within `catchAt` (pixels,
    * on the screen) of one, else held from the two nearest straight edges, their sizes in steps of `step`.
    */
+  /** What OSNAP catches on here (More → … or the window's OSNAP: smart, all, own, off). */
+  private osnap(): { centre: boolean; mid: boolean; corner: boolean; align: boolean; marks: boolean } {
+    const m = settings.value.modelOsnap ?? "smart";
+    if (m === "off") return { centre: false, mid: false, corner: false, align: false, marks: false };
+    if (m === "all") return { centre: true, mid: true, corner: true, align: true, marks: true };
+    if (m === "own") {
+      const o = settings.value.osnap;
+      return { centre: o.center, mid: o.midpoint, corner: o.endpoint, align: o.tracking || o.parallel, marks: o.intersection || o.endpoint };
+    }
+    return { centre: true, mid: true, corner: false, align: true, marks: true };
+  }
+
   private place(p: Vec3, catchAt: number, step = 0): void {
     const f = this.feature;
     p = this.flatten(p);
@@ -180,15 +193,21 @@ export class HoleOp extends FeatureOp<HoleFeature> {
     delete f.around;
     delete f.centered;
     delete f.from;
+    const os = this.osnap();
     let best: { c: Vec3; d: number; round?: Round } | null = null;
-    for (const c of [{ c: this.flatten(this.middle) }, ...this.rounds.map((round) => ({ c: round.c, round }))]) {
+    for (const c of os.centre ? [{ c: this.flatten(this.middle) }, ...this.rounds.map((round) => ({ c: round.c, round }))] : []) {
       const d = this.apart(c.c, p);
       if (d <= catchAt && (!best || d < best.d)) best = { ...c, d };
     }
     // An axis's point, a point of a sketch on the face - the nearer of that and the face's own wins (its own, when
     // they are one place: the middle of the face stays "the middle" though an axis comes through there).
     let snap: (SnapPoint & { d: number }) | null = null;
-    for (const s of this.snaps) {
+    // OSNAP on the body: the middles of the face's straight edges, and (all) its corners.
+    const extra: SnapPoint[] = [
+      ...(os.mid ? this.lines.map((l) => ({ at: scale(add(l.a, l.b), 0.5), what: "On the middle of an edge" })) : []),
+      ...(os.corner ? this.lines.flatMap((l) => [{ at: l.a, what: "On a corner" }, { at: l.b, what: "On a corner" }]) : []),
+    ];
+    for (const s of [...(os.marks ? this.snaps : []), ...extra]) {
       const d = this.apart(s.at, p);
       if (d <= catchAt && (!snap || d < snap.d)) snap = { ...s, d };
     }
@@ -207,6 +226,29 @@ export class HoleOp extends FeatureOp<HoleFeature> {
       this.keepSizes(0);
       this.caught = snap.what;
       return;
+    }
+    // Smart: on a middle line of the face (symmetric about it), or in line with another hole - the other way free.
+    if (os.align) {
+      const dirs: Vec3[] = [];
+      for (const l of this.lines) {
+        const t = norm(sub(l.b, l.a));
+        if (!dirs.some((d) => len(cross(d, t)) < 1e-3)) dirs.push(t);
+      }
+      let line: { q: Vec3; d: number; what: string } | null = null;
+      const through = [{ c: this.flatten(this.middle), what: "Symmetric: on the face's middle line" }, ...this.rounds.map((r) => ({ c: r.c, what: "In line with a round edge's centre" }))];
+      for (const t of dirs)
+        for (const o of through) {
+          const q = add(o.c, scale(t, dot(sub(p, o.c), t)));
+          const d = this.apart(q, p);
+          if (d <= catchAt && (!line || d < line.d)) line = { q, d, what: o.what };
+        }
+      if (line) {
+        f.at = line.q;
+        this.edges2 = this.nearest(f.at);
+        this.keepSizes(0);
+        this.caught = line.what;
+        return;
+      }
     }
     this.caught = null;
     f.at = p;
@@ -379,6 +421,8 @@ export class HoleOp extends FeatureOp<HoleFeature> {
     ];
     if (f.head !== "none") items.push(this.num("Head diameter", "headDiameter", "length", { min: 0.01, onInput: () => this.changed() }));
     if (f.head === "counterbore") items.push(this.num("Head depth", "headDepth", "length", { min: 0.01, onInput: () => this.changed() }));
+    // OSNAP for its dot (as a sketch's): smart catches what a hole is usually put on.
+    items.push({ type: "choice", label: "OSNAP", options: [{ id: "smart", label: "Smart" }, { id: "all", label: "All" }, { id: "own", label: "As in the sketch" }, { id: "off", label: "Off" }], value: settings.value.modelOsnap ?? "smart", onChange: (id) => (settings.set("modelOsnap", id as "smart"), this.render()) });
     // As Fusion's: a chamfer round the mouth, and a blind hole's drill point.
     if (f.head !== "countersink") items.push(this.num("Mouth chamfer", "chamfer", "length", { min: 0, onInput: () => this.changed() }));
     items.push({ type: "toggle", label: "Through", value: f.through, onChange: (v) => ((f.through = v), this.changed(true)) });

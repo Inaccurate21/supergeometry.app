@@ -2953,6 +2953,12 @@ export class SketchTool implements Tool {
       if (Math.abs(d.x * n[0] + d.y * n[1] + d.z * n[2]) < 0.999) this.app.view.cam.lookAlong(n, this.plane.xDir);
     }
     if (this.edit.picking) return this.pickForEdit(p);
+    // A tap on the gimbal (an arrow, the ring, its dot) of the curves picked: Move with its window, as Fusion's - not
+    // a tap through it on the drawing (it picked the shape under it, its outline lit blue).
+    if (this.phase === "draw" && this.gimbal?.hit(p) && (this.selected.size || this.selPts.length)) {
+      if (this.kind === "select") this.setKind("move");
+      return;
+    }
     // A tap on empty space finishes what's waiting for Apply (like elsewhere).
     // (Not while a turn still needs its centre: that tap is the centre.)
     const needsCentre = (this.kind === "rotate" || this.kind === "patternCircular") && !this.edit.pivot;
@@ -5143,6 +5149,8 @@ export class SketchTool implements Tool {
 
   private tapSelect(p: ToolPointer, count = 1): void {
     if (this.selConstraint) this.deselectConstraint();
+    // The selection filter holds in a sketch too (Select): its curves, its points (centres), its shapes.
+    const flt = this.kind === "select" ? settings.value.selFilter : null;
     // Points can be picked in the Select tool (for constraints and dragging) - but a
     // double tap is always "the whole shape", even when it lands near a corner.
     if (this.kind === "select" && count < 2) {
@@ -5161,7 +5169,8 @@ export class SketchTool implements Tool {
         const sc = at && this.app.view.toScreen([at[0] + nrm[0] * up, at[1] + nrm[1] * up, at[2] + nrm[2] * up]);
         return !sc || Math.hypot(sc[0] - p.x, sc[1] - p.y) < Math.max(10, p.tol * 0.7) || !this.curveAt(p);
       })();
-      if (hit?.kind === "point" && hit.sketch === this.sketchId && onPoint) {
+      const ptOk = !flt || (hit?.kind === "point" && (hit.p === "c" ? flt.centres || flt.sketchPoints : flt.sketchPoints));
+      if (hit?.kind === "point" && hit.sketch === this.sketchId && onPoint && ptOk) {
         const r = { e: hit.entity, p: hit.p };
         const i = this.selPts.findIndex((x) => refKey(x) === refKey(r));
         if (i >= 0) this.selPts.splice(i, 1);
@@ -5174,8 +5183,8 @@ export class SketchTool implements Tool {
     }
     // Inside a closed shape and not right on its outline (a finger's reach is
     // wide - half of it): the shape itself, with its extrude arrow.
-    if (this.kind === "select" && count < 2 && !p.shift && settings.value.sketchRegionPick && !this.curveAt({ ...p, tol: p.tol * 0.5 }) && this.tapRegion(p)) return;
-    const c = this.curveAt(p);
+    if (this.kind === "select" && count < 2 && !p.shift && settings.value.sketchRegionPick && (!flt || flt.profiles) && !this.curveAt({ ...p, tol: p.tol * 0.5 }) && this.tapRegion(p)) return;
+    const c = flt && !flt.sketchCurves ? null : this.curveAt(p);
     // Mirror: with something selected, the next line tapped (even one of the
     // selection) is the mirror axis - Shift+tap adds to the selection instead.
     // (Anything else tapped joins the selection: on a phone, with no Shift, a
@@ -5205,7 +5214,7 @@ export class SketchTool implements Tool {
     if (!c) {
       // Inside a closed shape (Select tool): the shape is picked and its extrude
       // arrow shows - the sketch stays open; only dragging the arrow extrudes.
-      if (this.kind === "select" && count < 2 && settings.value.sketchRegionPick && this.tapRegion(p)) return;
+      if (this.kind === "select" && count < 2 && settings.value.sketchRegionPick && (!flt || flt.profiles) && this.tapRegion(p)) return;
       // Empty space: deselect; with nothing selected, an editing tool goes back to Select.
       if (this.regionArrow) this.hideRegionArrow();
       if (this.selected.size || this.selPts.length) this.clearSelection();

@@ -21,6 +21,16 @@ interface Update {
 export const UPDATES: Update[] = [
   {
     date: "2026-11-25",
+    version: "0.10.2.0",
+    added: [
+      "A tap on the arrows, the ring or the dot of picked sketch curves opens Move / Copy with its window (it picked the shape under them, its outline lit). The selection filter now holds in a sketch too: its curves, points, centres and shapes.",
+      "OSNAP for a Hole's dot: Smart (the middle of the face, the middles of its edges, round centres, the face's middle lines - symmetric - and in line with other holes), All (corners too), As in the sketch, or Off.",
+      "Tool tips as in Fusion: hold the mouse or the pen over a tool for its name, key, a picture and what it does.",
+      "Selection filter: profiles (ready ones and your own, saved with Save as…) and the order of its list (▲ ▼).",
+    ],
+  },
+  {
+    date: "2026-11-25",
     version: "0.10.1.0",
     added: [
       "A sketch's dimension is typed into by a tap on it again on phones and with a pen: the box comes up over it, with the number pad, and a slight wobble of the finger no longer drags it away.",

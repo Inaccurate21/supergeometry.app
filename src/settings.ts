@@ -20,6 +20,11 @@ export interface Settings {
    */
   osnap: Osnap;
   selFilter: SelFilter;
+  /** OSNAP when placing on a body (a Hole's dot): smart (middles, edge middles, round centres, the face's middle lines, in line with holes), all (corners too), own (the sketch's OSNAP switches), or off. */
+  modelOsnap: "smart" | "all" | "own" | "off";
+  /** The selection filter's kinds in the order put (their keys), and the person's own profiles. */
+  selFilterOrder: string[];
+  selFilterProfiles: { name: string; filter: SelFilter }[];
   /** Keyboard shortcuts changed in Settings (action id → key, "" none): see keys.ts. */
   keys: Record<string, string>;
   /** Autosave: every change is written to this device at once; this also copies the project into the project list every n minutes (0: only when the app is left). */
@@ -253,6 +258,9 @@ const DEFAULTS: Settings = {
   snap: { grid: true, guidePoints: true, guideLines: true, points3d: true, distantEdges: false },
   osnap: OSNAP_DEFAULT,
   selFilter: SELFILTER_DEFAULT,
+  modelOsnap: "smart",
+  selFilterOrder: [],
+  selFilterProfiles: [],
   keys: {},
   autosaveMinutes: 2,
   sketchBodies: "normal",
