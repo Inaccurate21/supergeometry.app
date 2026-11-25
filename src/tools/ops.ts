@@ -512,6 +512,11 @@ export class ExtrudeOp extends FeatureOp<ExtrudeFeature> {
     super.tap(p);
   }
 
+  /** (Extrude takes another shape by a tap until it has been pulled.) */
+  protected addsRegions(): boolean {
+    return this.feature.distance === 0;
+  }
+
   protected regionsChanged(): void {
     this.frame = sourceFrame(this.app, this.feature.source);
   }

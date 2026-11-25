@@ -228,12 +228,55 @@ export abstract class FeatureOp<F extends Feature> implements Tool {
     const made = sourcesOf(this.app, next)[0];
     if (!made) return false;
     f.source = made;
+    this.partKey = "";
     this.regionsChanged();
     this.app.ui.toast(`${next.length} region${next.length > 1 ? "s" : ""} selected`);
     this.render();
     this.app.setSelection([...next, ...this.slots.flatMap((s) => s.shows?.() ?? [])]);
     this.update();
     return true;
+  }
+
+  /** Can a tap on another shape of the profile's sketch add it now? */
+  protected addsRegions(): boolean {
+    return this.moreRegions;
+  }
+
+  private partKey = "";
+  private partIs = false;
+
+  /**
+   * Is what's picked only a part of a shape as it was drawn - cut off from the rest by a curve that runs on
+   * through it (a shape drawn across a rectangle is three shapes: over it, in it, under it)? A tap takes the one
+   * under the finger, and nothing said so: someone turned the third of their shape that lay under a plate, and
+   * took the result for the joins and cuts being broken ("Cut didn't work at all. With Add at least you can see
+   * something"). Said in the tool's line while the other parts can still be added by a tap.
+   * (Not a hole's rim: a circle inside a plate ends where it began, and is all on the plate's own outline.)
+   */
+  private partOfAShape(): boolean {
+    const src = (this.feature as unknown as { source?: ExtrudeSource }).source;
+    if (src?.kind !== "profile" || this.existing || !this.addsRegions()) return false;
+    const key = `${src.sketch}|${JSON.stringify(src.regions)}`;
+    if (key === this.partKey) return this.partIs;
+    this.partKey = key;
+    this.partIs = false;
+    const arr = arrangement(this.app.sketchCurves(src.sketch));
+    const picked = new Set(src.regions.map((ref) => resolveRegion(arr, ref)).filter((r): r is Region => !!r));
+    const edgeOf = (r: Region) => [r.outer, ...r.holes].flatMap((l) => l.pieces.map((x) => x.piece));
+    const mine = new Set([...picked].flatMap(edgeOf));
+    // The stretches it shares with a shape that is not picked...
+    const shared = new Set<number>();
+    for (const r of arr.regions) if (!picked.has(r)) for (const k of edgeOf(r)) if (mine.has(k)) shared.add(k);
+    // ...where the curve of one of them runs on past its end, off the picked shape's outline.
+    for (const k of shared) {
+      const pc = arr.pieces[k];
+      for (const node of [pc.n0, pc.n1])
+        if (arr.pieces.some((o, j) => j !== k && o.prim === pc.prim && (o.n0 === node || o.n1 === node) && !mine.has(j))) {
+          this.partIs = true;
+          return true;
+        }
+    }
+    return false;
   }
 
   /** A tap on a body the step waiting can't use (a mirror's plane, a ball tapped): true if the tool took it some other way. */
@@ -360,7 +403,8 @@ export abstract class FeatureOp<F extends Feature> implements Tool {
 
   protected setHint(): void {
     const slot = this.slots[this.active];
-    const text = this.error ? `⚠ ${this.error}` : slot && !slot.filled() ? `${slot.label}: ${slot.describe()}` : this.hint();
+    let text = this.error ? `⚠ ${this.error}` : slot && !slot.filled() ? `${slot.label}: ${slot.describe()}` : this.hint();
+    if (!this.error && this.partOfAShape()) text += `${/[.!?]$/.test(text) ? "" : "."} Only this part of the shape is picked: tap its other parts to add them.`;
     this.app.ui.setHint(text);
     this.app.ui.setPanelWarning(this.error);
   }
