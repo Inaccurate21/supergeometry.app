@@ -193,7 +193,7 @@ public class MainActivity extends Activity {
             // The top: just under the camera's hole itself (the safe inset is the whole status bar's height).
             t = dc.getSafeInsetTop();
             int hole = 0;
-            for (android.graphics.Rect r : dc.getBoundingRects()) if (r.top <= 0 && r.bottom < web.getHeight() / 3) hole = Math.max(hole, r.bottom);
+            for (android.graphics.Rect box : dc.getBoundingRects()) if (box.top <= 0 && box.bottom < web.getHeight() / 3) hole = Math.max(hole, box.bottom);
             if (hole > 0) t = hole;
             l = dc.getSafeInsetLeft();
             r = dc.getSafeInsetRight();

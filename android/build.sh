@@ -20,7 +20,9 @@ rm -rf build && mkdir -p build/gen build/classes build/dex
   --version-code "$CODE" --version-name "$NAME" --min-sdk-version 29 --target-sdk-version 34 \
   --java build/gen build/res.zip
 LIBS="libs/sdk-v1.0.0.jar:libs/spenremote-v1.0.1.jar"
-javac -nowarn --release 11 -classpath "$JAR:$LIBS" -d build/classes $(find src build/gen -name '*.java') 2>&1 | grep -v '^Picked up' || true
+# (A compile error stops the build: an APK without its classes crashes the moment it opens.)
+javac -nowarn --release 11 -classpath "$JAR:$LIBS" -d build/classes $(find src build/gen -name '*.java')
+test -f build/classes/app/supergeometry/android/MainActivity.class || { echo "MainActivity didn't compile" >&2; exit 1; }
 "$BT/d8" --release --lib "$JAR" --min-api 29 --output build/dex $(find build/classes -name '*.class') libs/sdk-v1.0.0.jar libs/spenremote-v1.0.1.jar
 cp build/base.apk build/unsigned.apk
 (cd build/dex && zip -q ../unsigned.apk classes.dex)
