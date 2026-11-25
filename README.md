@@ -303,6 +303,9 @@ sketch. A sketch stays in view until every region of it is used.
   Drag its dot to move it: it catches on the middle of the face and on the
   centre of a round edge (a boss) and stays there; anywhere else, type its two
   distances from the nearest edges, which it keeps when the part is resized.
+  It also catches on the point where an axis passes through the face, and on a
+  sketch drawn on the face: the end of a line, where lines meet or cross, the
+  centre of a circle. Lay the holes out as a sketch, then tap each one.
   It is one step in History, opened again like any other.
 - **Thread** - tap a round face or a hole's rim: a shank at the nominal size
   gets an outside thread, a hole at the tap-drill size an inside one. The

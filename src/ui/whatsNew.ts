@@ -19,6 +19,7 @@ export const UPDATES: Update[] = [
   {
     date: "2026-11-25",
     added: [
+      "Hole catches on more: tap near the point where an axis passes through the face, or near a sketch drawn on the face (the end of a line, where lines meet or cross, the centre of a circle), and the hole sits exactly there.",
       "A mesh you can edit: an STL, OBJ or 3MF mesh now comes in with real faces where it can. Flat sides are one face each, and plain holes, bosses, pins and rounded upright corners are truly round, so Hole, Thread, Fillet and push/pull work on them. It helps simple parts most: chamfered holes, rounded edges and sculpted shapes come in as before. A mesh already in a project: tap its body, then Make Faces.",
       "A mesh file that holds several separate parts comes in as one body for each part.",
       "Dimensions in a sketch are drawn as dimensions: lines out from what is measured, a line with arrows and the size on it. Click a size and type a new one right there.",
