@@ -508,9 +508,12 @@ This section describes the app so an assistant can explain it, guide a user
 step by step, or read and write project files.
 
 **Assistants: start at https://supergeometry.app/llms.txt** (`public/llms.txt` here). It is written for you:
-the project file format step by step, complete examples that are tested against the app on every change
-(`tests/llms.test.ts`), and how to drive the page from a browser. Give someone a `.super` file and they open it
-with File → Open… as a model they can go on editing.
+how to build a model in the person's open tab with the page's `sg` handle, the step format, and complete
+examples that are tested against the app on every change (`tests/llms.test.ts`).
+
+**People:** on a computer, the **Claude** button at the bottom right shows how to model by asking. It needs
+Claude's extension for Chrome: open it beside the app, paste the request the button writes for you, and Claude
+builds the model in your tab. The app sends nothing anywhere; the extension works in your own browser.
 
 **What it is.** A browser-based parametric solid modeler. Geometry is
 OpenCascade (via replicad) running in a Web Worker; the UI is plain DOM over a

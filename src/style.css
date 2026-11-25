@@ -523,6 +523,95 @@ button.menu-note {
   text-transform: uppercase;
   color: var(--muted);
 }
+/* The Claude button (a computer only): bottom-right corner, and its card. */
+.ai-btn {
+  position: fixed;
+  right: calc(10px + var(--safe-r, 0px));
+  bottom: calc(10px + var(--safe-b));
+  z-index: 9;
+  height: 36px;
+  padding: 0 13px 0 10px;
+  border-radius: 999px;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 13px;
+  font-weight: 600;
+  color: #f3e9e2;
+  background: linear-gradient(180deg, rgba(40, 43, 49, 0.96), rgba(26, 28, 32, 0.97));
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.35);
+}
+.ai-btn svg {
+  color: #d97757;
+}
+.ai-btn:hover {
+  border-color: rgba(217, 119, 87, 0.7);
+}
+.dialog.ai-card {
+  width: min(460px, calc(100vw - 24px));
+}
+.ai-body {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  font-size: 13.5px;
+  line-height: 1.45;
+}
+.ai-body p {
+  margin: 0;
+}
+.ai-warn {
+  color: #ffb86b;
+}
+.ai-step {
+  display: flex;
+  gap: 10px;
+}
+.ai-n {
+  flex: none;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  font-size: 12px;
+  font-weight: 700;
+  background: rgba(217, 119, 87, 0.22);
+  color: #f0a58a;
+}
+.ai-text {
+  flex: 1;
+  min-width: 0;
+  color: var(--muted);
+}
+.ai-text b {
+  color: var(--text, #e8eaed);
+}
+.ai-get {
+  margin-top: 8px;
+  display: flex;
+  width: fit-content;
+  text-decoration: none;
+}
+.ai-ask {
+  margin-top: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  align-items: flex-start;
+}
+.ai-what {
+  width: 100%;
+  box-sizing: border-box;
+  resize: vertical;
+  padding: 8px 10px;
+  border-radius: 8px;
+  border: 1px solid var(--line);
+  background: rgba(0, 0, 0, 0.25);
+  color: inherit;
+  font: inherit;
+}
 /* Undo / redo dock: bottom-left corner, always; the section/measure buttons sit above it. */
 #undo-dock {
   position: fixed;

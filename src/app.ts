@@ -9,6 +9,7 @@ import { currentProjectId, forgetProject, keepProject, libraryEntries, newProjec
 import { showLibrary } from "./ui/library";
 import { showAbout } from "./ui/about";
 import { showWhatsNew } from "./ui/whatsNew";
+import { initAssistant } from "./ui/assistant";
 import { findAction, openCommandSearch, showShortcuts } from "./ui/commands";
 import type { EdgeFeature, EdgeRef, ExtrudeFeature, ExtrudeSource, Feature, FillToPlaneFeature, ImageFeature, LoftFeature, PathRef, PinDef, PlaneDef, PlaneFeature, ProjectDoc, RevolveFeature, ShellFeature, SketchEntity, SketchFeature, SplitFeature, SweepFeature, TransformFeature, Units, Vec3 } from "./doc/types";
 import { emptyDoc } from "./doc/types";
@@ -1650,6 +1651,8 @@ export class App implements AppContext {
     // Version: a tap shows what is new (asked for: "when we click on More>Version, it pops up a window that shows whats new").
     document.getElementById("m-version")!.textContent = `Version ${__APP_VERSION__} · What's new`;
     on("m-version", () => ((more.hidden = true), showWhatsNew(__APP_VERSION__)));
+    // On a computer: the Claude button, bottom right (asked for: "lets make a Claude Icon bottom right that opens the extension").
+    initAssistant((text) => this.ui.toast(text));
     const moreItem = (id: string, fn: () => void) => on(id, () => ((more.hidden = true), fn()));
     // Fullscreen (the label follows the state; Esc also leaves it).
     const fs = document.getElementById("m-fullscreen")!;

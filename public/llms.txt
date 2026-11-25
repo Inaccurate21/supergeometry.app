@@ -6,9 +6,11 @@ This page is for AI assistants. If someone gave you the link https://supergeomet
 
 The app itself is a program that runs in the browser, so fetching the page shows you almost nothing. You cannot make a model by fetching URLs. There are three ways you can help, depending on what you can do:
 
-1. **Write a project file** (any assistant can do this). A project is a small JSON text file. Write one, give it to the person, they open it with File > Open…, and they have a real, editable model with every step in History. This is the most reliable way. The format is described below, with complete examples that are tested against the app.
-2. **Drive the app in a browser you control** (only if you can run JavaScript in the page). The page has a scripting handle, `sg`. See "Driving the app" below.
+1. **Build the model in the person's open tab** (if you work inside their browser, like a browser extension, and can run JavaScript in the page). This is the best way and the one to use whenever you can: the person says what they want and watches it appear, with no files to pass around. The page has a scripting handle, `sg`: write the steps in the format described under "The project file", load them with `sg.load`, check them, and go on from there. See "Driving the app" below.
+2. **Write a project file** (if you cannot touch a browser). A project is a small JSON text file. Write one, give it to the person, they open it with File > Open…, and they have a real, editable model with every step in History. More work for the person, so only when the first way is not open to you.
 3. **Guide the person step by step.** See "Guiding a person" below.
+
+Either way the steps are written the same: the format below, with complete examples that are tested against the app.
 
 Always tell the person what you made and that they should check sizes before printing. You cannot see the result unless you control a browser.
 

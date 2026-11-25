@@ -28,7 +28,8 @@ export const UPDATES: Update[] = [
       "Extrude, Revolve and Sweep say when only one part of a cut-up shape is picked, and that tapping its other parts adds them.",
       "In a sketch, Constraints (n) on a picked line or shape opens the list of its constraints: delete one, type a new size, or delete them all.",
       "More → About: the app's name at the top opens the project's page on GitHub.",
-      "For AI assistants: give your assistant the link supergeometry.app and ask it for a part. It finds a page written for it (supergeometry.app/llms.txt) and can write you a project file to open with File → Open…, with every step in History for you to change.",
+      "Model with Claude, on a computer: the Claude button at the bottom right shows how. With Claude's extension for Chrome open beside the app, say what you want and it builds it in your tab, every step in History for you to change.",
+      "For any AI assistant: the app has a page written for assistants (supergeometry.app/llms.txt) that says how to build models here.",
     ],
     fixed: [
       "Every change to a body with very many faces is quicker.",
