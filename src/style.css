@@ -927,7 +927,7 @@ body.panel-open .tool.active::before,
 #viewcube-host {
   position: fixed;
   top: calc(10px + var(--safe-t));
-  right: calc(60px + var(--safe-r));
+  right: calc(74px + var(--safe-r));
   z-index: 5;
 }
 #viewcube {
@@ -973,7 +973,8 @@ body.panel-open .tool.active::before,
   z-index: 10;
 }
 .right-btn {
-  width: 40px;
+  /* (Wide enough for the Polish names: "Cieniowanie", "Kalkulator".) */
+  width: 54px;
   min-height: 40px;
   border-radius: 7px;
   display: flex;
@@ -1011,7 +1012,7 @@ body.sketching .right-btn.sketch-only {
 }
 #popover {
   position: fixed;
-  right: calc(60px + var(--safe-r));
+  right: calc(74px + var(--safe-r));
   width: 270px;
   max-height: calc(100vh - 20px);
   overflow-y: auto;
@@ -1500,7 +1501,7 @@ body.tut-on #hint .hint-x {
 /* Placed by the sketch tool: beside the right-hand bar, its top at the Constraints button. */
 #constraint-bar {
   position: fixed;
-  right: calc(60px + var(--safe-r));
+  right: calc(74px + var(--safe-r));
   top: 50%;
   display: flex;
   flex-direction: column;
@@ -2184,7 +2185,7 @@ body.items-open #bottom-left {
 
 .measure-card {
   position: fixed;
-  right: calc(60px + var(--safe-r));
+  right: calc(74px + var(--safe-r));
   bottom: calc(10px + var(--safe-b));
   width: 300px;
   max-height: 62vh;
@@ -3073,13 +3074,13 @@ form.dialog {
     text-align: left;
   }
   #viewcube-host {
-    right: calc(56px + var(--safe-r));
+    right: calc(70px + var(--safe-r));
     transform: scale(0.8);
     transform-origin: top right;
   }
   #history {
     left: calc(8px + var(--safe-l));
-    right: calc(60px + var(--safe-r));
+    right: calc(74px + var(--safe-r));
     bottom: auto;
     width: auto;
     max-height: 45vh;
@@ -3089,16 +3090,16 @@ form.dialog {
     right: calc(8px + var(--safe-r));
   }
   body.history-open #viewcube-host {
-    right: calc(56px + var(--safe-r));
+    right: calc(70px + var(--safe-r));
   }
   body.history-open #popover,
   body.history-open .measure-card {
-    right: calc(60px + var(--safe-r));
+    right: calc(74px + var(--safe-r));
   }
   /* On phones Items floats over the view instead of docking. */
   #items {
     width: auto;
-    right: calc(60px + var(--safe-r));
+    right: calc(74px + var(--safe-r));
     bottom: auto;
     max-height: 55vh;
     z-index: 34;
@@ -3243,7 +3244,7 @@ body.items-open #left-col {
 @media (max-width: 720px) {
   /* The top bar stops before the right-hand column; the name shrinks to fit. */
   #topbar {
-    right: calc(60px + var(--safe-r));
+    right: calc(74px + var(--safe-r));
   }
   .project-name {
     flex: 1 1 auto;
@@ -3666,7 +3667,7 @@ body.history-open #viewcube-host {
     padding: 3px;
   }
   .right-btn {
-    width: 48px;
+    width: 54px;
     min-height: 31px;
     gap: 0;
   }
@@ -4990,7 +4991,7 @@ input.scrubbing {
 /* ---------------------------------------------------------------- BIM */
 .bim-card {
   position: fixed;
-  right: calc(60px + var(--safe-r));
+  right: calc(74px + var(--safe-r));
   bottom: calc(10px + var(--safe-b));
   width: 330px;
   max-height: min(72vh, 640px);
@@ -6986,7 +6987,8 @@ html[data-screen="phone"] .sn-sheet.sn-all {
   display: none;
 }
 .sn-compact .sn-row .sn-word {
-  flex: 1 1 0;
+  /* (Each as wide as its name needs, the rest shared: Polish names are longer - "Przekształć" was cut.) */
+  flex: 1 1 auto;
   min-width: 0;
   align-items: center;
   padding: 4px 1px 3px;
@@ -7008,10 +7010,14 @@ html[data-screen="phone"] .sn-sheet.sn-all {
 }
 .sn-compact .sn-row .sn-text {
   font-size: 9.5px;
-  letter-spacing: -0.1px;
+  letter-spacing: -0.2px;
   max-width: 100%;
   overflow: hidden;
   text-overflow: clip;
+  /* Two words go on two lines ("Swobodna forma"). */
+  white-space: normal;
+  text-align: center;
+  line-height: 1.05;
 }
 .sn-compact .sn-row .sn-more,
 .sn-compact .sn-row .sn-kbd {
@@ -8026,7 +8032,7 @@ html.android-app body.items-open #topbar {
 /* A sketch's Move / Copy window, as Fusion's (src/tools/sketch.ts renderMoveDialog). */
 .sk-move-dlg {
   position: fixed;
-  right: calc(70px + var(--safe-r));
+  right: calc(84px + var(--safe-r));
   top: calc(120px + var(--safe-t));
   z-index: 30;
   width: 264px;
@@ -8414,5 +8420,19 @@ html.android-app body.items-open #topbar {
   .aps-nav {
     flex-direction: row;
     flex-wrap: wrap;
+  }
+}
+
+/* Phones: the top bar's longer Polish names ("Przeglądarka") fit, More included. */
+@media (max-width: 430px) {
+  #topbar #file-btn,
+  #topbar #items-btn,
+  #topbar #history-btn,
+  #topbar #more-btn {
+    padding-left: 6px;
+    padding-right: 6px;
+  }
+  #topbar #project-name {
+    max-width: 78px;
   }
 }
