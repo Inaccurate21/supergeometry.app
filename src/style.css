@@ -7728,3 +7728,9 @@ html.android-app body.items-open #topbar {
 .cglyph.dim.dragging {
   border-color: #ffd34d;
 }
+/* A pinned measurement's label: dragged to move it out (src/tools/annotate.ts). */
+#pins .pin {
+  pointer-events: auto;
+  cursor: move;
+  touch-action: none;
+}

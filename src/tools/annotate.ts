@@ -1,7 +1,7 @@
 // 3D dimension annotations: a dimension line with arrowheads, an optional
 // floating input (Total/Offset + value + pin), and the layer of pinned measurements.
 
-import { BufferGeometry, ConeGeometry, Group, Line, LineBasicMaterial, LineDashedMaterial, Mesh, MeshBasicMaterial, Vector3 } from "three";
+import { BufferGeometry, ConeGeometry, Group, Line, LineBasicMaterial, LineDashedMaterial, LineSegments, Mesh, MeshBasicMaterial, Plane, Raycaster, Vector2, Vector3 } from "three";
 import { mergingCommits } from "../doc/store";
 import type { PinDef, Vec3 } from "../doc/types";
 import { el } from "../ui/ui";
@@ -384,34 +384,63 @@ export function clampToFree(s: [number, number], hw: number, hh: number): [numbe
   return [x, y];
 }
 
-/** Pinned measurements: label + (optional) dimension line, always on top. */
+/** Pinned measurements: label + (optional) dimension line, always on top. A label dragged away takes its line with
+ * it (parallel to what was measured, extension lines back to the two points), as Fusion's dimensions do. */
 export class PinLayer {
   private group = new Group();
   private lines: DimLine[] = [];
+  private ext: LineSegments[] = [];
   private labels: HTMLElement[] = [];
   private pins: PinDef[] = [];
   private visible = true;
   private host = document.getElementById("pins")!;
 
-  constructor(private view: Viewport) {
+  constructor(
+    private view: Viewport,
+    /** A label dragged to a new place: its offset from where it was measured (world units). */
+    private onMove: (index: number, off: Vec3) => void = () => undefined,
+  ) {
     view.overlay.add(this.group);
     view.frameHooks.add(() => this.layout());
   }
 
+  /** The dimension line's ends for a label moved by `off`: square off what was measured (the text may slide along it). */
+  private static lineAt(p: PinDef, off: Vec3 | undefined): [Vec3, Vec3] | null {
+    if (!p.a || !p.b) return null;
+    const o = off ?? [0, 0, 0];
+    const d = [p.b[0] - p.a[0], p.b[1] - p.a[1], p.b[2] - p.a[2]];
+    const dd = d[0] * d[0] + d[1] * d[1] + d[2] * d[2] || 1;
+    const k = (o[0] * d[0] + o[1] * d[1] + o[2] * d[2]) / dd;
+    const n: Vec3 = [o[0] - d[0] * k, o[1] - d[1] * k, o[2] - d[2] * k];
+    return [
+      [p.a[0] + n[0], p.a[1] + n[1], p.a[2] + n[2]],
+      [p.b[0] + n[0], p.b[1] + n[1], p.b[2] + n[2]],
+    ];
+  }
+
   set(pins: PinDef[], visible: boolean): void {
     this.lines.forEach((l) => (this.group.remove(l.group), l.dispose()));
+    this.ext.forEach((l) => (this.group.remove(l), l.geometry.dispose()));
     this.labels.forEach((l) => l.remove());
-    this.pins = pins;
+    this.pins = pins.map((p) => ({ ...p }));
     this.visible = visible;
     this.lines = [];
-    this.labels = pins.map((p) => {
+    this.ext = [];
+    this.labels = this.pins.map((p, i) => {
       if (p.a && p.b) {
         const l = new DimLine(this.view, 0x8fb4ff);
-        l.set(p.a, p.b);
         this.group.add(l.group);
-        this.lines.push(l);
+        this.lines[i] = l;
+        const mat = new LineBasicMaterial({ color: 0x8fb4ff, depthTest: false, transparent: true, opacity: 0.8 });
+        const e = new LineSegments(new BufferGeometry(), mat);
+        e.renderOrder = 11;
+        this.group.add(e);
+        this.ext[i] = e;
+        this.place(i);
       }
       const tag = el("div", "pin", p.text);
+      tag.title = "Drag to move it";
+      tag.addEventListener("pointerdown", (e) => this.drag(i, tag, e));
       this.host.append(tag);
       return tag;
     });
@@ -419,10 +448,65 @@ export class PinLayer {
     this.view.requestRender();
   }
 
+  /** Its dimension line and extension lines where its offset puts them. */
+  private place(i: number): void {
+    const p = this.pins[i];
+    const at = PinLayer.lineAt(p, p.off);
+    const l = this.lines[i];
+    if (!at || !l) return;
+    l.set(at[0], at[1]);
+    const moved = !!p.off && Math.hypot(at[0][0] - p.a![0], at[0][1] - p.a![1], at[0][2] - p.a![2]) > 1e-9;
+    this.ext[i].visible = moved;
+    // Extension lines: from each measured point out to the dimension line (a → a', b → b').
+    if (moved) this.ext[i].geometry.setFromPoints([new Vector3(...p.a!), new Vector3(...at[0]), new Vector3(...p.b!), new Vector3(...at[1])]);
+  }
+
+  /** A label dragged: on the plane square to the view through where it was measured. */
+  private drag(i: number, tag: HTMLElement, e: PointerEvent): void {
+    if (e.button > 0) return;
+    e.stopPropagation();
+    e.preventDefault();
+    const p = this.pins[i];
+    const x0 = e.clientX;
+    const y0 = e.clientY;
+    let moved = false;
+    try {
+      tag.setPointerCapture(e.pointerId);
+    } catch {
+      // (a synthetic pointer)
+    }
+    const cam = this.view.cam.camera;
+    const normal = new Vector3();
+    cam.getWorldDirection(normal);
+    const plane = new Plane().setFromNormalAndCoplanarPoint(normal, new Vector3(...p.at));
+    const ray = new Raycaster();
+    const move = (ev: PointerEvent) => {
+      if (!moved && Math.hypot(ev.clientX - x0, ev.clientY - y0) < 4) return;
+      moved = true;
+      const r = this.view.canvas.getBoundingClientRect();
+      ray.setFromCamera(new Vector2(((ev.clientX - r.left) / r.width) * 2 - 1, -((ev.clientY - r.top) / r.height) * 2 + 1), cam);
+      const hit = ray.ray.intersectPlane(plane, new Vector3());
+      if (!hit) return;
+      p.off = [hit.x - p.at[0], hit.y - p.at[1], hit.z - p.at[2]];
+      this.place(i);
+      this.view.requestRender();
+    };
+    const up = () => {
+      tag.removeEventListener("pointermove", move);
+      tag.removeEventListener("pointerup", up);
+      tag.removeEventListener("pointercancel", up);
+      if (moved && p.off) this.onMove(i, p.off);
+    };
+    tag.addEventListener("pointermove", move);
+    tag.addEventListener("pointerup", up);
+    tag.addEventListener("pointercancel", up);
+  }
+
   private layout(): void {
-    this.lines.forEach((l) => l.layout());
+    this.lines.forEach((l) => l?.layout());
     this.pins.forEach((p, i) => {
-      const s = this.view.toScreen(p.at);
+      const o = p.off ?? [0, 0, 0];
+      const s = this.view.toScreen([p.at[0] + o[0], p.at[1] + o[1], p.at[2] + o[2]]);
       const tag = this.labels[i];
       tag.hidden = !this.visible || !s;
       if (s) tag.style.transform = `translate(${Math.round(s[0])}px, ${Math.round(s[1])}px) translate(-50%, -50%)`;

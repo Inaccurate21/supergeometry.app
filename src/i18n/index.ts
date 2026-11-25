@@ -107,7 +107,7 @@ function fill(p: Pattern, caps: string[], depth: number): string | null {
     .replace(/\{(\d+)\}/g, (_, i: string) => {
       const piece = caps[+i] ?? "";
       const t = translate(piece, depth + 1);
-      if (t === piece && /[a-z]{2}/.test(piece) && piece.trim().length > 4) whole = false;
+      if (t === piece && /[a-z]{3}/.test(piece) && piece.trim().length > 4) whole = false;
       return t;
     });
   return p.loose && !whole ? null : out;

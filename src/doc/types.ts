@@ -799,6 +799,8 @@ export interface PinDef {
   at: Vec3;
   a?: Vec3;
   b?: Vec3;
+  /** Where its label was dragged to, from `at` (world units): the dimension line moves out with it, as in Fusion. */
+  off?: Vec3;
 }
 
 export interface ProjectDoc {

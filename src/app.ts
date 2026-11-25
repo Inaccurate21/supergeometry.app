@@ -239,7 +239,8 @@ export class App implements AppContext {
       if (!(await vrSupported(handheld))) return this.ui.toast(handheld ? "This browser can't show AR - try Chrome" : "This browser can't open VR here - open superGeometry.app in the headset's own browser");
       vr.enter().catch((e: unknown) => this.ui.toast(`${handheld ? "AR" : "VR"} didn't start: ${e instanceof Error ? e.message : e}`));
     });
-    this.pinLayer = new PinLayer(this.view);
+    // A pinned measurement's label dragged away: kept (its line moved out with it, as Fusion's dimensions).
+    this.pinLayer = new PinLayer(this.view, (i, off) => this.setPins(this.pins.map((p, k) => (k === i ? { ...p, off } : p))));
     this.varTags = new VariableTags(this.view, {
       variables: () => this.store.doc.variables,
       check: (name, expr, kind) => {
