@@ -7,5 +7,8 @@
     "directory": "./dist",
     // Any unknown path opens the app itself.
     "not_found_handling": "single-page-application"
-  }
+  },
+  // A branch other than main is built as a preview (`npx wrangler preview`), which needs this block to be here.
+  // Empty: a preview uses the settings above.
+  "previews": {}
 }
