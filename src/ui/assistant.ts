@@ -111,7 +111,9 @@ function showAssistant(): void {
   get.rel = "noopener";
   const have = el("p", "ai-text", "Don't have it yet?");
   have.append(get);
-  body.append(have);
+  // (Only where it can be installed. There the page cannot tell whether it already is, so the way to get it is
+  // always offered.)
+  if (supported) body.append(have);
   body.append(el("p", "dialog-note", "Claude is made by Anthropic and needs its own account. It is not part of this app, and this app sends it nothing: Claude works in your browser, on what is in this tab."));
 
   box.append(head, body);
