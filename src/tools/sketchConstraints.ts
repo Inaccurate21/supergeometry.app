@@ -505,7 +505,13 @@ export class ConstraintGlyphs {
       const by = tip[1] - uy * 8;
       return `M${tip[0].toFixed(1)} ${tip[1].toFixed(1)}L${(bx - uy * 3).toFixed(1)} ${(by + ux * 3).toFixed(1)}L${(bx + uy * 3).toFixed(1)} ${(by - ux * 3).toFixed(1)}Z`;
     };
-    for (const m of this.marks) {
+    // Where marks and sizes already are, so that none lies on another (a line's sign and its length are both at
+    // its middle; a ring's radius by a tangent's sign - "dimensions and radius or diameter sometimes overlap the
+    // constraints"). The small marks first, nearest what they belong to; then each dimension, set further out
+    // until its size is clear of them and of the dimensions before it.
+    const taken: [number, number, number, number][] = [];
+    const clash = (at: number[], hw: number, hh: number) => taken.some(([x, y, w, h]) => Math.abs(at[0] - x) < hw + w + 3 && Math.abs(at[1] - y) < hh + h + 3);
+    for (const m of [...this.marks].sort((a, b) => (a.shape ? 1 : 0) - (b.shape ? 1 : 0))) {
       const chip = this.chips.get(m.key);
       if (!chip) continue;
       const s = to(m.at);
@@ -522,11 +528,10 @@ export class ConstraintGlyphs {
       // way that line runs (beside an upright line the box was across it: "on vertical lines, the line dimension
       // box goes over the line"). On a picked curve: out past the handle that comes up there to move it ("the
       // moving gimbal is over the constraints").
-      let dist = m.dist;
-      if (m.shape?.kind === "span") dist = Math.max(dist + 6, Math.abs(dx) * (m.w / 2) + Math.abs(dy) * 11 + 12 + (m.dist - 22));
+      let dist0 = m.dist;
+      if (m.shape?.kind === "span") dist0 = Math.max(dist0 + 6, Math.abs(dx) * (m.w / 2) + Math.abs(dy) * 11 + 12 + (m.dist - 22));
       // (An angle's arc is at the corner, not where the handle is.)
-      if (m.mine && m.shape?.kind !== "angle") dist += GIMBAL_REACH;
-      let at: number[] = [s[0] + dx * (dist + 4), s[1] + dy * (dist + 4)];
+      if (m.mine && m.shape?.kind !== "angle") dist0 += GIMBAL_REACH;
       const on = m.c.id === shown;
       // What it measures is too small on screen to carry a dimension (the whole sketch seen at once, on a phone
       // above all: every size piled on the next): left out until it is zoomed to - unless it is the one picked or
@@ -537,59 +542,74 @@ export class ConstraintGlyphs {
       }
       let line = "";
       let heads = "";
+      let at: number[] = s;
       const sh = m.shape;
-      if (sh?.kind === "span") {
-        const a = to(sh.a);
-        const b = to(sh.b);
-        if (a && b) {
-          // Thin lines out from the two ends, past the dimension's own line; that line between them, with arrows
-          // where it is long enough for them; the size at its middle.
-          const a2 = [a[0] + dx * dist, a[1] + dy * dist];
-          const b2 = [b[0] + dx * dist, b[1] + dy * dist];
-          line = seg([a[0] + dx * 4, a[1] + dy * 4], [a2[0] + dx * 5, a2[1] + dy * 5]) + seg([b[0] + dx * 4, b[1] + dy * 4], [b2[0] + dx * 5, b2[1] + dy * 5]) + seg(a2, b2);
-          const len = Math.hypot(b2[0] - a2[0], b2[1] - a2[1]);
-          if (len > 34) {
-            const ux = (b2[0] - a2[0]) / len;
-            const uy = (b2[1] - a2[1]) / len;
-            heads = head(a2, -ux, -uy) + head(b2, ux, uy);
+      const [hw, hh] = [m.w / 2, sh ? 11 : 7];
+      // (A few steps further out at most: past that it would be nowhere near what it belongs to.)
+      // Further out a step at a time; a length whose own side is full, on the line's other side. Nowhere free: where
+      // it would have gone to begin with.
+      const tries: [number, number][] = sh?.kind === "span" ? [[1, 0], [1, 1], [1, 2], [-1, 0], [-1, 1], [1, 3], [-1, 2], [1, 0]] : [[1, 0], [1, 1], [1, 2], [1, 3], [1, 4], [1, 0]];
+      for (const [side, step] of tries) {
+        const dist = dist0 + step * (sh ? 20 : 15);
+        const [ox, oy] = [dx * side, dy * side];
+        line = "";
+        heads = "";
+        at = [s[0] + ox * (dist + 4), s[1] + oy * (dist + 4)];
+        if (sh?.kind === "span") {
+          const a = to(sh.a);
+          const b = to(sh.b);
+          if (a && b) {
+            // Thin lines out from the two ends, past the dimension's own line; that line between them, with arrows
+            // where it is long enough for them; the size at its middle.
+            const a2 = [a[0] + ox * dist, a[1] + oy * dist];
+            const b2 = [b[0] + ox * dist, b[1] + oy * dist];
+            line = seg([a[0] + ox * 4, a[1] + oy * 4], [a2[0] + ox * 5, a2[1] + oy * 5]) + seg([b[0] + ox * 4, b[1] + oy * 4], [b2[0] + ox * 5, b2[1] + oy * 5]) + seg(a2, b2);
+            const len = Math.hypot(b2[0] - a2[0], b2[1] - a2[1]);
+            if (len > 34) {
+              const ux = (b2[0] - a2[0]) / len;
+              const uy = (b2[1] - a2[1]) / len;
+              heads = head(a2, -ux, -uy) + head(b2, ux, uy);
+            }
+            at = [(a2[0] + b2[0]) / 2, (a2[1] + b2[1]) / 2];
+            // (Too short for its size to sit on it: the size past its end, in line with it.)
+            if (len < m.w + 22 && len > 1e-6) at = [b2[0] + ((b2[0] - a2[0]) / len) * (m.w / 2 + 8), b2[1] + ((b2[1] - a2[1]) / len) * (m.w / 2 + 8)];
           }
-          at = [(a2[0] + b2[0]) / 2, (a2[1] + b2[1]) / 2];
-          // (Too short for its size to sit on it: the size past its end, in line with it.)
-          if (len < m.w + 22 && len > 1e-6) at = [b2[0] + ((b2[0] - a2[0]) / len) * (m.w / 2 + 8), b2[1] + ((b2[1] - a2[1]) / len) * (m.w / 2 + 8)];
+        } else if (sh?.kind === "round") {
+          const c = to(sh.c);
+          const rim = to(sh.rim);
+          if (c && rim) {
+            const len = Math.hypot(rim[0] - c[0], rim[1] - c[1]) || 1;
+            const ux = (rim[0] - c[0]) / len;
+            const uy = (rim[1] - c[1]) / len;
+            // From the middle (a radius) or the far rim (a diameter) out through the rim, the size past it.
+            const from = sh.across ? [c[0] - ux * len, c[1] - uy * len] : c;
+            const out = [rim[0] + ux * (dist - 6), rim[1] + uy * (dist - 6)];
+            line = seg(from, out);
+            heads = head(rim, ux, uy) + (sh.across ? head(from, -ux, -uy) : "");
+            at = [out[0] + ux * (m.w / 2 + 4), out[1] + uy * (m.w / 2 + 4)];
+          }
+        } else if (sh?.kind === "angle") {
+          const v = to(sh.v);
+          const p1 = to([sh.v[0] + sh.d1[0] * 1e-3, sh.v[1] + sh.d1[1] * 1e-3]);
+          const p2 = to([sh.v[0] + sh.d2[0] * 1e-3, sh.v[1] + sh.d2[1] * 1e-3]);
+          if (v && p1 && p2) {
+            const a1 = Math.atan2(p1[1] - v[1], p1[0] - v[0]);
+            const a2 = Math.atan2(p2[1] - v[1], p2[0] - v[0]);
+            let sweep = a2 - a1;
+            while (sweep > Math.PI) sweep -= 2 * Math.PI;
+            while (sweep < -Math.PI) sweep += 2 * Math.PI;
+            const r = 26 + (dist - 22);
+            const q1 = [v[0] + r * Math.cos(a1), v[1] + r * Math.sin(a1)];
+            const q2 = [v[0] + r * Math.cos(a2), v[1] + r * Math.sin(a2)];
+            // An arc from one way round to the other, the size outside its middle.
+            line = `M${q1[0].toFixed(1)} ${q1[1].toFixed(1)}A${r} ${r} 0 0 ${sweep > 0 ? 1 : 0} ${q2[0].toFixed(1)} ${q2[1].toFixed(1)}`;
+            const am = a1 + sweep / 2;
+            at = [v[0] + (r + m.w / 2 + 6) * Math.cos(am), v[1] + (r + 14) * Math.sin(am)];
+          }
         }
-      } else if (sh?.kind === "round") {
-        const c = to(sh.c);
-        const rim = to(sh.rim);
-        if (c && rim) {
-          const len = Math.hypot(rim[0] - c[0], rim[1] - c[1]) || 1;
-          const ux = (rim[0] - c[0]) / len;
-          const uy = (rim[1] - c[1]) / len;
-          // From the middle (a radius) or the far rim (a diameter) out through the rim, the size past it.
-          const from = sh.across ? [c[0] - ux * len, c[1] - uy * len] : c;
-          const out = [rim[0] + ux * (dist - 6), rim[1] + uy * (dist - 6)];
-          line = seg(from, out);
-          heads = head(rim, ux, uy) + (sh.across ? head(from, -ux, -uy) : "");
-          at = [out[0] + ux * (m.w / 2 + 4), out[1] + uy * (m.w / 2 + 4)];
-        }
-      } else if (sh?.kind === "angle") {
-        const v = to(sh.v);
-        const p1 = to([sh.v[0] + sh.d1[0] * 1e-3, sh.v[1] + sh.d1[1] * 1e-3]);
-        const p2 = to([sh.v[0] + sh.d2[0] * 1e-3, sh.v[1] + sh.d2[1] * 1e-3]);
-        if (v && p1 && p2) {
-          const a1 = Math.atan2(p1[1] - v[1], p1[0] - v[0]);
-          const a2 = Math.atan2(p2[1] - v[1], p2[0] - v[0]);
-          let sweep = a2 - a1;
-          while (sweep > Math.PI) sweep -= 2 * Math.PI;
-          while (sweep < -Math.PI) sweep += 2 * Math.PI;
-          const r = 26 + (dist - 22);
-          const q1 = [v[0] + r * Math.cos(a1), v[1] + r * Math.sin(a1)];
-          const q2 = [v[0] + r * Math.cos(a2), v[1] + r * Math.sin(a2)];
-          // An arc from one way round to the other, the size outside its middle.
-          line = `M${q1[0].toFixed(1)} ${q1[1].toFixed(1)}A${r} ${r} 0 0 ${sweep > 0 ? 1 : 0} ${q2[0].toFixed(1)} ${q2[1].toFixed(1)}`;
-          const am = a1 + sweep / 2;
-          at = [v[0] + (r + m.w / 2 + 6) * Math.cos(am), v[1] + (r + 14) * Math.sin(am)];
-        }
+        if (!clash(at, hw, hh)) break;
       }
+      taken.push([at[0], at[1], hw, hh]);
       if (on) (d.litLine += line), (d.litHead += heads);
       else (d.line += line), (d.head += heads);
       m.x = at[0];
