@@ -506,6 +506,12 @@ button.menu-note {
 .dialog.whats-new {
   width: min(560px, calc(100vw - 24px));
 }
+.whats-new-ver {
+  margin-left: 8px;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--muted, #8a93a3);
+}
 .whats-new-tag {
   margin-left: 8px;
   padding: 1px 7px;

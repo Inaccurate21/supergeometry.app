@@ -1,15 +1,18 @@
 // More → Version: what is new. A short list per update, newest first, written for whoever uses the app (asked for:
 // "when we click on More>Version, it pops up a window that shows whats new in the latest push").
 //
-// EVERY PUSH adds to this list: a new entry at the top for a new day, or more lines in today's. Plain words, what
+// EVERY PUSH adds to this list (with the version it came in): a new entry at the top for a new day, or more lines in today's. Plain words, what
 // it does for the person, where it is. No other programs' names.
 
+import { lang } from "../i18n";
 import { icons } from "./icons";
 import { el } from "./ui";
 
 interface Update {
   /** The day it went out, YYYY-MM-DD. */
   date: string;
+  /** The app's version it came in (package.json's appVersion). */
+  version?: string;
   /** New things. */
   added?: string[];
   /** Things put right. */
@@ -17,6 +20,108 @@ interface Update {
 }
 
 export const UPDATES: Update[] = [
+  {
+    date: "2026-11-25",
+    version: "0.8.7.1",
+    added: ["More \u2192 Version lists the changes of every version, with its number."],
+  },
+  {
+    date: "2026-11-25",
+    version: "0.8.7.0",
+    added: [
+      "Measure works inside a sketch: the sketch stays open and its dimensions stay shown. Tap lines, circles and points (and faces or edges of bodies) for their length, diameter, radius, area, angle and the distance between two of them. Measure again, or Esc, goes back to drawing.",
+      "Sketch → View: Show dimensions and Show constraints are two separate switches (also in the constraints column).",
+      "The Items panel is the one open at the start, on every screen. History opens with its button.",
+    ],
+  },
+  {
+    date: "2026-11-25",
+    version: "0.8.6.0",
+    added: [
+      "Move / Copy: Set pivot stays on till Done. Tap a point to put the pivot there, slide it along X or Y by the gimbal's arrows (the curves stay put), or type its X and Y.",
+    ],
+  },
+  {
+    date: "2026-11-25",
+    version: "0.8.5.0",
+    added: [
+      "Picked sketch curves have a Move button beside them: it opens the Move / Copy window (on a phone too).",
+      "Sketch → View → Pick closed shapes: switched off, a tap inside a closed shape no longer picks its area with the extrude arrow.",
+    ],
+  },
+  {
+    date: "2026-11-25",
+    version: "0.8.4.0",
+    added: [
+      "Move / Copy window in a sketch: free move or point to point, the pivot, X and Y distances, angle, Create copy, OK and Cancel. It can be dragged by its title.",
+      "The gimbal's centre dot can be dragged anywhere: that is the point the curves are held by and turned about.",
+      "Sketch → View: bodies as they are, see-through or hidden; picking and snapping to the model on or off; grid.",
+    ],
+  },
+  {
+    date: "2026-11-25",
+    version: "0.8.3.0",
+    added: [
+      "Move in a sketch point to point: pick the point to move by (an end, a middle, a centre, a point on a circle's edge), then where it goes.",
+    ],
+  },
+  {
+    date: "2026-11-25",
+    version: "0.8.2.0",
+    added: [
+      "Sketch dimensions: click one to type a new size right where it is. Tab moves to the next size while drawing.",
+      "OSNAP on the sketch's bottom bar: end, middle, centre, on a curve, quadrant, perpendicular, tangent - each on or off.",
+      "Curves being moved snap to the other curves' points, with guide lines.",
+    ],
+  },
+  {
+    date: "2026-11-25",
+    version: "0.8.0.0",
+    added: [
+      "Sketch dimensions are drawn with extension lines and arrows, and can be dragged where they read best. Pinned measurements can be dragged too.",
+    ],
+  },
+  {
+    date: "2026-11-25",
+    version: "0.7.4.0",
+    added: [
+      "Changes from the original app merged in: Hole, a mesh you can edit, mouse styles of other CAD programs, a constraints list.",
+    ],
+  },
+  {
+    date: "2026-11-25",
+    version: "0.7.3.0",
+    added: [
+      "Themes: dark, light and AMOLED black (Settings).",
+      "Android app: the top bar sits under the camera cutout, and the S Pen settings are in groups.",
+    ],
+    fixed: ["The Android app closed at start after an update."],
+  },
+  {
+    date: "2026-11-25",
+    version: "0.7.1.0",
+    added: [
+      "Android app: the S Pen's side button and Air actions (the pen from afar), and full screen.",
+    ],
+    fixed: ["The Android app opened the browser at start."],
+  },
+  {
+    date: "2026-11-25",
+    version: "0.7.0.0",
+    added: [
+      "Android app (download from the site), with updates.",
+      "Diagnostics: a log that can be sent for analysis. Interface size in Settings.",
+    ],
+  },
+  {
+    date: "2026-11-25",
+    version: "0.6.0.1",
+    added: [
+      "The app in Polish (Settings → Language), and Settings → Update: load your own update package.",
+      "A version number on the app: big.key.small.fix.",
+    ],
+    fixed: ["A tablet pen's hover shows snap marks; a pen test shows what the pen sends."],
+  },
   {
     date: "2026-11-25",
     added: [
@@ -74,7 +179,7 @@ export const UPDATES: Update[] = [
 
 const day = (iso: string): string => {
   const d = new Date(`${iso}T12:00:00`);
-  return Number.isNaN(d.getTime()) ? iso : d.toLocaleDateString(undefined, { day: "numeric", month: "long", year: "numeric" });
+  return Number.isNaN(d.getTime()) ? iso : d.toLocaleDateString(lang === "pl" ? "pl-PL" : undefined, { day: "numeric", month: "long", year: "numeric" });
 };
 
 /** The window: the newest update on top, the ones before it under it. */
@@ -91,6 +196,7 @@ export function showWhatsNew(version: string): void {
   const body = el("div", "about-body");
   UPDATES.forEach((u, i) => {
     const h = el("h3", "", day(u.date));
+    if (u.version) h.append(el("span", "whats-new-ver", `Version ${u.version}`));
     if (i === 0) h.append(el("span", "whats-new-tag", "Latest"));
     body.append(h);
     for (const [title, lines] of [["New", u.added], ["Fixed", u.fixed]] as const) {
