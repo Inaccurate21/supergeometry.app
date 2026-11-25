@@ -43,6 +43,7 @@ function showAssistant(): void {
   const chromium = /Chrome\//.test(navigator.userAgent);
   const body = el("div", "ai-body");
   body.append(el("p", "", "Open Claude's extension (the Claude icon in Chrome's toolbar, or under the puzzle piece there) and tell it what you want made. It builds it in this tab while you watch. Then ask for changes, or change it yourself: every step is in History."));
+  body.append(el("p", "", "The app is built so Claude needs only a few steps for each change, to keep your Claude usage low."));
   if (!chromium) body.append(el("p", "ai-warn", "This needs the Chrome browser: Claude's extension is made for Chrome."));
   const get = el("a", "text-btn primary ai-get", "Get Claude for Chrome");
   get.href = STORE;
