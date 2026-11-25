@@ -47,7 +47,8 @@ if (native) {
   (window as unknown as { sgNativeInsets: (t: number, l: number, r: number, b: number, w: number) => void }).sgNativeInsets = (t, l, r, b, w) => {
     const k = (window.visualViewport?.width ?? innerWidth) / (w || innerWidth);
     const root = document.documentElement.style;
-    root.setProperty("--native-safe-t", `${Math.round(t * k)}px`);
+    // (The top bar's own 8 px margin goes on top of it: 4 of them are taken back, so it sits just under the camera.)
+    root.setProperty("--native-safe-t", `${Math.max(0, Math.round(t * k) - 4)}px`);
     root.setProperty("--native-safe-l", `${Math.round(l * k)}px`);
     root.setProperty("--native-safe-r", `${Math.round(r * k)}px`);
     root.setProperty("--native-safe-b", `${Math.round(b * k)}px`);

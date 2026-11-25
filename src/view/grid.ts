@@ -1,6 +1,7 @@
 import { DoubleSide, Matrix4, Mesh, PlaneGeometry, ShaderMaterial, Vector3 } from "three";
 import type { PlaneDef } from "../doc/types";
 import { planeY } from "../geom";
+import { SCENE } from "../theme";
 
 /**
  * Infinite-looking grid that adapts its spacing to the zoom level, or stays at a locked step. It lies on the ground,
@@ -68,7 +69,7 @@ export class AdaptiveGrid {
           float d = length(p - uCenter) / uRadius;
           a *= 1.0 - smoothstep(0.55, 1.0, d);
           if (a < 0.01) discard;
-          gl_FragColor = vec4(vec3(0.78), a);
+          gl_FragColor = vec4(vec3(${SCENE.grid.toFixed(2)}), a);
         }`,
     });
     this.mesh = new Mesh(new PlaneGeometry(1, 1), this.material);

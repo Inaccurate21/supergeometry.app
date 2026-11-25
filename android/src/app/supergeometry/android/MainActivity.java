@@ -190,7 +190,11 @@ public class MainActivity extends Activity {
         int t = 0, l = 0, r = 0, b = 0;
         DisplayCutout dc = wi.getDisplayCutout();
         if (fullscreen() && dc != null) {
+            // The top: just under the camera's hole itself (the safe inset is the whole status bar's height).
             t = dc.getSafeInsetTop();
+            int hole = 0;
+            for (android.graphics.Rect r : dc.getBoundingRects()) if (r.top <= 0 && r.bottom < web.getHeight() / 3) hole = Math.max(hole, r.bottom);
+            if (hole > 0) t = hole;
             l = dc.getSafeInsetLeft();
             r = dc.getSafeInsetRight();
             b = dc.getSafeInsetBottom();

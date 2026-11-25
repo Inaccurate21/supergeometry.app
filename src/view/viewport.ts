@@ -60,6 +60,7 @@ import { arrangement } from "../sketch/regions";
 import { CameraController, type Insets } from "./camera";
 import { AdaptiveGrid } from "./grid";
 import { analysisMaterial, curvatureOf } from "./analysis";
+import { SCENE } from "../theme";
 
 export type PickHit =
   | { kind: "face"; body: string; face: number; point: Vec3 }
@@ -168,7 +169,7 @@ const COLORS = {
   edge: 0x23262b,
   hover: 0x7fb2ff,
   select: 0x2f7bff,
-  sketch: 0xe8e8e8,
+  sketch: SCENE.sketch,
   sketchActive: 0xffc23d,
   // (A sketch's construction lines: an orange that stands out on a body's grey, a plane's blue and the dark floor
   // alike. They were a thin grey - the body's own colour, all but - and could hardly be seen drawn on a face.)
@@ -254,7 +255,7 @@ export class Viewport {
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, isHeadset ? 1.25 : 2));
     this.renderer.localClippingEnabled = true;
     this.cam = new CameraController(1);
-    this.scene.background = new Color(0x2b2d31);
+    this.scene.background = new Color(SCENE.background);
 
     this.scene.add(new HemisphereLight(0xffffff, 0x3a3d44, 1.1));
     this.scene.add(new AmbientLight(0xffffff, 0.25));
@@ -893,7 +894,7 @@ export class Viewport {
         }
       }
       if (solid.length) {
-        const mat = this.lineMaterial(active ? 0xffffff : COLORS.sketch, active ? 2.2 : 1.6, !onTop);
+        const mat = this.lineMaterial(active ? SCENE.sketchStrong : COLORS.sketch, active ? 2.2 : 1.6, !onTop);
         mat.transparent = true;
         this.sketchMats.push(mat);
         const l = new LineSegments2(new LineSegmentsGeometry().setPositions(solid), mat);
@@ -931,7 +932,7 @@ export class Viewport {
         this.sketchGroup.add(l);
       }
       if (active && this.sketchPoints.length) {
-        const dots = new Points(new BufferGeometry().setFromPoints(this.sketchPoints.map((q) => q.pos)), dotMaterial({ color: 0xffffff, size: 8 }));
+        const dots = new Points(new BufferGeometry().setFromPoints(this.sketchPoints.map((q) => q.pos)), dotMaterial({ color: SCENE.sketchStrong, size: 8 }));
         dots.renderOrder = 4;
         this.sketchGroup.add(dots);
       }

@@ -18,6 +18,7 @@ import { PEN_DRAGS, PEN_TAPS, penButtonSettings, setPenButton } from "../penButt
 import { androidInfo, buildReport, clearLog, logLines, sendReport } from "../diagnostics";
 import { setUiScale, uiScale, uiScaleWorks, UI_SCALE_MAX, UI_SCALE_MIN } from "../uiScale";
 import { lang, LANGS, saveLang, type Lang } from "../i18n";
+import { saveTheme, theme, THEMES, type Theme } from "../theme";
 import { loadPackage, packageInUse, packagesSupported, removePackage, type PackageInfo } from "./package";
 
 export function setupRightColumn(ui: UI, view: Viewport, store: DocStore, onUnits: (u: Units) => void, isolatedNames: () => string[] = () => []): void {
@@ -211,6 +212,18 @@ export function setupRightColumn(ui: UI, view: Viewport, store: DocStore, onUnit
     location.reload();
   };
 
+  // Theme: dark, light or black; the app reloads in it (the project is saved first).
+  kept("theme", (host) => {
+    host.append(heading("Theme"));
+    for (const [t, label] of THEMES) host.append(choiceRow(label, theme === t, () => void switchTheme(t)));
+  });
+  const switchTheme = async (t: Theme) => {
+    if (t === theme) return;
+    saveTheme(t);
+    await store.flush();
+    location.reload();
+  };
+
   // Update: the version running, and an own update package (src/ui/package.ts) to load in its place.
   let pkg: PackageInfo | null = null;
   let apkLatest: { versionCode: number; versionName: string } | null = null;
@@ -335,35 +348,71 @@ export function setupRightColumn(ui: UI, view: Viewport, store: DocStore, onUnit
     });
   });
 
-  // S Pen: what its side button does (in the Android app, which passes the button on).
+  // S Pen: what its side button does (in the Android app, which passes it on), in two kinds - at the screen and
+  // from afar - each gesture a row saying its action; a tap opens the actions to pick from.
+  type PenKey = "tap" | "drag" | "hover" | "click1" | "click2" | "click3" | "hold" | "wave";
+  let penPage: null | "screen" | "afar" | PenKey = null;
+  const GESTURES: Record<PenKey, { label: string; group: "screen" | "afar"; drag?: boolean }> = {
+    tap: { label: "Touch with the button held", group: "screen" },
+    drag: { label: "Drag with the button held", group: "screen", drag: true },
+    hover: { label: "Press the button over the screen", group: "screen" },
+    click1: { label: "One press", group: "afar" },
+    click2: { label: "Two presses", group: "afar" },
+    click3: { label: "Three presses", group: "afar" },
+    hold: { label: "Hold", group: "afar" },
+    wave: { label: "Hold and wave the pen", group: "afar", drag: true },
+  };
+  const actionName = (k: PenKey) => {
+    const v = penButtonSettings()[k];
+    return ((GESTURES[k].drag ? PEN_DRAGS : PEN_TAPS) as [string, string][]).find(([id]) => id === v)?.[1] ?? "";
+  };
+  const penNav = (label: string, now: string, to: typeof penPage) => {
+    const row = el("button", "pop-row pop-nav");
+    row.append(el("span", "", label), el("span", "pop-value", now), el("span", "pop-chev", "›"));
+    row.addEventListener("click", () => ((penPage = to), ui.refreshPopover()));
+    return row;
+  };
+  const penBack = (label: string, to: typeof penPage) => {
+    const b = el("button", "pop-row pop-back", `‹  ${label}`);
+    b.addEventListener("click", () => ((penPage = to), ui.refreshPopover()));
+    return b;
+  };
   kept("pen", (host) => {
     const p = penButtonSettings();
-    host.append(heading("S Pen side button"));
-    if (!("SGAndroid" in window)) host.append(el("div", "pop-note", "The side button works in the Android app (Settings → Updates → Android app): a browser doesn't pass it on."));
-    host.append(heading("Touch with the button held"));
-    for (const [id, label] of PEN_TAPS) host.append(choiceRow(label, p.tap === id, () => (setPenButton({ tap: id }), ui.refreshPopover())));
-    host.append(heading("Drag with the button held"));
-    for (const [id, label] of PEN_DRAGS) host.append(choiceRow(label, p.drag === id, () => (setPenButton({ drag: id }), ui.refreshPopover())));
-    host.append(heading("Press the button over the screen"));
-    for (const [id, label] of PEN_TAPS) host.append(choiceRow(label, p.hover === id, () => (setPenButton({ hover: id }), ui.refreshPopover())));
-    host.append(el("div", "pop-note", "If pressing the button over the screen opens Samsung's Air command instead, switch that off in the phone's settings (S Pen → Air command), or leave this on Nothing."));
-    host.append(heading("From afar (the pen off the screen)"));
-    host.append(el("div", "pop-note", "Over Bluetooth, with the pen away from the screen (an S Pen with Air actions, while the app is open). Hold the button and wave the pen to turn the view."));
-    const afar = (title: string, key: "click1" | "click2" | "click3" | "hold") => {
-      host.append(heading(title));
-      for (const [id, label] of PEN_TAPS) host.append(choiceRow(label, p[key] === id, () => (setPenButton({ [key]: id }), ui.refreshPopover())));
-    };
-    afar("One press", "click1");
-    afar("Two presses", "click2");
-    afar("Three presses", "click3");
-    afar("Hold", "hold");
-    host.append(heading("Hold and wave the pen"));
-    for (const [id, label] of PEN_DRAGS) host.append(choiceRow(label, p.wave === id, () => (setPenButton({ wave: id }), ui.refreshPopover())));
-    host.append(sliderRow("Speed", 0.3, 3, 0.1, p.waveSpeed, (v) => setPenButton({ waveSpeed: v }), (v) => `${v.toFixed(1)}×`));
+    if (penPage === null) {
+      host.append(heading("S Pen"));
+      if (!("SGAndroid" in window)) host.append(el("div", "pop-note", "The side button works in the Android app (Settings → Updates → Android app): a browser doesn't pass it on."));
+      host.append(
+        penNav("At the screen", actionName("tap"), "screen"),
+        penNav("From afar (Air actions)", actionName("click1"), "afar"),
+      );
+      host.append(el("div", "pop-note", "At the screen: the side button while the pen touches or hovers. From afar: over Bluetooth, the pen away from the screen, while the app is open."));
+      return;
+    }
+    if (penPage === "screen" || penPage === "afar") {
+      const group = penPage;
+      host.append(penBack("S Pen", null), heading(group === "screen" ? "At the screen" : "From afar (Air actions)"));
+      for (const k of Object.keys(GESTURES) as PenKey[]) if (GESTURES[k].group === group) host.append(penNav(GESTURES[k].label, actionName(k), k));
+      if (group === "afar") host.append(sliderRow("Wave speed", 0.3, 3, 0.1, p.waveSpeed, (v) => setPenButton({ waveSpeed: v }), (v) => `${v.toFixed(1)}×`));
+      host.append(
+        el(
+          "div",
+          "pop-note",
+          group === "screen"
+            ? "If pressing the button over the screen opens Samsung's Air command instead, switch that off in the phone's settings (S Pen → Air command), or set it to Nothing."
+            : "Presses count as one, two or three when they come quickly one after another. Hold: the button kept down without moving the pen. Wave: the button kept down while the pen moves through the air.",
+        ),
+      );
+      return;
+    }
+    const k = penPage;
+    const g = GESTURES[k];
+    host.append(penBack(g.group === "screen" ? "At the screen" : "From afar (Air actions)", g.group), heading(g.label));
+    for (const [id, label] of (g.drag ? PEN_DRAGS : PEN_TAPS) as [string, string][]) host.append(choiceRow(label, p[k] === id, () => (setPenButton({ [k]: id } as Partial<typeof p>), (penPage = g.group), ui.refreshPopover())));
   });
 
   // Settings: one row for each thing set now and then, saying how it is set; a tap opens its list (and back).
-  let page: "units" | "snap" | "appearance" | "lang" | "update" | "diag" | "pen" | null = null;
+  let page: "units" | "snap" | "appearance" | "lang" | "update" | "diag" | "pen" | "theme" | null = null;
   const gear = ui.addRight(
     "settings",
     "settings",
@@ -380,7 +429,7 @@ export function setupRightColumn(ui: UI, view: Viewport, store: DocStore, onUnit
       const nav = (label: string, now: string, to: NonNullable<typeof page>) => {
         const row = el("button", "pop-row pop-nav");
         row.append(el("span", "", label), el("span", "pop-value", now), el("span", "pop-chev", "›"));
-        row.addEventListener("click", () => ((page = to), ui.refreshPopover()));
+        row.addEventListener("click", () => ((page = to), (penPage = null), ui.refreshPopover()));
         return row;
       };
       const snaps = Object.values(s.snap).filter(Boolean).length;
@@ -391,9 +440,10 @@ export function setupRightColumn(ui: UI, view: Viewport, store: DocStore, onUnit
         toggleRow("Number pad on screen", s.numpad, (v) => settings.set("numpad", v)),
         nav("Appearance", `${s.ortho ? "Orthographic" : "Perspective"}${s.showGrid ? "" : " · no grid"}`, "appearance"),
         scaleRow(() => ui.refreshPopover()),
+        nav("Theme", THEMES.find(([t]) => t === theme)![1], "theme"),
         nav("Language", LANGS.find(([l]) => l === lang)![1], "lang"),
         nav("Updates", pkg ? "Own package" : `v${__APP_VERSION__}`, "update"),
-        nav("S Pen", PEN_TAPS.find(([id]) => id === penButtonSettings().tap)![1], "pen"),
+        nav("S Pen", "", "pen"),
         nav("Diagnostics", `${logLines().filter((l) => l.level === "error").length} errors`, "diag"),
       );
     },

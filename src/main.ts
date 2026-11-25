@@ -1,6 +1,7 @@
 // First: the language (the page's texts are translated as they appear).
 import "./diagnostics";
 import "./i18n";
+import "./theme";
 import "./uiScale";
 import "./android";
 import "./penButton";
