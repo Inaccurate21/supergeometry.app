@@ -28,6 +28,15 @@ import android.webkit.WebView;
 import android.webkit.WebViewClient;
 import android.widget.Toast;
 
+import android.os.Handler;
+import android.os.Looper;
+
+import com.samsung.android.sdk.penremote.AirMotionEvent;
+import com.samsung.android.sdk.penremote.ButtonEvent;
+import com.samsung.android.sdk.penremote.SpenRemote;
+import com.samsung.android.sdk.penremote.SpenUnit;
+import com.samsung.android.sdk.penremote.SpenUnitManager;
+
 import org.json.JSONObject;
 
 import java.io.OutputStream;
@@ -212,12 +221,131 @@ public class MainActivity extends Activity {
     protected void onPause() {
         super.onPause();
         web.onPause();
+        remoteOff();
     }
 
     @Override
     protected void onResume() {
         super.onResume();
         web.onResume();
+        remoteOn();
+    }
+
+    // ------------------------------------------------------------ the S Pen from afar (Samsung's S Pen Remote, over Bluetooth)
+    // Its button and the pen's motion in the air, while the app is in front (as PenMouseS does it). Made into
+    // presses the page acts on: one, two or three quick presses, a hold, and a hold while waving the pen (a drag).
+
+    private final Handler main = new Handler(Looper.getMainLooper());
+    private SpenUnitManager spen;
+    /** When the pen was last over or on the screen: its button then works through the screen, not from afar. */
+    long lastStylus;
+    private boolean rDown, rDragging, rHolding, rIgnored;
+    private int rClicks;
+    private float rMoved;
+
+    private void remote(String kind, float dx, float dy) {
+        web.evaluateJavascript("window.sgPenRemote&&sgPenRemote('" + kind + "'," + dx + "," + dy + ")", null);
+    }
+
+    private final Runnable rHold = () -> {
+        if (!rDown || rDragging) return;
+        rHolding = true;
+        remote("hold", 0, 0);
+    };
+    private final Runnable rClick = () -> {
+        if (rClicks > 0) remote("click" + Math.min(rClicks, 3), 0, 0);
+        rClicks = 0;
+    };
+
+    private void onRemoteButton(int action) {
+        if (action == ButtonEvent.ACTION_DOWN) {
+            rIgnored = System.currentTimeMillis() - lastStylus < 400;
+            if (rIgnored) return;
+            rDown = true;
+            rDragging = rHolding = false;
+            rMoved = 0;
+            main.removeCallbacks(rClick);
+            main.postDelayed(rHold, 450);
+        } else if (action == ButtonEvent.ACTION_UP) {
+            if (rIgnored || !rDown) return;
+            rDown = false;
+            main.removeCallbacks(rHold);
+            if (rDragging) remote("drag-end", 0, 0);
+            else if (rHolding) remote("hold-end", 0, 0);
+            else {
+                rClicks++;
+                main.postDelayed(rClick, 350);
+            }
+        }
+    }
+
+    private void onRemoteMotion(float dx, float dy) {
+        if (!rDown || rHolding) return;
+        if (!rDragging) {
+            rMoved += Math.abs(dx) + Math.abs(dy);
+            if (rMoved < 0.02f) return;
+            rDragging = true;
+            main.removeCallbacks(rHold);
+            remote("drag-start", 0, 0);
+        }
+        remote("move", dx, dy);
+    }
+
+    private void remoteOn() {
+        try {
+            SpenRemote r = SpenRemote.getInstance();
+            if (!r.isFeatureEnabled(SpenRemote.FEATURE_TYPE_BUTTON)) {
+                report("info", "S Pen remote: this device has none");
+                return;
+            }
+            if (r.isConnected()) return;
+            r.connect(this, new SpenRemote.ConnectionResultCallback() {
+                @Override
+                public void onSuccess(SpenUnitManager m) {
+                    spen = m;
+                    // (As PenMouseS: listening right away after connecting can miss.)
+                    main.postDelayed(() -> {
+                        if (spen == null) return;
+                        try {
+                            spen.registerSpenEventListener(e -> main.post(() -> onRemoteButton(new ButtonEvent(e).getAction())), spen.getUnit(SpenUnit.TYPE_BUTTON));
+                            if (r.isFeatureEnabled(SpenRemote.FEATURE_TYPE_AIR_MOTION)) {
+                                spen.registerSpenEventListener(e -> {
+                                    AirMotionEvent a = new AirMotionEvent(e);
+                                    float dx = a.getDeltaX(), dy = a.getDeltaY();
+                                    main.post(() -> onRemoteMotion(dx, dy));
+                                }, spen.getUnit(SpenUnit.TYPE_AIR_MOTION));
+                            }
+                            report("info", "S Pen remote: connected");
+                        } catch (Throwable t) {
+                            report("warn", "S Pen remote: can't listen - " + t);
+                        }
+                    }, 1000);
+                }
+
+                @Override
+                public void onFailure(int code) {
+                    report("warn", "S Pen remote: connection failed (" + code + ")");
+                }
+            });
+        } catch (Throwable t) {
+            report("info", "S Pen remote unavailable: " + t);
+        }
+    }
+
+    private void remoteOff() {
+        main.removeCallbacks(rHold);
+        main.removeCallbacks(rClick);
+        rDown = false;
+        try {
+            if (spen != null) {
+                spen.unregisterSpenEventListener(spen.getUnit(SpenUnit.TYPE_BUTTON));
+                spen.unregisterSpenEventListener(spen.getUnit(SpenUnit.TYPE_AIR_MOTION));
+            }
+            spen = null;
+            SpenRemote.getInstance().disconnect(this);
+        } catch (Throwable t) {
+            // not connected
+        }
     }
 
     void toast(String text) {
@@ -344,6 +472,7 @@ public class MainActivity extends Activity {
 
         @Override
         public boolean dispatchTouchEvent(MotionEvent e) {
+            if (stylus(e)) lastStylus = System.currentTimeMillis();
             if (stylus(e)) {
                 int a = e.getActionMasked();
                 if (a == MotionEvent.ACTION_DOWN && sideButton(e)) {
@@ -366,6 +495,7 @@ public class MainActivity extends Activity {
 
         @Override
         public boolean dispatchGenericMotionEvent(MotionEvent e) {
+            if (stylus(e)) lastStylus = System.currentTimeMillis();
             if (stylus(e)) {
                 boolean b = sideButton(e);
                 if (b != hoverButton) {

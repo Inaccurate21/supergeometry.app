@@ -347,6 +347,19 @@ export function setupRightColumn(ui: UI, view: Viewport, store: DocStore, onUnit
     host.append(heading("Press the button over the screen"));
     for (const [id, label] of PEN_TAPS) host.append(choiceRow(label, p.hover === id, () => (setPenButton({ hover: id }), ui.refreshPopover())));
     host.append(el("div", "pop-note", "If pressing the button over the screen opens Samsung's Air command instead, switch that off in the phone's settings (S Pen → Air command), or leave this on Nothing."));
+    host.append(heading("From afar (the pen off the screen)"));
+    host.append(el("div", "pop-note", "Over Bluetooth, with the pen away from the screen (an S Pen with Air actions, while the app is open). Hold the button and wave the pen to turn the view."));
+    const afar = (title: string, key: "click1" | "click2" | "click3" | "hold") => {
+      host.append(heading(title));
+      for (const [id, label] of PEN_TAPS) host.append(choiceRow(label, p[key] === id, () => (setPenButton({ [key]: id }), ui.refreshPopover())));
+    };
+    afar("One press", "click1");
+    afar("Two presses", "click2");
+    afar("Three presses", "click3");
+    afar("Hold", "hold");
+    host.append(heading("Hold and wave the pen"));
+    for (const [id, label] of PEN_DRAGS) host.append(choiceRow(label, p.wave === id, () => (setPenButton({ wave: id }), ui.refreshPopover())));
+    host.append(sliderRow("Speed", 0.3, 3, 0.1, p.waveSpeed, (v) => setPenButton({ waveSpeed: v }), (v) => `${v.toFixed(1)}×`));
   });
 
   // Settings: one row for each thing set now and then, saying how it is set; a tap opens its list (and back).

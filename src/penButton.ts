@@ -7,16 +7,24 @@
 // - Pressing the button while the pen hovers: a "hover" action (by default Undo).
 // Done the way a mouse or a keyboard would do it, so every tool takes it.
 
-export type PenTap = "context" | "undo" | "escape" | "done" | "fit" | "none";
+export type PenTap = "context" | "undo" | "redo" | "escape" | "done" | "fit" | "none";
 export type PenDrag = "orbit" | "pan" | "none";
 export interface PenButtonSettings {
   tap: PenTap;
   drag: PenDrag;
   hover: PenTap;
+  /** From afar (the pen away from the screen, over Bluetooth): one, two, three presses, a hold, a hold while waving it. */
+  click1: PenTap;
+  click2: PenTap;
+  click3: PenTap;
+  hold: PenTap;
+  wave: PenDrag;
+  /** How far the view turns for the pen's wave: 0.5 slow … 2 fast. */
+  waveSpeed: number;
 }
 
 const KEY = "supergeometry.penButton";
-const DEFAULTS: PenButtonSettings = { tap: "context", drag: "orbit", hover: "undo" };
+const DEFAULTS: PenButtonSettings = { tap: "context", drag: "orbit", hover: "undo", click1: "undo", click2: "redo", click3: "fit", hold: "escape", wave: "orbit", waveSpeed: 1 };
 
 export function penButtonSettings(): PenButtonSettings {
   try {
@@ -37,6 +45,7 @@ export function setPenButton(patch: Partial<PenButtonSettings>): void {
 export const PEN_TAPS: [PenTap, string][] = [
   ["context", "Menu (as a right-click)"],
   ["undo", "Undo"],
+  ["redo", "Redo"],
   ["escape", "Step back (Esc)"],
   ["done", "Done (Enter)"],
   ["fit", "Fit the view"],
@@ -68,6 +77,9 @@ function act(a: PenTap, x: number, y: number): void {
       return;
     case "undo":
       (document.getElementById("undo-btn") as HTMLButtonElement | null)?.click();
+      return;
+    case "redo":
+      (document.getElementById("redo-btn") as HTMLButtonElement | null)?.click();
       return;
     case "escape":
       return key("Escape");
@@ -112,4 +124,44 @@ function handle(kind: string, px: number, py: number, w: number): void {
   }
 }
 
-if ("SGAndroid" in window) (window as unknown as { sgPenButton: typeof handle }).sgPenButton = handle;
+// ------------------------------------------------------------ from afar
+
+let wave: { x: number; y: number; b: number } | null = null;
+
+function remote(kind: string, dx: number, dy: number): void {
+  const s = penButtonSettings();
+  const c = canvas()?.getBoundingClientRect();
+  const cx = c ? c.left + c.width / 2 : innerWidth / 2;
+  const cy = c ? c.top + c.height / 2 : innerHeight / 2;
+  switch (kind) {
+    case "click1":
+      return act(s.click1, cx, cy);
+    case "click2":
+      return act(s.click2, cx, cy);
+    case "click3":
+      return act(s.click3, cx, cy);
+    case "hold":
+      return act(s.hold, cx, cy);
+    case "drag-start":
+      if (s.wave === "none") return;
+      wave = { x: cx, y: cy, b: s.wave === "pan" ? 1 : 2 };
+      mouse("pointerdown", cx, cy, wave.b, wave.b === 1 ? 4 : 2);
+      return;
+    case "move":
+      if (!wave) return;
+      // (As PenMouseS reads the pen's motion: about a thousand pixels a unit, up is +y.)
+      wave.x += dx * 1000 * s.waveSpeed;
+      wave.y -= dy * 1000 * s.waveSpeed;
+      mouse("pointermove", wave.x, wave.y, -1, wave.b === 1 ? 4 : 2);
+      return;
+    case "drag-end":
+      if (wave) mouse("pointerup", wave.x, wave.y, wave.b, 0);
+      wave = null;
+      return;
+  }
+}
+
+if ("SGAndroid" in window) {
+  (window as unknown as { sgPenButton: typeof handle }).sgPenButton = handle;
+  (window as unknown as { sgPenRemote: typeof remote }).sgPenRemote = remote;
+}

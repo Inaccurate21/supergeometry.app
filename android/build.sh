@@ -4,6 +4,7 @@
 # serves both, and Settings → Updates links to it.
 #   ANDROID_HOME=/path/to/sdk bash android/build.sh
 # Needs the SDK's platforms;android-35 and build-tools;35.0.0, and a JDK.
+# libs/: Samsung's S Pen Remote SDK (the pen's button and motion from afar), as PenMouseS uses it.
 # Its version is package.json's appVersion (D.K.Z.P); the version code is
 # D*1000000 + K*10000 + Z*100 + P.
 set -euo pipefail
@@ -18,8 +19,9 @@ rm -rf build && mkdir -p build/gen build/classes build/dex
 "$BT/aapt2" link -o build/base.apk -I "$JAR" --manifest AndroidManifest.xml \
   --version-code "$CODE" --version-name "$NAME" --min-sdk-version 29 --target-sdk-version 34 \
   --java build/gen build/res.zip
-javac -nowarn --release 11 -classpath "$JAR" -d build/classes $(find src build/gen -name '*.java') 2>&1 | grep -v '^Picked up' || true
-"$BT/d8" --release --lib "$JAR" --min-api 29 --output build/dex $(find build/classes -name '*.class')
+LIBS="libs/sdk-v1.0.0.jar:libs/spenremote-v1.0.1.jar"
+javac -nowarn --release 11 -classpath "$JAR:$LIBS" -d build/classes $(find src build/gen -name '*.java') 2>&1 | grep -v '^Picked up' || true
+"$BT/d8" --release --lib "$JAR" --min-api 29 --output build/dex $(find build/classes -name '*.class') libs/sdk-v1.0.0.jar libs/spenremote-v1.0.1.jar
 cp build/base.apk build/unsigned.apk
 (cd build/dex && zip -q ../unsigned.apk classes.dex)
 "$BT/zipalign" -f -p 4 build/unsigned.apk build/aligned.apk
