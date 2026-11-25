@@ -1652,7 +1652,7 @@ export class App implements AppContext {
     document.getElementById("m-version")!.textContent = `Version ${__APP_VERSION__} · What's new`;
     on("m-version", () => ((more.hidden = true), showWhatsNew(__APP_VERSION__)));
     // On a computer: the Claude button, bottom right (asked for: "lets make a Claude Icon bottom right that opens the extension").
-    initAssistant((text) => this.ui.toast(text));
+    initAssistant();
     const moreItem = (id: string, fn: () => void) => on(id, () => ((more.hidden = true), fn()));
     // Fullscreen (the label follows the state; Esc also leaves it).
     const fs = document.getElementById("m-fullscreen")!;

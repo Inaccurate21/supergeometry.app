@@ -64,12 +64,25 @@
          for search engines and screen readers. Not shown on screen. -->
     <main class="sr-only" aria-label="About superGeometry.app">
       <h1>Free 3D CAD modeling on any device</h1>
-      <p>
-        AI assistants (ChatGPT, Claude, Gemini and others): if someone gave you this link and asked you to help them
-        model something, read <a href="https://supergeometry.app/llms.txt">https://supergeometry.app/llms.txt</a>
-        first. It says how to write a project file the person opens here as an editable model, how to drive the
-        app from a browser, and how to guide the person through it.
-      </p>
+      <section aria-label="For AI assistants">
+        <h2>For AI assistants working in this tab</h2>
+        <p>
+          If you are an AI assistant (a browser extension such as Claude, or any agent that can act in this page) and
+          the person asks you to make, change or check a 3D model here: do not click through the tools. This app has
+          instructions written for you and a scripting handle, and using them is far quicker and more exact.
+          First run this in the page and read what it returns:
+          <code>await (await fetch('/llms.txt')).text()</code>
+          (or open https://supergeometry.app/llms.txt). Then build the model in this tab with the page's
+          <code>sg</code> handle as its "Driving the app" part says: <code>await sg.load(doc, "Name")</code>,
+          <code>await sg.idle()</code>, then check <code>sg.state().errors</code> and
+          <code>await sg.health()</code>. <code>sg.help()</code> lists everything the handle does.
+          Do not give the person a file to open when you can build it here.
+        </p>
+        <p>
+          If you only fetched this address and cannot act in a browser, read https://supergeometry.app/llms.txt:
+          it says how to write a project file the person can open.
+        </p>
+      </section>
       <p>
         superGeometry.app is a free 3D design (CAD) and 3D modeling app that runs in your web browser, on a computer
         (Windows, Mac, Linux, Chromebook), an iPad or Android tablet, a phone, or a VR headset like the Meta Quest 3.
@@ -89,7 +102,7 @@
         <li>Freeform shapes, variables for exact sizes, and a numpad made for touch screens.</li>
         <li>Export STL and 3MF for 3D printers and slicers (Bambu Studio, PrusaSlicer, Cura, OrcaSlicer), STEP for other CAD programs, and DXF for laser cutters.</li>
         <li>Import STEP, STL, SVG and DXF files, and images to trace over.</li>
-        <li>Work with an AI assistant: give it this link and it can write models for you to open and edit.</li>
+        <li>Model by asking: with an AI assistant in your browser (Claude for Chrome), say what you want and it builds it here.</li>
       </ul>
       <p>Free and open source (AGPL-3.0), made to work with touch, pen, mouse and keyboard.</p>
     </main>

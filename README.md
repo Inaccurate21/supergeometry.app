@@ -512,8 +512,8 @@ how to build a model in the person's open tab with the page's `sg` handle, the s
 examples that are tested against the app on every change (`tests/llms.test.ts`).
 
 **People:** on a computer, the **Claude** button at the bottom right shows how to model by asking. It needs
-Claude's extension for Chrome: open it beside the app, paste the request the button writes for you, and Claude
-builds the model in your tab. The app sends nothing anywhere; the extension works in your own browser.
+Claude's extension for Chrome: open it beside the app, say what you want, and Claude builds the model in your
+tab. The app sends nothing anywhere; the extension works in your own browser.
 
 **What it is.** A browser-based parametric solid modeler. Geometry is
 OpenCascade (via replicad) running in a Web Worker; the UI is plain DOM over a
