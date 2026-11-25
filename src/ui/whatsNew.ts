@@ -31,6 +31,7 @@ export const UPDATES: Update[] = [
     ],
     fixed: [
       "Every change to a body with very many faces is quicker.",
+      "In a sketch, constraint marks and dimension boxes no longer sit on top of each other.",
       "In a sketch, a line that ends on a circle closes the shape it should: the area between them fills and can be extruded.",
       "Several touching areas of a sketch extruded together always come out whole. A ring could go missing from the body when one of its circles ran a hair from another line.",
     ],
