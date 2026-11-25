@@ -118,8 +118,7 @@ export function showAbout(): void {
   head.append(closeBtn);
   const body = el("div", "about-body");
   body.innerHTML = render(aboutText());
-  // The name at the top opens the project's page on GitHub (asked for: "make the top text superGeometry.app
-  // clickable and should take you to the Github page").
+  // The name at the top opens the project's page on GitHub.
   const name = body.querySelector("h1");
   if (name) {
     const link = document.createElement("a");

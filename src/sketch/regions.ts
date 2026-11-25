@@ -178,8 +178,7 @@ function compute(entities: SketchEntity[]): Arrangement {
   // ---- ends that lie on another curve
   // A line drawn up to a circle, its end held on it, meets the circle - but not the straight pieces the circle is
   // looked at as above: its end is on the true round, a hair outside them, and nothing crossed. The shape the line
-  // closed was no shape (reported: "Points are coincidents. The area under the circle doesn't fill, unless the
-  // circle crosses the bottom line"). So each open curve's ends are looked for on every other curve itself, and
+  // closed was no shape. So each open curve's ends are looked for on every other curve itself, and
   // that curve is cut where one lies on it.
   const onTol = eps * 50;
   const endBoxes = samples.map((s) => {
@@ -239,7 +238,7 @@ function compute(entities: SketchEntity[]): Arrangement {
     // Cuts nearer each other than two ends are told apart (see nodeOf) are one cut. A circle that just touches a
     // line is cut there twice, a hair apart: the two were kept, the piece between them began and ended at one
     // point, and so did the rest of the circle - all of it, as one arc from a point to itself, which the kernel
-    // broke down on (reported: "The extrusion with the circle is buggy").
+    // broke down on.
     const along = samples[pi].pts.reduce((s, q, k, all) => (k ? s + Math.hypot(q[0] - all[k - 1][0], q[1] - all[k - 1][1]) : 0), 0) || 1;
     const near = Math.max(1e-9, (eps * 75) / along);
     let uniq: number[];

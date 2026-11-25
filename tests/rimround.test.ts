@@ -1,6 +1,5 @@
 // Run: npx tsx tests/rimround.test.ts
-// A shelled bowl's rim rounded on both edges by half the wall: a full round rim. Reported: "check why i cant make
-// two 0.5mm fillets ... on a shell that is 1mm thick" - "the radius is too big for the faces around those edges".
+// A shelled bowl's rim rounded on both edges by half the wall: a full round rim. It was refused: "the radius is too big for the faces around those edges".
 import type { Feature, SketchEntity } from "../src/doc/types";
 import { arrangement, regionRef } from "../src/sketch/regions";
 import { regenerate } from "../src/kernel/engine";

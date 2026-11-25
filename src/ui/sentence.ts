@@ -478,8 +478,7 @@ export class Sentence {
       const g = main.find((m) => m.id === id);
       const mine = [...(by.get(id) ?? [])].sort((x, y) => rank(x) - rank(y));
       const its = mine.map((it) => this.verb(it));
-      // Something picked: every other tool of the group is there too, under the pick's own (asked for: "it shows only
-      // a certain suite of tools. I want to show all available tools") - one that cannot use this pick asks for its
+      // Something picked: every other tool of the group is there too, under the pick's own - one that cannot use this pick asks for its
       // own as it starts. (Not one the pick has under a longer name: Pattern, with Pattern - Linear there.)
       const have = new Set(mine.flatMap((it) => [it.id, ALIAS[it.id] ?? it.id, it.label]));
       const rest = sel.length ? usable(g?.children ?? []).filter(notSep).filter((it) => !have.has(it.id) && !have.has(it.label) && !mine.some((m) => m.label.startsWith(it.label))).map((it) => this.verb(it, "r")) : [];
@@ -553,8 +552,7 @@ export class Sentence {
         const w = its.map(retapped);
         const word = this.group(g.id, g.label, g.icon, w, "Pick a line or a shape of the sketch first.");
         // Draw opened with no tool on: Line is on, its list open as ever - a tap on the grid draws at once, a tap
-        // in the list takes another (asked for: "when I click draw, line should be automatically selected (but
-        // the window with different line types should open normally) so I can start drawing right away").
+        // in the list takes another.
         if (g.id === "draw" && !drawing && picked === 0) {
           const line = w.find((x) => x.key.endsWith("line") || x.label === "Line");
           if (line?.run) word.opens = line.run;
@@ -700,9 +698,8 @@ export class Sentence {
     // (Not on a screen too low for it - a phone on its side: there it is one line to slide along too.)
     this.row.classList.toggle("sn-wrap", b.about.startsWith("tool:") && innerHeight > 480);
     // A phone held upright, in a sketch with a tool's own parts on the line (Line on, a point placed: Stop, Values,
-    // Draw, Modify, Transform, Delete): two rows of buttons, each a picture over its name, all in view (asked for:
-    // "it's so small and I have to scroll right in a box that is only a button wide. Maybe you can make that option
-    // window 2 buttons tall?"). It was one row to slide, a button and a half wide beside More and Exit.
+    // Draw, Modify, Transform, Delete): two rows of buttons, each a picture over its name, all in view.
+    // It was one row to slide, a button and a half wide beside More and Exit.
     const upright = document.documentElement.dataset.screen === "phone" && matchMedia("(max-width: 720px) and (orientation: portrait)").matches;
     this.line.classList.toggle("sn-two", upright && b.about.startsWith("sketch:") && !b.grouped);
     if (fresh) this.row.scrollLeft = 0;
@@ -1017,8 +1014,7 @@ export class Sentence {
   /** The words from the line down to `key` (Transform, Pattern). */
   /**
    * Is what is open More's list, or a list opened from inside it (More > BIM, More > Insert)? More stays lit for
-   * those too: a list two or three deep still shows which button it came from (asked for: "if I open a level 3
-   * window, the effect stops showing from what button I started"). A list under one of the line's own words has
+   * those too: a list two or three deep still shows which button it came from. A list under one of the line's own words has
    * that word lit (see `openTop`); one from More is under no word of the line, and nothing was lit.
    */
   private fromMore(): boolean {
@@ -1041,8 +1037,7 @@ export class Sentence {
   }
 
   /**
-   * What More holds: only what is not on the line already (asked for: "in More there should only be tools that are
-   * not already in the bar"). A group that is a word on the line is opened there - More repeated every one of them
+   * What More holds: only what is not on the line already. A group that is a word on the line is opened there - More repeated every one of them
    * under the few things that were its own.
    */
   private beyond(b: Built): Built["groups"] {
@@ -1164,8 +1159,7 @@ export class Sentence {
   }
 
   /**
-   * The open list made the size of what is in it (asked for: "auto adjustable based on how many buttons are in that
-   * window. Right now it opens and it has empty space"). Its buttons in even rows - as many across as fit, the rows
+   * The open list made the size of what is in it. Its buttons in even rows - as many across as fit, the rows
    * as near the same length as they come - each as wide as the widest, and a last row that is short has its buttons
    * wider, so no row ends in a gap. The list is then just as wide as its rows. (It was one width for any number of
    * buttons, each row ending where its words happened to.)
@@ -1288,8 +1282,7 @@ export class Sentence {
       const text = input.value.trim();
       // (Left as it was and walked away from: nothing to do - a size that follows a variable is not made a plain
       // number by looking at it. Enter on it as it is says "this size": a picked line's Length, entered, is that
-      // line's length from now on - asked for: "if i click on a line and then click length and hit enter, that
-      // dimension should be a dimension constraint". Its formula, if it has one, is entered with it and stays.)
+      // line's length from now on. Its formula, if it has one, is entered with it and stays.)
       if (keep && (text !== was || entered)) {
         const n = evaluate(text, v.kind === "int" ? "number" : v.kind);
         if (n === null) {

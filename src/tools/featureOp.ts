@@ -99,9 +99,7 @@ export abstract class FeatureOp<F extends Feature> implements Tool {
 
   // ---- Undo inside the tool
   // Each change made while the tool is open - a drag of its handle, a value typed, an option chosen, something more
-  // picked - is a step of its own that Undo takes back, one at a time, and Redo puts back (asked for: "when I ...
-  // select a vertex and I move it around, and I hit undo, that undo should change the last modification, not go back
-  // to the extruding action or the one before entirely ... I want full history control"). Undo used to close the tool,
+  // picked - is a step of its own that Undo takes back, one at a time, and Redo puts back. Undo used to close the tool,
   // throwing all of it away, and then take back the step before it as well. With nothing left to take back in the
   // tool, Undo closes it (nothing made); the next Undo is the project's.
   private steps: string[] = [];

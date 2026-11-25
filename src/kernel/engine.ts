@@ -1411,8 +1411,7 @@ async function apply(f: Feature, ctx: Ctx): Promise<void> {
           // less gives the same shape, to a millionth of a millimetre.
           // (A little more than a hair where a face beside it is not exact: a shelled bowl's inner rim is a curve
           // fitted to a circle, its wall a 1 mm that is not 1 everywhere, and both rim edges rounded 0.5 - a full
-          // round rim - failed at 0.49995 too and worked at 0.499. Reported: "check why i cant make two 0.5mm
-          // fillets ... on a shell that is 1mm thick". Three thousandths less at most: 0.0015 mm of that rim.)
+          // round rim - failed at 0.49995 too and worked at 0.499. Three thousandths less at most: 0.0015 mm of that rim.)
           for (const k of [1 - 1e-6, 1 - 1e-5, 1 - 1e-4, 1 - 1e-3, 1 - 3e-3]) {
             try {
               result = edge(f.radius * k);
@@ -2182,9 +2181,7 @@ function shapeThrough(s: Shape3D, m: Affine): Shape3D {
 /**
  * Linked bodies follow each other: a step that changed one body of a group (rounded an edge of it, cut a hole in
  * it, joined something to it...) leaves every other body of the group changed the same way - the changed body's
- * new shape, put where the other stands. (Asked for: "if it's linked, whatever change I do to any copy of that
- * body or the original, it should also change the other ones exactly the same. We should also have this in
- * patterns".) Moving or turning one of them is its own business: that only changes where it stands. One deleted,
+ * new shape, put where the other stands. Moving or turning one of them is its own business: that only changes where it stands. One deleted,
  * or used up by a join, leaves the group; the others stay.
  */
 function followLinks(step: string, before: Ctx, out: Ctx): void {
@@ -3422,7 +3419,7 @@ let stepsNow = new Set<string>();
 
 /**
  * A threaded body grown by `by` (the clearance a Subtract keeps round it). The kernel's own offset of a thread's
- * helical faces fails every time (asked: "when I want to subtract a thread and I put clearance, it always fails").
+ * helical faces fails every time.
  * So: its grooves filled back in (a cylinder over the thread's reach - what it was before the thread), that
  * grown, and the same thread cut on its round face - a thread that much bigger all round (in a hole: that much
  * smaller), which is what a nut cut with it needs to turn on the bolt with that gap.
@@ -5574,7 +5571,7 @@ function patternCount(n: number): void {
  * either side of them. A block's upright corner with a slanting cut down its upper half is two such edges: the lower
  * between the left wall and the front, the upper between the left wall and the cut's slanting wall. Rounded as one,
  * the kernel made the lower round, a short piece of the upper, and between them a swooping surface down the slanting
- * wall (reported with a file: "Check whats going on with Fillet 5"). Rounded one after the other they are two plain
+ * wall. Rounded one after the other they are two plain
  * rounds, each the size asked. So: edges that meet end to end going the same way, with a wall beside one that is
  * not a wall beside the other and does not run on smoothly into it, are put in different runs.
  */

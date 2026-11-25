@@ -1,5 +1,4 @@
-// More → Version: what is new. A short list per update, newest first, written for whoever uses the app (asked for:
-// "when we click on More>Version, it pops up a window that shows whats new in the latest push").
+// More → Version: what is new. A short list per update, newest first, written for whoever uses the app.
 //
 // EVERY PUSH adds to this list: a new entry at the top for a new day, or more lines in today's. Plain words, what
 // it does for the person, where it is. No other programs' names.

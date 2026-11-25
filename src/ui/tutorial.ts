@@ -2,9 +2,6 @@
 // its edges chamfered, and the nut that fits it with room to turn - printable as they are - with tools from across
 // the line: Sketch, Create, Modify, Combine. The whole screen is
 // dimmed and takes no taps but for the one spot to tap next, which is lit, with a short sentence beside it.
-// (Asked for: "building something with a beginner but you must guide them through and they can't click anything
-// else. With simple guide text", then: "why don't we guide them to build something real, while using tools from
-// each category? Something simple but impressive".)
 //
 // Where the beginner is, is read off the app itself each frame (what has been made, the tool that is open, what
 // is picked) - not counted in taps taken. So a tap that went a little wrong (a list closed again, a face picked
@@ -85,8 +82,7 @@ const STEPS = ORDER.length;
 
 const box = (x: number, y: number, half: number): Box => ({ left: x - half, top: y - half, right: x + half, bottom: y + half });
 // The sizes: an M10 bolt and nut as the standard has them. The rod 10 across; the hexagons 16 across their flats
-// (18.48 corner to corner); the head 6.4 thick, the nut 8.4; the thread's pitch 1.5. (Asked for: "the dimensions
-// should be exactly like from a real bolt and nut".)
+// (18.48 corner to corner); the head 6.4 thick, the nut 8.4; the thread's pitch 1.5.
 const ROD_R = 5;
 const ROD_L = 20;
 const HEX_R = 16 / Math.sqrt(3);
@@ -152,8 +148,7 @@ export class Tutorial {
   /**
    * Every tap, before the app has it: on a lit spot or on the card it goes on, anywhere else it stops here. Told by
    * where the tap is, not by what is under it - the dimmed screen is only looked at. (It took the taps itself, an
-   * opening cut in it over each lit spot: a browser that doesn't cut such openings had a screen with nothing to tap
-   * - reported: "nu poate da tap pe DRAW la step 1. Pur si simplu nu functioneaza".)
+   * opening cut in it over each lit spot: a browser that doesn't cut such openings had a screen with nothing to tap.)
    */
   private gate = (e: Event): void => {
     const t = e.target;
@@ -168,8 +163,7 @@ export class Tutorial {
     // A touch that began on a lit spot is let finish, wherever what is lit has gone by then. (A point of a sketch is
     // placed as the finger comes down: the next spot was lit at once, the finger's lifting - at the old one - was
     // stopped, and the app was left with a finger it thought still down: no tap did anything from then on, not
-    // even after the tutorial was left. Reported: "I cant go past step 3 on mobile ... if i exit tutorial, it goes
-    // into a mode that doesnt let me do anything".)
+    // even after the tutorial was left.)
     const id = (e as PointerEvent).pointerId;
     switch (e.type) {
       case "pointerdown":
@@ -359,8 +353,7 @@ export class Tutorial {
       return lit(ids.draw, say.draw, [this.word("g-draw")]);
     };
     // A shape pulled up: Extrude beside it, its height typed, Done.
-    // (No `distance` step: the height is set for them - asked for: "make the thickness of the bolt head and nut a
-    // default because they can type a ridiculous value and it will break".)
+    // (No `distance` step: the height is set for them.)
     const pulling = (ids: { extrude: StepId; all?: StepId; distance?: StepId; type?: StepId; done: StepId }, pick: Vec3, mm: number, say: { extrude: string; done: string }, from = 0): Step => {
       if (tool.id === "extrude") {
         const typing = document.querySelector<HTMLElement>(".sn-sheet.sn-typing:not([hidden])");
@@ -376,7 +369,6 @@ export class Tutorial {
         }
         if (!tool.feature?.distance) return lit(ids.distance, "How tall? Tap Distance.", [this.word("p-number-Distance")]);
         // Another size typed (a slip of the finger, a key too many): put right - the rest of the build goes by it.
-        // (Asked for: "so they can't screw up by entering wrong values".)
         const off = Math.abs(tool.feature.distance - mm) > 1e-9;
         if (off) h.setNumber("distance", mm);
         return lit(ids.done, off ? `That is set to ${mm} mm for you. ${say.done}` : say.done, [this.done()]);
@@ -388,8 +380,7 @@ export class Tutorial {
 
     // A body's flat top given a chamfer all round: its top tapped, Modify, Chamfer, Done.
     const bevelling = (ids: { face: StepId; modify: StepId; tool: StepId; done: StepId }, body: string | undefined, top: Vec3, under: number, say: { face: string; done: string }): Step => {
-      // (The hexagon's other side - the one that can't be seen to tap - is chamfered with it: asked for: "chamfer the
-      // other sides also".)
+      // (The hexagon's other side - the one that can't be seen to tap - is chamfered with it.)
       if (tool.id === "chamfer") {
         h.chamferAt(under);
         return lit(ids.done, say.done, [this.done()]);
@@ -399,7 +390,7 @@ export class Tutorial {
       const all = body ? h.faces(body) : [];
       const face = sel.length === 1 && sel[0].kind === "face" && sel[0].body === body ? all[sel[0].face] : undefined;
       // (A finger on the lit spot can take a corner or an edge of the top instead of the top: any tap on the body
-      // there is its top - asked for: "so they can't screw up by ... clicking somewhere else".)
+      // there is its top.)
       if (sel.length === 1 && (sel[0] as { body?: string }).body === body && !isTop(face)) {
         const i = all.findIndex(isTop);
         if (i >= 0) {
@@ -434,7 +425,7 @@ export class Tutorial {
         const f = tool.feature ?? {};
         if (!f.target) return lit("fit-nut", "Tap the nut: the body to cut into.", [this.at(side(nut) ?? [2 * R, 0, 3], 20)]);
         if (!f.tools?.length) return lit("fit-bolt", "Now tap the bolt's head: the body to cut away.", [this.at(side(bolt, H) ?? [2 * R, 0, H + 2], 20)]);
-        // The room a printed nut needs to turn: set for them (asked for: "put 0.2 mm by default and that's it").
+        // The room a printed nut needs to turn: set for them.
         if (Math.abs((f.clearance ?? 0) - 0.2) > 1e-9) h.setNumber("clearance", 0.2);
         if (!f.keepTools) {
           const keep = this.option("p-toggle-Keep subtracted bodies", "Keep subtracted bodies");

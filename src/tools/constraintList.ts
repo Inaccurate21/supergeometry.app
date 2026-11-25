@@ -1,8 +1,7 @@
 // The constraints of what is picked in a sketch, as a list: each named, with what it ties the pick to, a size that
 // can be typed over, and a bin of its own - and one button that takes them all off.
 //
-// Suggested by a user: 'The "delete constraints" button could be a "constraints" button that: show the list of the
-// constraints of the selected object; allow to modify or delete some or all of them'. Before, the card of a pick
+// Before, the card of a pick
 // had the constraints that could be added or taken off as chips, and one button that removed every constraint on
 // it at once - to take off one dimension, its small mark had to be found and tapped on the drawing.
 

@@ -218,8 +218,7 @@ export class UI {
 
   /**
    * The columns at the middle of the left and right edges, and undo / redo in their corner, move over for Items and
-   * History only when those come down as far as they stand (asked for: "they should be there only if they are that
-   * long"). Items and History are as tall as what is in them now: a short one leaves the edge under it free, and
+   * History only when those come down as far as they stand. Items and History are as tall as what is in them now: a short one leaves the edge under it free, and
    * the column stays at the edge. Said to the stylesheet as classes on the body, set when a window opens, closes,
    * grows or shrinks, or the screen changes size.
    */
@@ -390,8 +389,7 @@ export class UI {
 
   /**
    * Isolate, Measure and Section, always on screen at the middle of the left edge - as Fit, Display and Settings
-   * are at the right (asked for: "I want isolate, measure and section buttons to always be on screen ... I find
-   * myself clicking More way too much ... put them on middle left"). Each lit while it is on; Isolate with nothing
+   * are at the right. Each lit while it is on; Isolate with nothing
    * picked says what to pick.
    */
   private leftSig = "";
@@ -584,8 +582,7 @@ export class UI {
    * Where the window opened from the right column (Shaded, Settings, Views...) stands: beside its button, and in
    * the room there is - under the top bar and whatever else is above it there (the view cube, History, Items),
    * over the line at the bottom, undo / redo and the guide text. Longer than that room, it scrolls inside. Worked
-   * out from where those are now, on every screen (asked for: "when a window opens from those, to not override
-   * anything else (should be dynamic)"): it stood by fixed sizes, and on a phone came down over the line.
+   * out from where those are now, on every screen: it stood by fixed sizes, and on a phone came down over the line.
    */
   private placePopover(): void {
     const at = this.popoverAt;
@@ -681,8 +678,8 @@ export class UI {
   // ------------------------------------------------------- hint/status/toast
 
   setHint(text: string | null): void {
-    // The words, and a small × to put the guide text away for good (More → Guide text brings it back). Asked for:
-    // "there is no way to remove them" - the switch in More was not found. (Only the × takes a tap: the words let
+    // The words, and a small × to put the guide text away for good (More → Guide text brings it back).
+    // The switch in More was not found. (Only the × takes a tap: the words let
     // taps through to the model under them.)
     if (!this.hintWords) {
       this.hintWords = document.createElement("span");

@@ -1,7 +1,6 @@
 // Hole: a screw's hole in a flat face, by the screw's size.
 //
-// Asked for after the app was posted ("drop in pre-defined, common 3D features, similarly to ... a hole designer ...
-// holes and bores for a pre-defined screw size"). A hole for an M3 screw was a sketch, a circle, knowing that 3.4 is
+// A hole for an M3 screw was a sketch, a circle, knowing that 3.4 is
 // the size that lets it through, a cut - and a second circle for the head. Here: tap the face where the screw goes,
 // choose the screw and the head. Every size it fills in can be typed over.
 //

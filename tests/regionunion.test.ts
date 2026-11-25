@@ -1,6 +1,6 @@
 // Run: npx tsx tests/regionunion.test.ts
 // Several shapes of a sketch extruded together are one outline, joined flat - not a solid each, joined after.
-// Reported: "The extrusion with the circle is buggy" - a bar, a ring over it and two lines up to the ring, all but
+// A bar, a ring over it and two lines up to the ring, all but
 // the ring's middle picked and extruded: the ring was not in the body. Its inner circle all but touched the bar.
 import type { Feature, SketchEntity } from "../src/doc/types";
 import { arrangement, regionRef } from "../src/sketch/regions";

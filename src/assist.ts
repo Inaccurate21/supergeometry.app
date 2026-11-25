@@ -6,7 +6,6 @@
 // Changes go into the open project one undo step at a time (Ctrl + Z steps back through them); only `sg.make`
 // starts a project. `sg.ref` gives faces and edges as the references a step takes, a few asked for by a word, not the
 // whole list. `sg.guide` gives one part of the reference (public/llms-full.txt), not all of it.
-// (Asked for: "Can we speed things up? ... i dont want users say they wasted all their credits building a cube".)
 import type { App } from "./app";
 import type { Feature, ProjectDoc } from "./doc/types";
 import { parseProject } from "./doc/store";

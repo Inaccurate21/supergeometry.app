@@ -3,7 +3,7 @@
 //
 // What a page may and may not do (Chrome's rules, not ours): it cannot open another extension's panel, and it cannot
 // tell whether one is installed (the extension answers only to its maker's own site). So the button opens a card that
-// says where the extension is and where to get it, and no more ("Lets not add extra steps"). What tells the assistant
+// says where the extension is and where to get it, and no more. What tells the assistant
 // how to work here is in the page itself: the text in index.html's <main>, which is what an assistant reading the
 // page gets.
 

@@ -881,8 +881,7 @@ export class SketchTool implements Tool {
   /**
    * "Constraints (n)" for the selection's card, when it has any: the list of them, each with its own bin and its
    * size to type over, and all of them deleted at once from there. (It was "Delete constraints (n)", which took
-   * them all - asked for: "show the list of the constraints of the selected object; allow to modify or delete some
-   * or all of them".)
+   * them all.)
    */
   private deleteConstraintsItem(): PanelItem[] {
     const n = this.selectionConstraints().length;
@@ -2851,7 +2850,7 @@ export class SketchTool implements Tool {
         }
         return this.tapCurve(p, (id, uv) => {
           // An offset of the face's edge, offset again: another offset of that same edge, this much further from it
-          // - it follows the face too. (Asked for: "I should be able to offset any line whenever I want". It was
+          // - it follows the face too. (It was
           // refused: "an offset of the face's edge already".)
           if (id.startsWith("lnk-")) {
             const link = this.sketch?.outlineOffsets?.find((l) => id.startsWith(`lnk-${l.id}-`));
@@ -4119,8 +4118,7 @@ export class SketchTool implements Tool {
 
   // ------------------------------------------------------------ size tags
   // The sizes of the shape being drawn, in small tags by the pointer (a mouse, or a pen hovering): what each is
-  // now, the one a typed number goes to lit, a typed one held. Asked for: "having the dimensions show up near the
-  // sketch lines or the cursor ... than pulling the mouse down to a bar". They take no taps (the click under them
+  // now, the one a typed number goes to lit, a typed one held. They take no taps (the click under them
   // places the point). A line has its own length box along it instead (see showLineDim).
   private liveLabels = new Map<string, { label: string; angle: boolean }>();
   private tagAt: { x: number; y: number } | null = null;
@@ -4339,8 +4337,7 @@ export class SketchTool implements Tool {
   /**
    * The tutorial's: the circle or polygon drawn last put exactly where it was meant - its middle at `centre`, its
    * rim (a corner, of a polygon) at `edge`, both in the model's space. What the taps tied it to is let go: it is
-   * where it is by its numbers. (Asked for: "you can place it slightly off the project center or different
-   * distances ... make it so its placed exactly where its supposed to be".)
+   * where it is by its numbers.
    */
   exact(kind: "circle" | "polygon", centre: Vec3, edge: Vec3): void {
     if (!this.plane) return;
@@ -4415,8 +4412,7 @@ export class SketchTool implements Tool {
     const before = new Set(this.entities.map((e) => e.id));
     const made = entities.filter((e) => !before.has(e.id)).map((e) => e.id);
     // What the step made or changed, kept with its line in History: picked there, the sketch opens with those
-    // curves picked, to change them (asked for: "if I make changes in a sketch, I want those changes to be
-    // selectable from that history action so I can edit them").
+    // curves picked, to change them.
     const was = new Map(this.entities.map((e) => [e.id, e]));
     const touched = entities.filter((e) => !was.has(e.id) || JSON.stringify(was.get(e.id)) !== JSON.stringify(e)).map((e) => e.id);
     // (A constraint or a size put on: the curves it is on.)
@@ -4811,8 +4807,7 @@ export class SketchTool implements Tool {
     handle.set(fr.base, fr.normal);
     this.regionArrow = { sel, handle };
     this.app.setSelection(sel);
-    // What the shape can be made into, beside it (asked for: "I click on that blue surface, I want the options to
-    // appear (like extrude, revolve etc.)"). Each leaves the sketch and starts on the shapes picked.
+    // What the shape can be made into, beside it. Each leaves the sketch and starts on the shapes picked.
     const app = this.app;
     const start = (make: () => Tool) => () => {
       this.hideRegionArrow();
@@ -5487,8 +5482,7 @@ export class SketchTool implements Tool {
     // Chain pieces stay joined to each other.
     const cs: SketchConstraint[] = [];
     // An offset follows what it was made from: the original given another size or place (a dimension typed, a
-    // variable, a step changed in History), the offset is its offset still. (Asked for: "that second sketch should
-    // change according to the changes made to the first ... somehow linked".) One curve: wholly its offset. An
+    // variable, a step changed in History), the offset is its offset still. One curve: wholly its offset. An
     // outline's pieces: each on its original's offset, trimmed to its neighbours as they were made.
     {
       const d = memory.offset;

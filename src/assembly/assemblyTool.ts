@@ -82,7 +82,7 @@ export class AssemblyTool implements Tool {
     this.app.ui.setBottom(this.app.bottomTools());
     this.app.setSelection([]);
     this.app.setHover(null);
-    // Where the parts were left (asked for: "if i click on assembly again ... it doesnt show what i made before").
+    // Where the parts were left.
     this.values = { ...(this.app.store.doc.pose?.values ?? {}) };
     this.exploded = this.app.store.doc.pose?.exploded ?? 0;
     const s = this.start;

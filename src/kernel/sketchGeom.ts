@@ -26,7 +26,7 @@ import { arrangement, resolveRegion, type Arrangement, type Loop, type LoopRef, 
  *
  * It was a face a region, each made a solid, the solids joined. Where two of the sketch's curves pass a hair from
  * each other (a circle that all but touches a line) that join lost parts without a word: a ring and what lay under
- * it were not in the body (reported: "The extrusion with the circle is buggy"). Joined here, flat, by which
+ * it were not in the body. Joined here, flat, by which
  * stretches of curve two picked regions share, there is nothing for the kernel to join.
  */
 export function regionFaces(entities: SketchEntity[], plane: PlaneDef, refs: RegionRef[]): Face[] {

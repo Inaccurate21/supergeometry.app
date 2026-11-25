@@ -197,9 +197,6 @@ const GIMBAL_REACH = 58;
  *  - the one pointed at (the mouse over its mark, or picked) lit, with everything it ties lit with it; and with
  *    curves picked, their constraints' marks stand out and the curves they are tied to show faintly;
  *  - a dimension's size typed where it is: a click on it puts a box there.
- * Asked for: "it's not really possible to see what constraints work on work parts ... You need highlighting to show
- * these relations", "Dimensions are also placed weird with no visible guide to what they are relating to. Double
- * clicking dimensions should also make it possible to edit them."
  */
 export class ConstraintGlyphs {
   private host = el("div", "cglyphs");
