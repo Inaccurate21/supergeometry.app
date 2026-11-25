@@ -31,7 +31,7 @@ export const QUICK = {
   axis: ["delete"],
   image: ["scale", "delete"],
   // In a sketch: its picked curves and points (the sketch tool's own buttons).
-  curve: ["construction", "delete"],
+  curve: ["construction", "move", "delete"],
   point: ["delete"],
 } satisfies Record<string, string[]>;
 
@@ -53,7 +53,7 @@ const MOST = 2;
  * rotate edge icon there"). Move/Rotate Edge is for one straight edge: with a curved one, or several, it is not
  * offered and the row is the two.
  */
-const MOST_OF: Partial<Record<QuickKind, number>> = { edge: 3 };
+const MOST_OF: Partial<Record<QuickKind, number>> = { edge: 3, curve: 3 };
 
 export class QuickActions {
   private readonly box = document.createElement("div");

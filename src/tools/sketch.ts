@@ -1300,6 +1300,7 @@ export class SketchTool implements Tool {
       // model can be picked and caught on; the sizes and the grid shown.
       ...(([["normal", "Bodies: as they are"], ["ghost", "Bodies: see-through"], ["hidden", "Bodies: hidden"]] as const).map(([v, label]) => ({ id: `skv-${v}`, label, icon: "body" as const, active: settings.value.sketchBodies === v, run: () => (settings.set("sketchBodies", v), this.app.view.setSketchView(v, !settings.value.sketchModelPick), this.updateMenu()) }) as ToolItem)),
       { id: "skv-pick", label: "Pick and snap to the model", icon: "pointer", active: settings.value.sketchModelPick, run: () => (settings.set("sketchModelPick", !settings.value.sketchModelPick), this.app.view.setSketchView(settings.value.sketchBodies, !settings.value.sketchModelPick), this.updateMenu()) } as ToolItem,
+      { id: "skv-region", label: "Pick closed shapes (to extrude)", icon: "extrude", active: settings.value.sketchRegionPick, run: () => (settings.set("sketchRegionPick", !settings.value.sketchRegionPick), this.updateMenu()) } as ToolItem,
       { id: "skv-dims", label: "Show dimensions and constraints", icon: "constraints", active: settings.value.showConstraintGlyphs, run: () => (settings.set("showConstraintGlyphs", !settings.value.showConstraintGlyphs), this.updateMenu()) } as ToolItem,
       { id: "skv-grid", label: "Show grid", icon: "grid", active: settings.value.showGrid, run: () => (settings.set("showGrid", !settings.value.showGrid), this.updateMenu()) } as ToolItem,
       { id: "osnap-all", label: "All on", icon: "magnet", run: () => (settings.set("osnap", Object.fromEntries(OSNAP_LIST.map(([k]) => [k, true])) as unknown as Osnap), this.updateMenu()) } as ToolItem,
@@ -2776,12 +2777,13 @@ export class SketchTool implements Tool {
     const sel = this.entities.filter((e) => this.selected.has(e.id));
     const cons = sel.length > 0 && sel.every((e) => e.construction);
     // (Made again only when the pick, its type or its place changed: this runs while it is dragged.)
-    const sig = `${[...this.selected].join()}|${this.selPts.map((r) => r.e + r.p).join()}|${cons}|${at.map((v) => v.toFixed(4)).join()}`;
+    const sig = `${this.kind}|${[...this.selected].join()}|${this.selPts.map((r) => r.e + r.p).join()}|${cons}|${at.map((v) => v.toFixed(4)).join()}`;
     if (sig === this.quickSig && this.quick) return;
     this.clearQuick();
     this.quickSig = sig;
     const items: ToolItem[] = [
       ...(sel.length ? [{ id: "construction", label: cons ? "Regular" : "Construction", icon: cons ? "line" : "lineDashed", run: () => this.toggleConstruction() } as ToolItem] : []),
+      ...(sel.length && this.kind !== "move" ? [{ id: "move", label: "Move", icon: "move", run: () => this.setKind("move") } as ToolItem] : []),
       { id: "delete", label: "Delete", icon: "trash", run: () => this.deleteSelected() },
     ];
     this.quick = QuickActions.show(this.app.view, sel.length ? "curve" : "point", items, at, { gap: 110 });
@@ -4911,7 +4913,7 @@ export class SketchTool implements Tool {
     }
     // Inside a closed shape and not right on its outline (a finger's reach is
     // wide - half of it): the shape itself, with its extrude arrow.
-    if (this.kind === "select" && count < 2 && !p.shift && !this.curveAt({ ...p, tol: p.tol * 0.5 }) && this.tapRegion(p)) return;
+    if (this.kind === "select" && count < 2 && !p.shift && settings.value.sketchRegionPick && !this.curveAt({ ...p, tol: p.tol * 0.5 }) && this.tapRegion(p)) return;
     const c = this.curveAt(p);
     // Mirror: with something selected, the next line tapped (even one of the
     // selection) is the mirror axis - Shift+tap adds to the selection instead.
@@ -4942,7 +4944,7 @@ export class SketchTool implements Tool {
     if (!c) {
       // Inside a closed shape (Select tool): the shape is picked and its extrude
       // arrow shows - the sketch stays open; only dragging the arrow extrudes.
-      if (this.kind === "select" && count < 2 && this.tapRegion(p)) return;
+      if (this.kind === "select" && count < 2 && settings.value.sketchRegionPick && this.tapRegion(p)) return;
       // Empty space: deselect; with nothing selected, an editing tool goes back to Select.
       if (this.regionArrow) this.hideRegionArrow();
       if (this.selected.size || this.selPts.length) this.clearSelection();

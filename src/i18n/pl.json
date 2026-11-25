@@ -1142,6 +1142,7 @@
  "Pick a straight line or an axis in the sketch plane": "Wybierz prostą linię lub oś w płaszczyźnie szkicu",
  "Pick a tool for {0}, or {1} another to add it ({2} a picked one to let it go).": "Wybierz narzędzie dla: {0} albo {1} kolejne, aby dodać ({2} wybrane, aby je puścić).",
  "Pick and snap to the model": "Zaznaczaj i przyciągaj do modelu",
+ "Pick closed shapes (to extrude)": "Zaznaczaj zamknięte obszary (do wyciągania)",
  "Pick edges along an open border (the rim of a surface or of a hole)": "Wybierz krawędzie wzdłuż otwartego brzegu (krawędzi powierzchni lub otworu)",
  "Pick edges on one or two freeform surfaces": "Wybierz krawędzie na jednej lub dwóch swobodnych powierzchniach",
  "Pick faces that touch each other - side by side, sharing an edge": "Wybierz ściany, które się stykają - obok siebie, ze wspólną krawędzią",

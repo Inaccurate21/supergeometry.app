@@ -22,6 +22,8 @@ export interface Settings {
   sketchBodies: "normal" | "ghost" | "hidden";
   /** While a sketch is open: the model's faces, edges and corners can be picked and caught on. */
   sketchModelPick: boolean;
+  /** In a sketch, a tap inside a closed shape picks its area (blue, with Extrude by it). */
+  sketchRegionPick: boolean;
   showGuidePoints: boolean;
   showSnapHints: boolean;
   gridLocked: boolean;
@@ -219,6 +221,7 @@ const DEFAULTS: Settings = {
   osnap: OSNAP_DEFAULT,
   sketchBodies: "normal",
   sketchModelPick: true,
+  sketchRegionPick: true,
   showGuidePoints: true,
   showSnapHints: true,
   gridLocked: false,

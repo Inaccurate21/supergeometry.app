@@ -167,7 +167,7 @@ const SK_GROUPS: { id: string; label: string; icon: IconName; tools: string[] }[
   { id: "modify", label: "Modify", icon: "trim", tools: ["trim", "fillet", "offset", "extend", "split", "align"] },
   { id: "transform", label: "Transform", icon: "transform", tools: ["move", "mirror", "rotate", "pattern", "scale"] },
   // Object snaps, each on or off (as AutoCAD's OSNAP): src/tools/sketch.ts puts them in the sketch's column.
-  { id: "skview", label: "View", icon: "eye", tools: ["skv-normal", "skv-ghost", "skv-hidden", "skv-pick", "skv-dims", "skv-grid"] },
+  { id: "skview", label: "View", icon: "eye", tools: ["skv-normal", "skv-ghost", "skv-hidden", "skv-pick", "skv-region", "skv-dims", "skv-grid"] },
   { id: "osnap", label: "OSNAP", icon: "magnet", tools: ["osnap-endpoint", "osnap-midpoint", "osnap-center", "osnap-quadrant", "osnap-intersection", "osnap-nearest", "osnap-extension", "osnap-perpendicular", "osnap-parallel", "osnap-tangent", "osnap-tracking", "osnap-all", "osnap-none"] },
 ];
 
