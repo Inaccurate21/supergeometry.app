@@ -16,7 +16,8 @@ const walk = (dir: string) => {
 };
 walk(dist);
 if (!files["index.html"]) throw new Error("No dist/index.html: run npm run build first.");
-const { version } = JSON.parse(readFileSync("package.json", "utf8")) as { version: string };
+const pkg = JSON.parse(readFileSync("package.json", "utf8")) as { version: string; appVersion?: string };
+const version = pkg.appVersion ?? pkg.version;
 const out = `supergeometry-update-${version}.zip`;
 const zip = zipSync(files);
 writeFileSync(out, zip);

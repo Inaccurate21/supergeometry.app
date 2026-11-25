@@ -13,6 +13,7 @@ import type { Viewport } from "../view/viewport";
 import type { UI } from "./ui";
 import { el } from "./ui";
 import { textField } from "./textField";
+import { penTestOn, setPenTest } from "./penTest";
 import { lang, LANGS, saveLang, type Lang } from "../i18n";
 import { loadPackage, packageInUse, packagesSupported, removePackage, type PackageInfo } from "./package";
 
@@ -31,6 +32,8 @@ export function setupRightColumn(ui: UI, view: Viewport, store: DocStore, onUnit
     host.append(heading("Show"));
     host.append(toggleRow("Guide points", s.showGuidePoints, (v) => settings.set("showGuidePoints", v)), toggleRow("Snapping hints", s.showSnapHints, (v) => settings.set("showSnapHints", v)));
     host.append(el("div", "pop-note", "Hold Shift while drawing to place a point without snapping."));
+    host.append(heading("Pen"), toggleRow("Pen test: show what the screen reports", penTestOn(), (v) => setPenTest(v)));
+    host.append(el("div", "pop-note", "Shows, in a box at the top left, which events a pen (or finger, or mouse) sends as it moves over the screen. Turn it on, hover the pen over the drawing, and send a screenshot if snap marks still don't show."));
   }), undefined, stash);
 
   ui.addRight(

@@ -3,7 +3,13 @@ import { readFileSync, readdirSync, statSync, writeFileSync } from "node:fs";
 import { join, relative } from "node:path";
 import { defineConfig, type Plugin } from "vite";
 
-const pkg = JSON.parse(readFileSync(new URL("./package.json", import.meta.url), "utf8")) as { version: string };
+const pkg = JSON.parse(readFileSync(new URL("./package.json", import.meta.url), "utf8")) as { version: string; appVersion?: string };
+/**
+ * The version the app shows: D.K.Z.P - D big changes, K key changes (a sizeable new feature), Z small changes and
+ * features, P fixes; each the count of that kind since 1.0.0.0. (package.json's own "version" stays three numbers
+ * for npm.)
+ */
+const appVersion = pkg.appVersion ?? pkg.version;
 
 /**
  * Offline mode's download list: every file the app needs, and the build it
@@ -64,7 +70,7 @@ function versionFile(): Plugin {
       const commit = git("rev-parse HEAD") || process.env.WORKERS_CI_COMMIT_SHA || process.env.CF_PAGES_COMMIT_SHA || "";
       const html = readFileSync(join(outDir, "index.html"), "utf8");
       const info = {
-        version: pkg.version,
+        version: appVersion,
         commit,
         subject: commit ? git(`log -1 --format=%s ${commit}`) : "",
         script: html.match(/index-[\w-]+\.js/)?.[0] ?? "",
@@ -78,7 +84,7 @@ function versionFile(): Plugin {
 export default defineConfig({
   // Relative base so the build works from any static host sub-path (GitHub Pages etc.).
   base: "./",
-  define: { __APP_VERSION__: JSON.stringify(pkg.version) },
+  define: { __APP_VERSION__: JSON.stringify(appVersion) },
   worker: { format: "es" },
   optimizeDeps: { exclude: ["replicad-opencascadejs"] },
   build: { target: "es2022", chunkSizeWarningLimit: 4000 },

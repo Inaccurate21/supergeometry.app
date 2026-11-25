@@ -1,4 +1,4 @@
-import { isHeadset, pickTolerance } from "../device";
+import { isHeadset, isTouchDevice, pickTolerance } from "../device";
 // One input model for mouse, touch and pen (see docs/ARCHITECTURE.md §5).
 
 import type { Viewport } from "./viewport";
@@ -90,6 +90,13 @@ export class InputRouter {
     document.body.append(this.marquee);
     el.addEventListener("pointerdown", (e) => this.onDown(e));
     el.addEventListener("pointermove", (e) => this.onMove(e));
+    // Some tablets' pens (a Samsung S Pen in some browsers) report hovering over the screen only as mouse
+    // moves, with no pointer event: taken as the pen's hover, so snap marks show before it touches.
+    el.addEventListener("mousemove", (e) => {
+      if (e.timeStamp - this.lastPointerMove < 120 || this.pointers.size) return;
+      const [x, y] = this.local(e as unknown as PointerEvent);
+      this.hoverTo(x, y, isTouchDevice ? "pen" : "mouse", e.shiftKey);
+    });
     el.addEventListener("pointerup", (e) => this.onUp(e));
     el.addEventListener("pointercancel", (e) => this.onCancel(e));
     el.addEventListener("pointerleave", (e) => {
@@ -195,26 +202,43 @@ export class InputRouter {
   /** This touch took hold of what was under it (see `grab`): lifted without moving, it is not a tap. */
   private held = false;
 
+  /** When a pointer last moved (the mouse moves a browser adds after it are not a second hover). */
+  private lastPointerMove = -1e9;
+
+  /** The pointer over the view, nothing pressed: the tool shows what a tap would do. */
+  private hoverTo(x: number, y: number, type: ToolPointer["type"], shift: boolean): void {
+    if (this.mode !== "idle") return;
+    // At most one hover pick per frame: mice report far more often than the screen redraws.
+    this.hoverAt = { x, y, type, shift, tol: pickTolerance(type) };
+    this.hoverFrame ||= requestAnimationFrame(() => {
+      this.hoverFrame = 0;
+      if (this.hoverAt && this.mode === "idle") {
+        // Hovering (not a tap): picks skip the slower near-miss search.
+        this.view.hovering = true;
+        try {
+          this.handler.hover?.(this.hoverAt);
+        } finally {
+          this.view.hovering = false;
+        }
+      }
+    });
+  }
+
   private onMove(e: PointerEvent): void {
+    this.lastPointerMove = e.timeStamp;
     const [x, y] = this.local(e);
     const t = this.pointers.get(e.pointerId);
     if (!t) {
-      if (e.pointerType !== "touch" && this.mode === "idle") {
-        // At most one hover pick per frame: mice report far more often than the screen redraws.
-        this.hoverAt = { x, y, type: e.pointerType as ToolPointer["type"], shift: e.shiftKey, tol: pickTolerance(e.pointerType) };
-        this.hoverFrame ||= requestAnimationFrame(() => {
-          this.hoverFrame = 0;
-          if (this.hoverAt && this.mode === "idle") {
-            // Hovering (not a tap): picks skip the slower near-miss search.
-            this.view.hovering = true;
-            try {
-              this.handler.hover?.(this.hoverAt);
-            } finally {
-              this.view.hovering = false;
-            }
-          }
-        });
+      // A pen hovering while the hand rests on the screen: the palm's touch is let go (it is no gesture), so the
+      // pen's hover still shows what it is over.
+      if (e.pointerType === "pen" && this.pointers.size && [...this.pointers.values()].every((p) => p.type === "touch") && (this.mode === "pending" || this.mode === "orbit")) {
+        clearTimeout(this.holdTimer);
+        this.pointers.clear();
+        this.mode = "idle";
       }
+      // A finger can't hover: a "touch" that moves with nothing pressed is a pen some tablets report as a finger.
+      if (e.pointerType === "touch" && (this.penDown || e.buttons)) return;
+      this.hoverTo(x, y, e.pointerType === "touch" ? "pen" : ((e.pointerType || "mouse") as ToolPointer["type"]), e.shiftKey);
       return;
     }
     const dx = x - t.x;
