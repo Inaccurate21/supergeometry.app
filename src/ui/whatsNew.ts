@@ -32,6 +32,8 @@ export const UPDATES: Update[] = [
     fixed: [
       "Every change to a body with very many faces is quicker.",
       "In a sketch, constraint marks and dimension boxes no longer sit on top of each other.",
+      "A shell's rim can be rounded on both edges by half the wall (two 0.5 mm fillets on a 1 mm wall), for a fully round rim.",
+      "Two edges in one line with different walls beside them, rounded together, come out as two clean rounds.",
       "In a sketch, a line that ends on a circle closes the shape it should: the area between them fills and can be extruded.",
       "Several touching areas of a sketch extruded together always come out whole. A ring could go missing from the body when one of its circles ran a hair from another line.",
     ],
