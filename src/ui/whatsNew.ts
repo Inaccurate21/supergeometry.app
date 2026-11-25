@@ -21,6 +21,24 @@ interface Update {
 export const UPDATES: Update[] = [
   {
     date: "2026-11-25",
+    version: "0.10.0.0",
+    added: [
+      "Create has the solid tools in one place, as in Fusion: Extrude, Revolve, Sweep, Loft, Hole, Thread, Primitives, Press Pull, Combine, Split Body, Split Face, Shell, Fillet and Chamfer.",
+      "Primitives: Box, Cylinder, Cone, Sphere, Torus and Coil (a spring) on a plane or the face picked - each a sketch and its step, so the sizes can be changed later in History.",
+      "Combine: one tool for Join, Cut and Intersect, with Keep tools and New body.",
+      "Press Pull: a face is offset, an edge is rounded. Split Face: a face cut by a sketch's shape on it or by edges.",
+      "Hole: a chamfer round the mouth, and a drill point (118°) at a blind hole's bottom.",
+      "Keyboard: S opens your favourite tools with a search (★ adds one), D is Measure, Ctrl+F full screen (F11 stays). Every key can be changed: More → App settings → Controls → Keyboard shortcuts.",
+      "Pinned measurements can be picked (a click, Ctrl+click, or a box round them) and deleted with Delete.",
+      "Settings are sorted: the gear at the right holds the drawing's (units, grid, snapping, appearance); the rest is in More → App settings (screen, controls, project, app).",
+      "Autosave: every change is saved at once; a copy also goes into the project list every few minutes (App settings → Project).",
+      "Settings are kept through updates: backed up in the Android app and the browser, and can be saved to a file and loaded back.",
+      "Wider buttons: Polish names fit on the line at the bottom, the side columns and the top bar.",
+      "Changes from the original app: Model with Claude (the button at the bottom right), fills and extrudes of touching areas, Hole catching on axes and sketches, fillets on shells.",
+    ],
+  },
+  {
+    date: "2026-11-25",
     version: "0.9.0.0",
     added: [
       "The Browser (top bar, at the left) took the place of Items: Document settings (units), Named views (save the view, tap one to look from it), Origin (the axes and the XY, XZ and YZ planes, each shown or hidden), then Bodies, Sketches, Construction geometry, Images and Joints.",

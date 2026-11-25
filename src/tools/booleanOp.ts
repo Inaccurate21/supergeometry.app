@@ -17,9 +17,10 @@ export class BooleanOp extends FeatureOp<BooleanFeature> {
   private centers = new Map<string, Vec3>();
   private hook = () => this.placeMarks();
 
-  constructor(app: AppContext, op: "subtract" | "intersect", target = "", tools: string[] = [], existing?: BooleanFeature) {
-    super(app, { ...app.store.newIdentity("boolean", cap(op)), type: "boolean", op, target, tools: tools.filter((t) => t !== target) }, existing);
-    const sub = this.feature.op === "subtract";
+  constructor(app: AppContext, op: "subtract" | "intersect" | "union", target = "", tools: string[] = [], existing?: BooleanFeature, combine = false) {
+    super(app, { ...app.store.newIdentity("boolean", combine ? "Combine" : cap(op)), type: "boolean", op, target, tools: tools.filter((t) => t !== target) }, existing);
+    this.combine = combine;
+    const sub = () => this.feature.op === "subtract";
     // Not this subtract's own result: with "Keep modified body" on, its preview
     // shows beside the original, and a tap on it made it one of its own tools.
     const own = (b: string) => b === this.feature.id || b.startsWith(`${this.feature.id}:`);
@@ -28,7 +29,7 @@ export class BooleanOp extends FeatureOp<BooleanFeature> {
       return b && !own(b) ? b : null;
     };
     const targetSlot: Slot = {
-      label: sub ? "Remove from" : "Body",
+      label: sub() ? "Remove from" : this.feature.op === "union" ? "Target body" : "Body",
       describe: () => (this.feature.target ? this.nameOf(this.feature.target) : "Tap a body"),
       filled: () => !!this.feature.target,
       pick: { profiles: false, planes: false, axes: false },
@@ -44,7 +45,7 @@ export class BooleanOp extends FeatureOp<BooleanFeature> {
       },
     };
     const toolsSlot: Slot = {
-      label: sub ? "Subtract" : "With",
+      label: sub() ? "Subtract" : this.feature.op === "union" ? "Join with" : "With",
       multi: true,
       describe: () => (this.feature.tools.length ? `${this.feature.tools.length} bod${this.feature.tools.length > 1 ? "ies" : "y"}` : "Tap bodies"),
       filled: () => this.feature.tools.length > 0,
@@ -62,6 +63,9 @@ export class BooleanOp extends FeatureOp<BooleanFeature> {
     this.slots = [targetSlot, toolsSlot];
   }
 
+  /** Combine (as Fusion's): the operation is chosen in the window - Join, Cut or Intersect. */
+  private combine = false;
+
   /** Names seen (while its preview is being made, a body can be missing from the list). */
   private names = new Map<string, string>();
 
@@ -72,6 +76,7 @@ export class BooleanOp extends FeatureOp<BooleanFeature> {
   }
 
   protected hint(): string {
+    if (this.feature.op === "union") return "Tap the target body, then the bodies to join to it.";
     return this.feature.op === "subtract"
       ? "Tap the body to cut, then the bodies to cut away from it."
       : "Tap a body, then the bodies it overlaps. Only the part they share is kept.";
@@ -104,6 +109,10 @@ export class BooleanOp extends FeatureOp<BooleanFeature> {
   protected items(): PanelItem[] {
     const f = this.feature;
     const sub = f.op === "subtract";
+    // Combine: which operation, first.
+    const opRow: PanelItem[] = this.combine
+      ? [{ type: "choice", label: "Operation", options: [{ id: "union", label: "Join" }, { id: "subtract", label: "Cut" }, { id: "intersect", label: "Intersect" }], value: f.op, onChange: (id) => ((f.op = id as BooleanFeature["op"]), id !== "subtract" && ((f.cutFrom = undefined), (f.clearance = undefined)), (f.whole = undefined), this.render(), this.update()) }]
+      : [];
     const gap: PanelItem[] = sub
       ? [
           { ...this.num("Clearance", "clearance", "length", { min: 0, onInput: (v) => this.setClearance(v), inBox: true }), value: f.clearance ?? 0 } as PanelItem,
@@ -111,11 +120,12 @@ export class BooleanOp extends FeatureOp<BooleanFeature> {
         ]
       : [];
     // The others give way (or all do): every body stays, changed.
-    if (sub && f.cutFrom) return gap;
+    if (sub && f.cutFrom) return [...opRow, ...gap];
     return [
+      ...opRow,
       ...gap,
-      { type: "toggle", label: "Keep modified body", value: !!f.keepTarget, onChange: (v) => ((f.keepTarget = v || undefined), this.render(), this.update()) },
-      { type: "toggle", label: sub ? "Keep subtracted bodies" : "Keep intersecting bodies", value: !!f.keepTools, onChange: (v) => ((f.keepTools = v || undefined), this.render(), this.update()) },
+      { type: "toggle", label: this.combine ? "New body (the target stays as it was)" : "Keep modified body", value: !!f.keepTarget, onChange: (v) => ((f.keepTarget = v || undefined), this.render(), this.update()) },
+      { type: "toggle", label: this.combine ? "Keep tools" : sub ? "Keep subtracted bodies" : "Keep intersecting bodies", value: !!f.keepTools, onChange: (v) => ((f.keepTools = v || undefined), this.render(), this.update()) },
     ];
   }
 

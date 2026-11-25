@@ -54,6 +54,24 @@ const R = 1.7;
   check("... sound, with a cone", health(a.body!).healthy && a.r.bodies[0].faces.some((g: any) => g.type === "CONE"));
 }
 
+{
+  // A mouth chamfer of 0.5: a 45° cone ring round the top (a frustum R+0.5 → R over 0.5 deep, less the hole's own part).
+  const a = await after([...plate(), hole("H", top, [10, 10, 10], { chamfer: 0.5 })], "E");
+  const c = 0.5;
+  const ring = ((PI * c) / 3) * ((R + c) * (R + c) + (R + c) * R + R * R) - PI * R * R * c;
+  const want = V - PI * R * R * 10 - ring;
+  check("with a mouth chamfer", !a.err && near(volume(a.body), want, 1e-5), `${volume(a.body)} / ${want} ${a.errors}`);
+  check("... sound, with a cone", health(a.body!).healthy && a.r.bodies[0].faces.some((g: any) => g.type === "CONE"));
+}
+{
+  // A blind hole with a 118° drill point: a cone of height R / tan(59°) below the 4 mm.
+  const a = await after([...plate(), hole("H", top, [10, 10, 10], { through: false, depth: 4, tipAngle: 118 })], "E");
+  const h = R / Math.tan((59 * PI) / 180);
+  const want = V - PI * R * R * 4 - (PI * R * R * h) / 3;
+  check("blind, with a drill point", !a.err && near(volume(a.body), want, 1e-5), `${volume(a.body)} / ${want} ${a.errors}`);
+  check("... sound", health(a.body!).healthy);
+}
+
 // ---------------------------------------------------------------- what is wrong, in words
 for (const [name, more, say] of [
   ["no diameter", { diameter: 0 }, "diameter"],

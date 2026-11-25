@@ -1133,6 +1133,17 @@ export class Sentence {
     });
     this.sheet.querySelector(".sn-others")?.remove();
     this.fit();
+    // Again once the names are in the app's language (they are put in just after: Polish ones are longer, and the
+    // buttons measured in English ran into each other).
+    requestAnimationFrame(() => {
+      const sh = this.sheet;
+      if (!sh.isConnected || sh.hidden) return;
+      this.fit();
+      // (Wider now: kept within the line's own ends.)
+      const r = sh.getBoundingClientRect();
+      const L = this.line.getBoundingClientRect();
+      if (r.right > L.right + 1) sh.style.marginLeft = `${Math.max(0, parseFloat(getComputedStyle(sh).marginLeft) - (r.right - L.right))}px`;
+    });
     // A phone held upright (the list is as wide as the screen): no taller than leaves the buttons at the right edge
     // clear above it - it scrolls instead.
     this.sheet.style.maxHeight = "";

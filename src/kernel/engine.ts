@@ -1639,10 +1639,11 @@ async function apply(f: Feature, ctx: Ctx): Promise<void> {
         }
         // A union joins: a body that doesn't touch would only be grouped with it, not joined.
         if (f.op === "union" && solids(target) >= before) throw new Error("These bodies don't touch - Union needs them to overlap or touch (move one onto the other first)");
-        if (!(f.op === "intersect" && f.keepTools)) bodies.delete(t);
+        // (Keep tools: they stay as they were - Combine's switch, for Join too.)
+        if (!f.keepTools) bodies.delete(t);
       }
       if (isEmpty(target)) throw new Error("The result is empty");
-      bodies.set(f.op === "intersect" && f.keepTarget ? f.id : f.target, target);
+      bodies.set(f.keepTarget ? f.id : f.target, target);
       return;
     }
 

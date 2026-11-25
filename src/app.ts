@@ -70,6 +70,7 @@ import { glb } from "./io/formats";
 import { sketchToDXF } from "./io/dxf";
 import { sketchToSVG } from "./io/svg";
 import { isHeadset } from "./device";
+import { openPrimitive, PRIMITIVES } from "./tools/primitives";
 import { actionsOn, comboOf } from "./keys";
 import { toggleFullscreen } from "./fullscreen";
 import { filtering, filterWindowOpen, toggleFilterWindow } from "./tools/selFilter";
@@ -1227,6 +1228,15 @@ export class App implements AppContext {
 
   /** Nothing selected: the top-level menu (the left tool column). */
   /** The edges picked for a fillet or chamfer: each edge, and every edge round each face. */
+  /** The flat face picked, if one is (a primitive is made on it). */
+  private pickedFlatFace(): { center: Vec3; normal: Vec3; xDir: Vec3 } | undefined {
+    const s = this.selection[0];
+    if (s?.kind !== "face") return undefined;
+    const f = this.view.body(s.body)?.faces[s.face];
+    if (!f?.plane) return undefined;
+    return { center: f.center, normal: f.normal, xDir: xDirFor(f.normal) };
+  }
+
   private pickedEdges(): EdgeRef[] {
     const out: EdgeRef[] = [];
     const have = (r: EdgeRef) => out.some((e) => e.body === r.body && Math.hypot(e.mid[0] - r.mid[0], e.mid[1] - r.mid[1], e.mid[2] - r.mid[2]) < 1e-6);
@@ -1276,6 +1286,39 @@ export class App implements AppContext {
           { id: "sweep", label: "Sweep", icon: "sweep", run: wait("Sweep", ["profile", "face"], () => src() && this.setTool(new SweepOp(this, src()!))) },
           { id: "loft", label: "Loft", icon: "loft", run: wait("Loft", ["profile", "face"], () => this.setTool(new LoftOp(this, sourcesOf(this, this.selection).flatMap((s): ExtrudeSource[] => (s.kind === "profile" ? s.regions.map((r) => ({ ...s, regions: [r] })) : [s])), this.selection))) },
           { id: "hole", label: "Hole", icon: "hole", run: wait("Hole (tap a flat face where the screw goes)", ["face"], () => this.startHole()) },
+          { id: "threadC", label: "Thread", icon: "thread", run: wait("Thread (tap a round face or its rim)", ["face", "edge"], () => this.startThread()) },
+          // The solids as Fusion makes them, all here too (asked for: "every solid modelling option as in Fusion,
+          // in one place - Create").
+          {
+            id: "primitives",
+            label: "Primitives",
+            icon: "ffBox",
+            sub: "box, cylinder, cone, sphere, torus, coil",
+            children: PRIMITIVES.map((p) => ({ id: `prim-${p.kind}`, label: p.label, icon: p.icon as ToolItem["icon"], run: () => openPrimitive(this, p.kind, this.pickedFlatFace()) })),
+          },
+          { id: "---create1", label: "", icon: "line" },
+          { id: "pressPull", label: "Press Pull", icon: "offsetFace", sub: "a face: offset it · an edge: round it", run: wait("Press Pull (tap a face or an edge)", ["face", "edge"], () => {
+            const s = this.selection[0];
+            if (s?.kind === "edge") this.setTool(new EdgeOp(this, "fillet", this.pickedEdges()));
+            else if (src()) this.setTool(new ExtrudeOp(this, src()!));
+          }) },
+          { id: "combine", label: "Combine", icon: "union", sub: "join, cut or intersect bodies", run: () => {
+            const b = bodies();
+            this.setTool(new BooleanOp(this, "union", b[0] ?? "", b.slice(1), undefined, true));
+          } },
+          { id: "splitBodyC", label: "Split Body", icon: "split", run: wait("Split Body", ["body", "face"], () => this.setTool(new SplitOp(this, bodiesOf(this.selection)[0]))) },
+          { id: "splitFace", label: "Split Face", icon: "projectEdge", sub: "by a sketch's shape on it, or by edges", run: wait("Split Face (tap a sketch's shape drawn on the face, or edges)", ["profile", "edge"], () => {
+            const s = this.selection[0];
+            if (s?.kind === "edge") this.setTool(new ImprintOp(this, { edges: this.pickedEdges() }));
+            else if (src()) this.setTool(new ImprintOp(this, { source: src()! }));
+          }) },
+          { id: "shellC", label: "Shell", icon: "shell", run: wait("Shell", ["face", "body"], () => {
+            const s = this.selection[0];
+            const faces = this.selection.flatMap((x) => (x.kind === "face" ? [faceRefOf(this, x)!] : []));
+            this.setTool(new ShellOp(this, bodiesOf([s])[0], faces));
+          }) },
+          { id: "filletC", label: "Fillet", icon: "fillet", run: wait("Fillet", ["edge", "face"], () => this.setTool(new EdgeOp(this, "fillet", this.pickedEdges()))) },
+          { id: "chamferC", label: "Chamfer", icon: "chamfer", run: wait("Chamfer", ["edge", "face"], () => this.setTool(new EdgeOp(this, "chamfer", this.pickedEdges()))) },
         ],
       },
       {

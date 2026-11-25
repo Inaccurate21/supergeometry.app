@@ -31,7 +31,7 @@ const HEADS: { id: Head; label: string }[] = [
 ];
 
 /** The hole made last: the next one starts as the same screw, head and depth (four of them are one choice, not four). */
-let lastHole: Pick<HoleFeature, "size" | "diameter" | "head" | "headDiameter" | "headDepth" | "through" | "depth"> | null = null;
+let lastHole: Pick<HoleFeature, "size" | "diameter" | "head" | "headDiameter" | "headDepth" | "through" | "depth" | "chamfer" | "tipAngle"> | null = null;
 
 /** How near (on screen) a tap or the dragged dot must be to a point it catches on. */
 const CATCH_PX = 16;
@@ -379,8 +379,14 @@ export class HoleOp extends FeatureOp<HoleFeature> {
     ];
     if (f.head !== "none") items.push(this.num("Head diameter", "headDiameter", "length", { min: 0.01, onInput: () => this.changed() }));
     if (f.head === "counterbore") items.push(this.num("Head depth", "headDepth", "length", { min: 0.01, onInput: () => this.changed() }));
+    // As Fusion's: a chamfer round the mouth, and a blind hole's drill point.
+    if (f.head !== "countersink") items.push(this.num("Mouth chamfer", "chamfer", "length", { min: 0, onInput: () => this.changed() }));
     items.push({ type: "toggle", label: "Through", value: f.through, onChange: (v) => ((f.through = v), this.changed(true)) });
-    if (!f.through) items.push(this.num("Depth", "depth", "length", { min: 0.01, onInput: () => this.changed() }));
+    if (!f.through) {
+      items.push(this.num("Depth", "depth", "length", { min: 0.01, onInput: () => this.changed() }));
+      items.push({ type: "choice", label: "Bottom", options: [{ id: "flat", label: "Flat" }, { id: "drill", label: "Drill point" }], value: f.tipAngle ? "drill" : "flat", onChange: (id) => ((f.tipAngle = id === "drill" ? 118 : 0), this.changed(true)) });
+      if (f.tipAngle) items.push(this.num("Point angle", "tipAngle", "angle", { min: 1, onInput: () => this.changed() }));
+    }
     return items;
   }
 
@@ -419,7 +425,7 @@ export class HoleOp extends FeatureOp<HoleFeature> {
 
   private changed(panel = false): void {
     const f = this.feature;
-    lastHole = { ...(f.size ? { size: f.size } : {}), diameter: f.diameter, head: f.head, headDiameter: f.headDiameter, headDepth: f.headDepth, through: f.through, depth: f.depth };
+    lastHole = { ...(f.size ? { size: f.size } : {}), diameter: f.diameter, head: f.head, headDiameter: f.headDiameter, headDepth: f.headDepth, through: f.through, depth: f.depth, chamfer: f.chamfer, tipAngle: f.tipAngle };
     if (panel) this.render();
     this.update();
     if (!panel) this.setHint();

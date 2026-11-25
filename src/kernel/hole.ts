@@ -29,10 +29,14 @@ export function holeCutter(f: HoleFeature, at: Vec3, into: Vec3, depth: number, 
   const Rh = f.headDiameter / 2;
   // The outline, as (out from the axis, into the body).
   const pts: [number, number][] = [[0, -over]];
-  if (f.head === "counterbore") pts.push([Rh, -over], [Rh, f.headDepth], [R, f.headDepth]);
+  // A chamfer round the mouth (45°): the outline steps out at the face and in again `c` down.
+  const c = f.head !== "countersink" && f.chamfer && f.chamfer > 0 ? f.chamfer : 0;
+  if (f.head === "counterbore") pts.push(...(c ? ([[Rh + c, -over], [Rh + c, 0], [Rh, c]] as [number, number][]) : [[Rh, -over] as [number, number]]), [Rh, f.headDepth], [R, f.headDepth]);
   else if (f.head === "countersink") pts.push([Rh, -over], [Rh, 0], [R, sinkDepth(f)]);
-  else pts.push([R, -over]);
-  pts.push([R, depth], [0, depth]);
+  else pts.push(...(c ? ([[R + c, -over], [R + c, 0], [R, c]] as [number, number][]) : [[R, -over] as [number, number]]));
+  // A blind hole's bottom: a drill's cone (its tip `R / tan(half the angle)` further in), or flat.
+  const tip = !f.through && f.tipAngle && f.tipAngle > 0 && f.tipAngle < 180 ? R / Math.tan((f.tipAngle * Math.PI) / 360) : 0;
+  pts.push([R, depth], [0, depth + tip]);
   const outline = makePolygon(pts.map(([r, z]) => add(add(at, scale(u, r)), scale(into, z))));
   return revolution(outline, at, into, 360) as Shape3D;
 }

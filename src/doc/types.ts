@@ -649,6 +649,10 @@ export interface HoleFeature extends FeatureBase {
   /** The recess for the head: how wide at the mouth, and (a counterbore) how deep. */
   headDiameter: number;
   headDepth: number;
+  /** A 45° chamfer round the mouth this big (a plain hole's or a counterbore's rim; missing or 0: none). */
+  chamfer?: number;
+  /** A blind hole's bottom: the cone a drill leaves, this many degrees across (118 as a twist drill's; missing or 0: flat). */
+  tipAngle?: number;
 }
 
 /**

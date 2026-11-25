@@ -8436,3 +8436,42 @@ html.android-app body.items-open #topbar {
     max-width: 78px;
   }
 }
+
+/* Create → Box, Cylinder… (src/tools/primitives.ts). */
+.dialog.prim-dialog {
+  width: min(380px, calc(100vw - 24px));
+}
+.prim-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 4px 0;
+}
+.prim-row {
+  display: grid;
+  grid-template-columns: 1fr 150px;
+  align-items: center;
+  gap: 10px;
+  font-size: 13px;
+}
+.prim-num,
+.prim-select {
+  height: 32px;
+  padding: 0 8px;
+  border-radius: 7px;
+  border: 1px solid var(--line);
+  background: rgba(0, 0, 0, 0.25);
+  color: var(--text);
+  font: inherit;
+}
+.prim-err {
+  min-height: 16px;
+  color: #ff8a8a;
+  font-size: 12px;
+  padding: 4px 0;
+}
+.prim-foot {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
