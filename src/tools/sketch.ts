@@ -720,6 +720,17 @@ export class SketchTool implements Tool {
       (id) => this.selectConstraint(id),
       // A dimension's text dragged elsewhere: kept with the sketch (its line runs through it, as in Fusion).
       (id, place) => this.commit(this.entities, this.constraints.map((c) => (c.id === id ? { ...c, place } : c))),
+      // A dimension clicked and typed into in place (as in Fusion): a size or a formula.
+      (id, text) => {
+        const c = this.constraints.find((x) => x.id === id);
+        if (!c) return false;
+        const v = evaluate(text, c.prop === "angle" ? "angle" : "length");
+        if (v === null || (c.prop !== "angle" && !(v > 0))) return (this.app.ui.toast(`"${text}" isn't a valid value`, "error"), false);
+        const before = this.constraints;
+        this.pendingExpr = isExpression(text) ? text.trim() : null;
+        this.setConstraintValue(id, v);
+        return this.constraints !== before;
+      },
     );
     this.glyphs.selected = this.selConstraint;
     this.glyphs.set(this.plane, this.entities, this.constraints);
@@ -2252,6 +2263,7 @@ export class SketchTool implements Tool {
     if (!refs.length) return false;
     const c = toPlane(this.plane!, this.gimbal.origin);
     this.sdrag = { kind: "gimbal", part, from: p, refs, center: c, last: { d: [0, 0], ang: 0 } };
+    this.startDragSnap(refs);
     this.gimbal.setHot(part);
     return true;
   }
@@ -2279,6 +2291,7 @@ export class SketchTool implements Tool {
     const refs = this.joinCorners(isSel ? this.dragRefs(this.selected, this.selPts) : hit.kind === "curve" ? this.dragRefs([hit.entity], []) : this.dragRefs([], [{ e: hit.entity, p: hit.p }]));
     if (!refs.length) return false;
     this.sdrag = { kind: "points", from, refs };
+    this.startDragSnap(refs);
     return true;
   }
 
@@ -2360,9 +2373,9 @@ export class SketchTool implements Tool {
     if (dr.kind === "points") {
       const uv = this.uvAt(p);
       if (!uv) return;
-      const d = this.snapDrop(dr.refs, [uv[0] - dr.from[0], uv[1] - dr.from[1]], p);
+      const d = this.moveSnap(dr.refs, dr.from, p) ?? this.snapDrop(dr.refs, [uv[0] - dr.from[0], uv[1] - dr.from[1]], p);
       this.moveRefs(dr.refs, (q) => [q[0] + d[0], q[1] + d[1]]);
-      this.app.ui.setLabel(p.x, p.y, this.dropOn ? "Joins here" : `${fmtLen(Math.hypot(...d))}`);
+      this.app.ui.setLabel(p.x, p.y, this.dropOn ? "Joins here" : this.cursor?.label ? `${this.cursor.label} · ${fmtLen(Math.hypot(...d))}` : `${fmtLen(Math.hypot(...d))}`);
       return;
     }
     if (this.typing.active) return;
@@ -2387,9 +2400,9 @@ export class SketchTool implements Tool {
     if (!a || !b) return;
     let d: Vec2 = [b[0] - a[0], b[1] - a[1]];
     if (dr.part.kind === "axis") d = dr.part.i === 0 ? [snap(d[0]), 0] : [0, snap(d[1])];
-    else d = this.snapDrop(dr.refs, [snap(d[0]), snap(d[1])], p);
+    else d = this.moveSnap(dr.refs, a, p) ?? this.snapDrop(dr.refs, [snap(d[0]), snap(d[1])], p);
     this.applyGimbal(d, 0);
-    this.app.ui.setLabel(p.x, p.y, this.dropOn ? "Joins here" : `${fmtLen(Math.hypot(...d))}  · type a value`);
+    this.app.ui.setLabel(p.x, p.y, this.dropOn ? "Joins here" : this.cursor?.label ? `${this.cursor.label} · ${fmtLen(Math.hypot(...d))}` : `${fmtLen(Math.hypot(...d))}  · type a value`);
   }
 
   /** Move the gimbal's selection by d (sketch units) and/or rotate it about its centre. */
@@ -2481,6 +2494,36 @@ export class SketchTool implements Tool {
    * One point dragged near another curve's point: it snaps exactly onto it
    * (and joins it when let go). Returns the drag offset to use.
    */
+  /** While curves or points are moved: the sketch without them, for snapping (they can't catch on themselves). */
+  private snapEnts: SketchEntity[] | null = null;
+
+  private startDragSnap(refs: DragRef[]): void {
+    const moving = new Set(refs.map((r) => r.ref.e));
+    this.snapEnts = this.entities.filter((e) => !moving.has(e.id));
+  }
+
+  /**
+   * Moving curves or points: the point of them nearest where they were grabbed is caught by the object snaps
+   * (AutoCAD's OSNAP, with its tracking lines), the snap mark and guide lines shown as when drawing. The move that
+   * puts it there, or null when nothing catches it (the plain move goes on, on the grid).
+   */
+  private moveSnap(refs: DragRef[], from: Vec2, p: ToolPointer): Vec2 | null {
+    let base = refs[0]?.at;
+    for (const r of refs) if (base && Math.hypot(r.at[0] - from[0], r.at[1] - from[1]) < Math.hypot(base[0] - from[0], base[1] - from[1])) base = r.at;
+    const s = base ? this.snapAt(p) : null;
+    if (!s || !s.label || !base) {
+      if (this.cursor) {
+        this.cursor = null;
+        this.refreshPreview(p);
+      }
+      return null;
+    }
+    this.dropOn = refs.length === 1 ? (s.ref ?? null) : null;
+    this.cursor = s;
+    this.refreshPreview(p);
+    return [s.uv[0] - base[0], s.uv[1] - base[1]];
+  }
+
   private snapDrop(refs: DragRef[], d: Vec2, p: ToolPointer): Vec2 {
     this.dropOn = null;
     if (refs.length !== 1 || !this.plane) return d;
@@ -2505,6 +2548,11 @@ export class SketchTool implements Tool {
   }
 
   private endGeometryDrag(): void {
+    this.snapEnts = null;
+    if (this.cursor) {
+      this.cursor = null;
+      this.refreshPreview();
+    }
     // Copy on: the moved curves become copies; the originals go back where they were.
     if (this.sdrag?.kind === "gimbal" && copyMode.on && this.dragBase) {
       const base = this.dragBase;
@@ -3030,6 +3078,10 @@ export class SketchTool implements Tool {
     const raw = toPlane(plane, w);
     if (p.shift) return { uv: raw };
     const s = settings.value.snap;
+    // Which object snaps are on (Settings → Snapping, as AutoCAD's OSNAP); while curves are moved, those curves
+    // themselves are left out (a point can't catch on the line it drags).
+    const o = settings.value.osnap;
+    const ents = this.snapEnts ?? this.entities;
     const view = this.app.view;
     const screen = (uv: Vec2) => view.toScreen(sketchToWorld(plane, uv));
     // A finger covers what it lands on and can't nudge: on touch screens snap
@@ -3042,15 +3094,17 @@ export class SketchTool implements Tool {
     // must not pull taps either (numbers placed along a ruler near the origin
     // all jumped onto it - a fingertip's reach is ~20 px on a phone).
     // Drawn on it: held there (a line from the origin, sized later, slid its start off it).
-    const cands: { p: Vec2; label: string; ref?: PointRef; mid?: string; model?: boolean }[] = s.guidePoints ? [{ p: [0, 0], label: "Origin", model: true }] : [];
+    const cands: { p: Vec2; label: string; ref?: PointRef; mid?: string; model?: boolean }[] = s.guidePoints && o.endpoint ? [{ p: [0, 0], label: "Origin", model: true }] : [];
     if (s.guidePoints) {
-      for (const e of this.entities) {
+      for (const e of ents) {
         // Named points first (they can be constrained), then midpoints etc.
-        for (const q of pointsOf(e)) cands.push({ p: q.at, label: q.p === "c" ? "Center" : "Endpoint", ref: { e: e.id, p: q.p } });
-        for (const g of guidePoints(e)) if (g.kind === "mid") cands.push({ p: g.p, label: "Midpoint", mid: e.kind === "line" ? e.id : undefined });
+        for (const q of pointsOf(e)) if (q.p === "c" ? o.center : o.endpoint) cands.push({ p: q.at, label: q.p === "c" ? "Center" : "Endpoint", ref: { e: e.id, p: q.p } });
+        if (o.midpoint) for (const g of guidePoints(e)) if (g.kind === "mid") cands.push({ p: g.p, label: "Midpoint", mid: e.kind === "line" ? e.id : undefined });
+        // A circle's four quadrant points (right, top, left, bottom).
+        if (o.quadrant && e.kind === "circle") for (const [x, y] of [[1, 0], [0, 1], [-1, 0], [0, -1]]) cands.push({ p: [e.center[0] + x * e.radius, e.center[1] + y * e.radius], label: "Quadrant", ref: undefined });
       }
-      for (const e of this.boundary) for (const g of guidePoints(e)) cands.push({ p: g.p, label: g.kind === "mid" ? "Midpoint" : "Edge point" });
-      for (const q of this.pts) cands.push({ p: q, label: "Point" });
+      for (const e of this.boundary) for (const g of guidePoints(e)) if (g.kind === "mid" ? o.midpoint : o.endpoint) cands.push({ p: g.p, label: g.kind === "mid" ? "Midpoint" : "Edge point" });
+      if (o.endpoint) for (const q of this.pts) cands.push({ p: q, label: "Point" });
     }
     if (s.points3d) {
       for (const b of view.bodyList) {
@@ -3065,7 +3119,7 @@ export class SketchTool implements Tool {
           if (e.type === "CIRCLE" && Math.hypot(e.start[0] - e.end[0], e.start[1] - e.end[1], e.start[2] - e.end[2]) < 1e-6) {
             const c: Vec3 = [(e.start[0] + e.mid[0]) / 2, (e.start[1] + e.mid[1]) / 2, (e.start[2] + e.mid[2]) / 2];
             const off = Math.abs((c[0] - plane.origin[0]) * plane.normal[0] + (c[1] - plane.origin[1]) * plane.normal[1] + (c[2] - plane.origin[2]) * plane.normal[2]);
-            if (off < 1e-4 || s.distantEdges) cands.push({ p: toPlane(plane, c), label: "Center", model: off < 1e-4 });
+            if (o.center && (off < 1e-4 || s.distantEdges)) cands.push({ p: toPlane(plane, c), label: "Center", model: off < 1e-4 });
           }
         }
       }
@@ -3077,7 +3131,7 @@ export class SketchTool implements Tool {
     const wppPx = view.cam.worldPerPixel(view.height);
     const alongside = (a: Vec2, b: Vec2, to: Vec2): boolean => !!drawFrom && runsAlongside(a, b, drawFrom, to, wppPx * 2);
     const lineOf = new Map<string, Extract<SketchEntity, { kind: "line" }>>();
-    for (const e of this.entities) if (e.kind === "line") lineOf.set(e.id, e);
+    for (const e of ents) if (e.kind === "line") lineOf.set(e.id, e);
     const reach: { p: Vec2; label: string; d: number; ref?: PointRef; mid?: string; model?: boolean }[] = [];
     for (const c of cands) {
       // An end of a line the new one would run alongside: joining it would make a sliver.
@@ -3086,6 +3140,43 @@ export class SketchTool implements Tool {
       const sc = screen(c.p);
       if (!sc) continue;
       reach.push({ ...c, d: Math.hypot(sc[0] - p.x, sc[1] - p.y) });
+    }
+    // Points made by two curves or by the line being drawn: where curves cross (Intersection), the foot of a square
+    // from the line's start (Perpendicular), where it would touch a circle (Tangent).
+    const wpx = view.cam.worldPerPixel(view.height);
+    const add = (q: Vec2, label: string) => {
+      const sc = screen(q);
+      if (sc) reach.push({ p: q, label, d: Math.hypot(sc[0] - p.x, sc[1] - p.y) });
+    };
+    const onSeg = (L: Locus, q: Vec2) => L.kind !== "line" || !L.seg || ((q[0] - L.seg[0][0]) * L.d[0] + (q[1] - L.seg[0][1]) * L.d[1] > -1e-6 && (q[0] - L.seg[0][0]) * L.d[0] + (q[1] - L.seg[0][1]) * L.d[1] < Math.hypot(L.seg[1][0] - L.seg[0][0], L.seg[1][1] - L.seg[0][1]) + 1e-6);
+    if (s.guidePoints && o.intersection) {
+      const nearLoci = this.curveLoci(ents).filter((L) => {
+        const q = nearestOnLocus(L, raw);
+        return Math.hypot(q[0] - raw[0], q[1] - raw[1]) / wpx < tol * 2 && onSeg(L, q);
+      });
+      for (let i = 0; i < nearLoci.length && i < 24; i++)
+        for (let j = i + 1; j < nearLoci.length && j < 24; j++) {
+          const x = crossLoci(nearLoci[i], nearLoci[j], raw);
+          if (x && onSeg(nearLoci[i], x) && onSeg(nearLoci[j], x)) add(x, "Intersection");
+        }
+    }
+    if (drawFrom && s.guidePoints && (o.perpendicular || o.tangent)) {
+      for (const L of this.curveLoci(ents)) {
+        if (L.kind === "line" && o.perpendicular) {
+          const t = (drawFrom[0] - L.p[0]) * L.d[0] + (drawFrom[1] - L.p[1]) * L.d[1];
+          const f: Vec2 = [L.p[0] + L.d[0] * t, L.p[1] + L.d[1] * t];
+          if (Math.hypot(f[0] - drawFrom[0], f[1] - drawFrom[1]) > 1e-6 && onSeg(L, f)) add(f, "Perpendicular to line");
+        }
+        if (L.kind === "circle" && o.tangent) {
+          const dx = drawFrom[0] - L.c[0];
+          const dy = drawFrom[1] - L.c[1];
+          const dd = Math.hypot(dx, dy);
+          if (dd <= L.r + 1e-9) continue;
+          const base = Math.atan2(dy, dx);
+          const a = Math.acos(L.r / dd);
+          for (const ang of [base + a, base - a]) add([L.c[0] + L.r * Math.cos(ang), L.c[1] + L.r * Math.sin(ang)], "Tangent");
+        }
+      }
     }
     // (Two on one spot: the one a drawing there can be kept on.)
     const best = nearestSnap(reach, tol);
@@ -3096,25 +3187,25 @@ export class SketchTool implements Tool {
     // two of them: where they cross.
     const wpp = view.cam.worldPerPixel(view.height);
     const loci: Locus[] = [];
-    if (s.guideLines) {
+    if (s.guideLines && o.tracking) {
       for (const c of s.guidePoints ? cands : [{ p: [0, 0] as Vec2 }]) {
         loci.push({ kind: "line", p: c.p, d: [0, 1], label: "Vertical", guide: c.p, axis: 0 });
         loci.push({ kind: "line", p: c.p, d: [1, 0], label: "Horizontal", guide: c.p, axis: 1 });
       }
     }
-    if (s.guidePoints) loci.push(...this.curveLoci());
+    if (s.guidePoints && (o.nearest || o.extension)) loci.push(...this.curveLoci(ents));
     // A line being drawn: parallel or square to another line.
     const from = this.kind === "line" && this.pts.length ? this.pts[this.pts.length - 1] : null;
     if (from && s.guideLines) {
       const own = new Set(this.entities.map((e) => e.id));
-      for (const e of [...this.entities, ...this.boundary]) {
+      for (const e of [...ents, ...this.boundary]) {
         if (e.kind !== "line") continue;
         const d = unit2([e.b[0] - e.a[0], e.b[1] - e.a[1]]);
         // Level and upright are already there (straight across from the last point).
         if (Math.abs(d[0]) < 1e-6 || Math.abs(d[1]) < 1e-6) continue;
         const curve = own.has(e.id) ? e.id : "";
-        loci.push({ kind: "line", p: from, d, label: "Parallel", guide: from, show: [e.a, e.b], dir: curve ? { type: "parallel", curve } : undefined });
-        loci.push({ kind: "line", p: from, d: [-d[1], d[0]], label: "Perpendicular", guide: from, show: [e.a, e.b], dir: curve ? { type: "perpendicular", curve } : undefined });
+        if (o.parallel) loci.push({ kind: "line", p: from, d, label: "Parallel", guide: from, show: [e.a, e.b], dir: curve ? { type: "parallel", curve } : undefined });
+        if (o.perpendicular) loci.push({ kind: "line", p: from, d: [-d[1], d[0]], label: "Perpendicular", guide: from, show: [e.a, e.b], dir: curve ? { type: "perpendicular", curve } : undefined });
       }
     }
     // How far (in pixels) the cursor is from each; a line's own length counts as
@@ -3142,6 +3233,8 @@ export class SketchTool implements Tool {
           ext = end;
         }
       }
+      // Each kind only while its object snap is on (on a curve: Nearest; past a line's end: Extension).
+      if (label === "Extension" ? !o.extension : /^On /.test(L.label) && !o.nearest) continue;
       // A direction from the last point: only ahead of it, and not right on top of it.
       if (L.kind === "line" && L.dir !== undefined && Math.hypot(q[0] - L.p[0], q[1] - L.p[1]) / wpp < 20) continue;
       near.push({ L, q, d, label, ext });
@@ -3197,14 +3290,14 @@ export class SketchTool implements Tool {
 
   /** The sketch's curves as things to slide along - built once per change of the sketch, not on every move. */
   private lociCache: { ents: SketchEntity[]; bnd: unknown; loci: Locus[] } | null = null;
-  private curveLoci(): Locus[] {
+  private curveLoci(ents: SketchEntity[] = this.entities): Locus[] {
     const c = this.lociCache;
     // (The face outline is rebuilt as a new list each time: compare what's in it - it's short.)
     const bndSrc = JSON.stringify(this.boundary);
-    if (c && c.ents === this.entities && c.bnd === bndSrc) return c.loci;
+    if (c && c.ents === ents && c.bnd === bndSrc) return c.loci;
     const loci: Locus[] = [];
-    const own = new Set(this.entities.map((e) => e.id));
-    for (const e of [...this.entities, ...this.boundary]) {
+    const own = new Set(ents.map((e) => e.id));
+    for (const e of [...ents, ...this.boundary]) {
       const mine = own.has(e.id) ? e.id : undefined;
       if (e.kind === "line") {
         const d = unit2([e.b[0] - e.a[0], e.b[1] - e.a[1]]);
@@ -3224,7 +3317,7 @@ export class SketchTool implements Tool {
           }
       }
     }
-    this.lociCache = { ents: this.entities, bnd: bndSrc, loci };
+    this.lociCache = { ents, bnd: bndSrc, loci };
     return loci;
   }
 
@@ -6120,6 +6213,9 @@ function snapGlyphOf(label: string | undefined): SnapGlyph | null {
   if (/^(Endpoint|Point|Edge point|3D point|Origin)$/.test(label)) return "end";
   if (label === "Midpoint") return "mid";
   if (label === "Center") return "center";
+  if (label === "Quadrant") return "quad";
+  if (label === "Perpendicular to line") return "perp";
+  if (label === "Tangent") return "tan";
   // A direction held (its dashed guide shows it), not a point snapped to.
   if (/^(Horizontal|Vertical|Parallel|Perpendicular|Aligned)$/.test(label)) return null;
   return "on";

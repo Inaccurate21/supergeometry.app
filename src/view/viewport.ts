@@ -107,7 +107,7 @@ export function dotMaterial(opts: { color: number; size: number; depthTest?: boo
 }
 
 /** Snap marks, as in other CAD programs: what the point snapped to, drawn round it big enough to show past a pen's tip. */
-export type SnapGlyph = "end" | "mid" | "center" | "on";
+export type SnapGlyph = "end" | "mid" | "center" | "on" | "quad" | "perp" | "tan";
 const glyphTextures = new Map<SnapGlyph, CanvasTexture>();
 
 /** Snapped: a square at an end, a triangle at a middle, a ring at a centre, a cross on a line or curve. */
@@ -123,6 +123,9 @@ export function snapGlyphMaterial(kind: SnapGlyph, opts: { color: number; size: 
       if (kind === "end") g.rect(12, 12, 40, 40);
       else if (kind === "mid") (g.moveTo(32, 9), g.lineTo(56, 51), g.lineTo(8, 51), g.closePath());
       else if (kind === "center") g.arc(32, 32, 21, 0, Math.PI * 2);
+      else if (kind === "quad") (g.moveTo(32, 8), g.lineTo(56, 32), g.lineTo(32, 56), g.lineTo(8, 32), g.closePath());
+      else if (kind === "perp") (g.moveTo(12, 52), g.lineTo(52, 52), g.moveTo(32, 52), g.lineTo(32, 12), g.moveTo(32, 40), g.lineTo(44, 40), g.lineTo(44, 52));
+      else if (kind === "tan") (g.arc(32, 36, 16, 0, Math.PI * 2), g.moveTo(8, 20), g.lineTo(56, 20));
       else (g.moveTo(14, 14), g.lineTo(50, 50), g.moveTo(50, 14), g.lineTo(14, 50));
     };
     // A dark outline under the light mark: it reads on light faces and on the grid alike.

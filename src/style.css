@@ -7734,3 +7734,22 @@ html.android-app body.items-open #topbar {
   cursor: move;
   touch-action: none;
 }
+/* A sketch dimension typed into in place (click it), and dimensions clickable in every sketch tool. */
+.cglyphs.passive .cglyph.dim {
+  pointer-events: auto;
+}
+.cglyph.dim.editing {
+  padding: 0;
+  border-color: #ffd34d;
+}
+.cglyph-input {
+  width: 9ch;
+  height: 20px;
+  border: 0;
+  outline: none;
+  padding: 0 4px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: center;
+}

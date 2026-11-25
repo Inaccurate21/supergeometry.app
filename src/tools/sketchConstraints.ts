@@ -6,7 +6,7 @@ import { applicable, pointOf, pointsOf, sizeOf } from "../sketch/constraints";
 import { arcFrom3 } from "../sketch/curves";
 import { uid } from "../sketch/edit";
 import { el } from "../ui/ui";
-import { fmtLen, trim } from "../units";
+import { fmtLen, toDisplay, trim } from "../units";
 import type { Viewport } from "../view/viewport";
 import { sketchToWorld } from "../view/viewport";
 import { toPlane } from "../geom";
@@ -171,6 +171,8 @@ export class ConstraintGlyphs {
     private onClick: (id: string) => void,
     /** A dimension's text dragged to a new place (sketch units): kept with the sketch. */
     private onPlace: (id: string, place: Vec2) => void = () => undefined,
+    /** A dimension clicked and a new size typed on it (a number or a formula): true when the sketch took it. */
+    private onEdit: (id: string, text: string) => boolean = () => false,
   ) {
     this.svg.classList.add("cdims");
     this.host.append(this.svg);
@@ -276,6 +278,8 @@ export class ConstraintGlyphs {
           e.stopPropagation();
           // (A drag of a dimension's text is not a tap on it.)
           if (chip!.dataset.dragged) return void delete chip!.dataset.dragged;
+          // A dimension: typed into right where it is, as in Fusion.
+          if (chip!.classList.contains("dim")) return this.editDim(c.id, chip!);
           this.onClick(c.id);
         });
         this.host.append(chip);
@@ -317,6 +321,43 @@ export class ConstraintGlyphs {
    */
   setTappable(on: boolean): void {
     this.host.classList.toggle("passive", !on);
+  }
+
+  /** A dimension typed into in place: Enter (or clicking away) takes the size, Esc leaves it. */
+  private editDim(id: string, chip: HTMLElement): void {
+    if (chip.querySelector("input")) return;
+    const it = this.items.find((i) => i.c.id === id);
+    if (!it) return;
+    const c = it.c;
+    const input = document.createElement("input");
+    input.className = "cglyph-input";
+    input.inputMode = "decimal";
+    // (In the project's unit, as it is shown.)
+    const shown = c.value === undefined ? "" : c.prop === "angle" ? trim(c.value, 4) : trim(toDisplay(c.value), 4);
+    input.value = c.expr ?? shown;
+    const was = chip.textContent ?? "";
+    chip.textContent = "";
+    chip.append(input);
+    chip.classList.add("editing");
+    let done = false;
+    const end = (take: boolean) => {
+      if (done) return;
+      done = true;
+      const text = input.value.trim();
+      chip.classList.remove("editing");
+      input.remove();
+      chip.textContent = was;
+      if (take && text && text !== (c.expr ?? shown)) this.onEdit(id, text);
+    };
+    input.addEventListener("keydown", (e) => {
+      e.stopPropagation();
+      if (e.key === "Enter") end(true);
+      if (e.key === "Escape") end(false);
+    });
+    input.addEventListener("pointerdown", (e) => e.stopPropagation());
+    input.addEventListener("blur", () => end(true));
+    input.focus();
+    input.select();
   }
 
   /** A point of the screen (page pixels) on the sketch's plane, in sketch units. */

@@ -13,6 +13,11 @@ export interface Settings {
     points3d: boolean;
     distantEdges: boolean;
   };
+  /**
+   * Object snaps, one by one, as AutoCAD's OSNAP (Settings → Snapping): what a sketch's pointer is caught on while
+   * drawing and while moving curves and points.
+   */
+  osnap: Osnap;
   showGuidePoints: boolean;
   showSnapHints: boolean;
   gridLocked: boolean;
@@ -173,8 +178,26 @@ export function mouseChord(id: string, buttons: number): MouseNav | null {
   return (buttons & 1 ? chord.left : undefined) ?? (buttons & 2 ? chord.right : undefined) ?? null;
 }
 
+export interface Osnap {
+  endpoint: boolean;
+  midpoint: boolean;
+  center: boolean;
+  quadrant: boolean;
+  intersection: boolean;
+  nearest: boolean;
+  extension: boolean;
+  perpendicular: boolean;
+  parallel: boolean;
+  tangent: boolean;
+  /** Straight across from points already there (AutoCAD's object snap tracking). */
+  tracking: boolean;
+}
+
+export const OSNAP_DEFAULT: Osnap = { endpoint: true, midpoint: true, center: true, quadrant: false, intersection: true, nearest: true, extension: true, perpendicular: true, parallel: true, tangent: false, tracking: true };
+
 const DEFAULTS: Settings = {
   snap: { grid: true, guidePoints: true, guideLines: true, points3d: true, distantEdges: false },
+  osnap: OSNAP_DEFAULT,
   showGuidePoints: true,
   showSnapHints: true,
   gridLocked: false,
@@ -223,7 +246,7 @@ class SettingsStore {
     } catch {
       // Unavailable storage just means defaults.
     }
-    this.value = { ...DEFAULTS, ...saved, snap: { ...DEFAULTS.snap, ...(saved.snap ?? {}) } };
+    this.value = { ...DEFAULTS, ...saved, snap: { ...DEFAULTS.snap, ...(saved.snap ?? {}) }, osnap: { ...OSNAP_DEFAULT, ...(saved.osnap ?? {}) } };
     // v2: orthographic view and the sketch constraint column are on by default -
     // also for anyone whose saved preferences still hold the old defaults.
     if ((saved.version ?? 1) < 2) this.value = { ...this.value, ortho: true, showConstraints: true, version: 2 };

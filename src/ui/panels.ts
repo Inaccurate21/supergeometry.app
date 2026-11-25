@@ -7,7 +7,7 @@
 
 import type { SavedView, Units, Vec3 } from "../doc/types";
 import type { DocStore } from "../doc/store";
-import { MOUSE_PRESETS, mousePreset, settings, type Settings } from "../settings";
+import { MOUSE_PRESETS, mousePreset, settings, type Osnap, type Settings } from "../settings";
 import { fmtLen as lenText, UNIT_LABEL, units } from "../units";
 import type { Viewport } from "../view/viewport";
 import type { UI } from "./ui";
@@ -33,6 +33,28 @@ export function setupRightColumn(ui: UI, view: Viewport, store: DocStore, onUnit
     const snapRow = (key: keyof Settings["snap"], label: string) =>
       toggleRow(label, s.snap[key], (v) => settings.set("snap", { ...settings.value.snap, [key]: v }));
     host.append(snapRow("grid", "Grid"), snapRow("guideLines", "Sketch guide lines"), snapRow("guidePoints", "Sketch guide points"), snapRow("points3d", "3D guide points"), snapRow("distantEdges", "Distant edges"));
+    // Object snaps one by one, as AutoCAD's OSNAP: while drawing, and while moving curves and points.
+    host.append(heading("Object snaps (OSNAP)"));
+    const os = s.osnap;
+    const OSNAPS: [keyof Osnap, string, string][] = [
+      ["endpoint", "Endpoint", "□"],
+      ["midpoint", "Midpoint", "△"],
+      ["center", "Center", "○"],
+      ["quadrant", "Quadrant", "◇"],
+      ["intersection", "Intersection", "✕"],
+      ["nearest", "Nearest (on a curve)", "⧖"],
+      ["extension", "Extension", "⋯"],
+      ["perpendicular", "Perpendicular", "⟂"],
+      ["parallel", "Parallel", "∥"],
+      ["tangent", "Tangent", "◯"],
+      ["tracking", "Tracking (straight across)", "┼"],
+    ];
+    for (const [k, label, mark] of OSNAPS) host.append(toggleRow(`${mark}  ${label}`, os[k], (v) => settings.set("osnap", { ...settings.value.osnap, [k]: v })));
+    const all = el("button", "pop-row", "All on");
+    all.addEventListener("click", () => (settings.set("osnap", Object.fromEntries(OSNAPS.map(([k]) => [k, true])) as unknown as Osnap), ui.refreshPopover()));
+    const none = el("button", "pop-row", "All off");
+    none.addEventListener("click", () => (settings.set("osnap", Object.fromEntries(OSNAPS.map(([k]) => [k, false])) as unknown as Osnap), ui.refreshPopover()));
+    host.append(all, none);
     host.append(heading("Show"));
     host.append(toggleRow("Guide points", s.showGuidePoints, (v) => settings.set("showGuidePoints", v)), toggleRow("Snapping hints", s.showSnapHints, (v) => settings.set("showSnapHints", v)));
     host.append(el("div", "pop-note", "Hold Shift while drawing to place a point without snapping."));
