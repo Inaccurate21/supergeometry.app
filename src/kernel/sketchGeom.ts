@@ -18,18 +18,115 @@ import {
 import type { PlaneDef, SketchEntity, Vec2, Vec3 } from "../doc/types";
 import { toWorld } from "../geom";
 import { entityPolylines, entityPrims, evalPrim, isClosedPrim, SPLINE_PER_SPAN, splineHeightSamples, splineSpanAt, splineSpans, type Prim } from "../sketch/curves";
-import { arrangement, resolveRegion, type Arrangement, type Loop, type LoopRef, type Piece, type RegionRef } from "../sketch/regions";
+import { arrangement, resolveRegion, type Arrangement, type Loop, type LoopRef, type Piece, type Region, type RegionRef } from "../sketch/regions";
 
-/** Faces for the referenced regions of a sketch (one face per region, holes included). */
+/**
+ * Faces for the referenced regions of a sketch: regions that share a stretch of outline are one face - their
+ * outline together, the stretches between them gone - and each such face has its holes.
+ *
+ * It was a face a region, each made a solid, the solids joined. Where two of the sketch's curves pass a hair from
+ * each other (a circle that all but touches a line) that join lost parts without a word: a ring and what lay under
+ * it were not in the body. Joined here, flat, by which
+ * stretches of curve two picked regions share, there is nothing for the kernel to join.
+ */
 export function regionFaces(entities: SketchEntity[], plane: PlaneDef, refs: RegionRef[]): Face[] {
   const arr = arrangement(entities);
-  return refs.map((ref) => {
+  const regions = refs.map((ref) => {
     const r = resolveRegion(arr, ref);
     if (!r) throw new Error("A profile it used no longer exists in its sketch");
-    const face = makeFace(loopWire(arr, r.outer, plane));
-    // addHolesInFace orients hole wires correctly (makeFace's holes arg does not).
-    return r.holes.length ? addHolesInFace(face, r.holes.map((h) => loopWire(arr, h, plane))) : face;
+    return r;
   });
+  return outlinesOf(arr, [...new Set(regions)]).map(({ outer, holes }) => {
+    const face = makeFace(loopWire(arr, outer, plane));
+    // addHolesInFace orients hole wires correctly (makeFace's holes arg does not).
+    return holes.length ? addHolesInFace(face, holes.map((h) => loopWire(arr, h, plane))) : face;
+  });
+}
+
+/**
+ * The outlines of some regions taken together: every stretch of curve that only one of them has (one that two of
+ * them have, each from its own side, is inside the whole), followed round into rings - those that go round the
+ * regions' way are outlines, the others holes, each in the smallest outline that holds it.
+ *
+ * Where rings touch at a point (a circle touching a line), the way on is the sharpest turn to the right: each ring
+ * stays simple, a hole that touches its outline is still a ring of its own. (A single region whose hole touched
+ * its outline was one ring that met itself, and no wire could be made of it.)
+ */
+function outlinesOf(arr: Arrangement, regions: Region[]): { outer: Loop; holes: Loop[] }[] {
+  const key = (r: LoopRef) => `${r.piece}:${r.reversed ? 1 : 0}`;
+  const have = new Map<string, LoopRef>();
+  for (const region of regions)
+    for (const loop of [region.outer, ...region.holes])
+      for (const ref of loop.pieces) {
+        const other = `${ref.piece}:${ref.reversed ? 0 : 1}`;
+        if (have.has(other)) have.delete(other);
+        else have.set(key(ref), ref);
+      }
+  const from = (r: LoopRef) => (r.reversed ? arr.pieces[r.piece].n1 : arr.pieces[r.piece].n0);
+  const to = (r: LoopRef) => (r.reversed ? arr.pieces[r.piece].n0 : arr.pieces[r.piece].n1);
+  const polyOf = (r: LoopRef): Vec2[] => (r.reversed ? [...arr.pieces[r.piece].poly].reverse() : arr.pieces[r.piece].poly);
+  const leaving = new Map<number, LoopRef[]>();
+  for (const ref of have.values()) {
+    const list = leaving.get(from(ref));
+    if (list) list.push(ref);
+    else leaving.set(from(ref), [ref]);
+  }
+  const used = new Set<string>();
+  const rings: Loop[] = [];
+  for (const first of have.values()) {
+    if (used.has(key(first))) continue;
+    const pieces: LoopRef[] = [];
+    let cur = first;
+    for (let guard = 0; guard <= have.size; guard++) {
+      used.add(key(cur));
+      pieces.push(cur);
+      const here = polyOf(cur);
+      const inDir: Vec2 = [here[here.length - 1][0] - here[here.length - 2][0], here[here.length - 1][1] - here[here.length - 2][1]];
+      // The ways on from here (the ring's own first stretch among them: back to it, the ring is closed).
+      const ways = (leaving.get(to(cur)) ?? []).filter((r) => r === first || !used.has(key(r)));
+      if (!ways.length) throw new Error("A profile's outline does not close - redraw that part of the sketch");
+      let next = ways[0];
+      let best = Infinity;
+      for (const w of ways) {
+        const q = polyOf(w);
+        const outDir: Vec2 = [q[1][0] - q[0][0], q[1][1] - q[0][1]];
+        const turn = Math.atan2(inDir[0] * outDir[1] - inDir[1] * outDir[0], inDir[0] * outDir[0] + inDir[1] * outDir[1]);
+        if (turn < best) (best = turn), (next = w);
+      }
+      if (next === first) break;
+      cur = next;
+    }
+    const poly: Vec2[] = [];
+    for (const r of pieces) poly.push(...polyOf(r).slice(0, -1));
+    rings.push({ pieces, poly });
+  }
+  const area = (poly: Vec2[]) => {
+    let s = 0;
+    for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) s += poly[j][0] * poly[i][1] - poly[i][0] * poly[j][1];
+    return s / 2;
+  };
+  const inside = (poly: Vec2[], q: Vec2) => {
+    let hit = false;
+    for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
+      const [xi, yi] = poly[i];
+      const [xj, yj] = poly[j];
+      if (yi > q[1] !== yj > q[1] && q[0] < ((xj - xi) * (q[1] - yi)) / (yj - yi) + xi) hit = !hit;
+    }
+    return hit;
+  };
+  // Which way round an outline goes: the way the regions' own do.
+  const sign = Math.sign(area(regions[0]?.outer.poly ?? [])) || 1;
+  const sized = rings.map((ring) => ({ ring, area: area(ring.poly) * sign }));
+  const outers = sized.filter((x) => x.area > 0).map((x) => ({ outer: x.ring, holes: [] as Loop[], area: x.area }));
+  for (const h of sized.filter((x) => x.area < 0)) {
+    // (A point of the hole a little along its first stretch: not the corner it may share with its outline.)
+    const p0 = h.ring.poly[0];
+    const p1 = h.ring.poly[1] ?? p0;
+    const probe: Vec2 = [(p0[0] + p1[0]) / 2, (p0[1] + p1[1]) / 2];
+    const home = outers.filter((o) => inside(o.outer.poly, probe)).sort((x, y) => x.area - y.area)[0];
+    if (home) home.holes.push(h.ring);
+  }
+  return outers;
 }
 
 /** Outer wire of a region (for sweeps/lofts that need a wire). */
@@ -136,7 +233,13 @@ function loopWire(arr: Arrangement, loop: Loop, plane: PlaneDef): Wire {
   }
   return assembleWire(
     roundRuns(arr, loop).map((run) =>
-      run.length === 1 ? pieceEdge(arr, arr.pieces[run[0].piece], plane) : circleOf(arr, run[0]) ? arcThrough(arr, run, plane) : splineThrough(arr, run, plane),
+      run.length === 1
+        ? pieceEdge(arr, arr.pieces[run[0].piece], plane)
+        : arr.prims[arr.pieces[run[0].piece].prim].t === "line"
+          ? makeLine(w(plane, ends(arr, run[0])[0]), w(plane, ends(arr, run[run.length - 1])[1]))
+          : circleOf(arr, run[0])
+            ? arcThrough(arr, run, plane)
+            : splineThrough(arr, run, plane),
     ),
   );
 }
@@ -145,6 +248,12 @@ function loopWire(arr: Arrangement, loop: Loop, plane: PlaneDef): Wire {
 function circleOf(arr: Arrangement, r: LoopRef): { c: Vec2; r: number } | null {
   const p = arr.prims[arr.pieces[r.piece].prim];
   return p.t === "circle" ? { c: p.c, r: p.r } : null;
+}
+
+/** Where a piece of a loop starts and ends, the way the loop goes along it. */
+function ends(arr: Arrangement, r: LoopRef): [Vec2, Vec2] {
+  const poly = arr.pieces[r.piece].poly;
+  return r.reversed ? [poly[poly.length - 1], poly[0]] : [poly[0], poly[poly.length - 1]];
 }
 
 /**
@@ -162,9 +271,20 @@ function roundRuns(arr: Arrangement, loop: Loop): LoopRef[][] {
     const a = circleOf(arr, refs[i]);
     const b = circleOf(arr, refs[j]);
     if (a && b) return Math.hypot(a.c[0] - b.c[0], a.c[1] - b.c[1]) < size * 1e-9 && Math.abs(a.r - b.r) < size * 1e-9;
-    // One spline, on from where the last piece of it stopped.
     const pi = arr.pieces[refs[i].piece];
     const pj = arr.pieces[refs[j].piece];
+    // Straight on along one line (two shapes' sides end to end, the outline of both taken together): one edge, so
+    // one flat side - not a line down the wall where one shape's side stopped and the next one's began.
+    if (arr.prims[pi.prim].t === "line" && arr.prims[pj.prim].t === "line") {
+      const [a0, a1] = ends(arr, refs[i]);
+      const [b0, b1] = ends(arr, refs[j]);
+      const u: Vec2 = [a1[0] - a0[0], a1[1] - a0[1]];
+      const v: Vec2 = [b1[0] - b0[0], b1[1] - b0[1]];
+      const lu = Math.hypot(u[0], u[1]);
+      const lv = Math.hypot(v[0], v[1]);
+      return lu > 0 && lv > 0 && Math.abs(u[0] * v[1] - u[1] * v[0]) < lu * lv * 1e-9 && u[0] * v[0] + u[1] * v[1] > 0;
+    }
+    // One spline, on from where the last piece of it stopped.
     if (pi.prim !== pj.prim || arr.prims[pi.prim].t !== "spline" || refs[i].reversed !== refs[j].reversed) return false;
     const gap = refs[i].reversed ? pi.t0 - pj.t1 : pj.t0 - pi.t1;
     return Math.abs(gap - Math.round(gap)) < 1e-9;

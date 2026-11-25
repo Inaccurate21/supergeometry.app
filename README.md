@@ -303,6 +303,9 @@ sketch. A sketch stays in view until every region of it is used.
   Drag its dot to move it: it catches on the middle of the face and on the
   centre of a round edge (a boss) and stays there; anywhere else, type its two
   distances from the nearest edges, which it keeps when the part is resized.
+  It also catches on the point where an axis passes through the face, and on a
+  sketch drawn on the face: the end of a line, where lines meet or cross, the
+  centre of a circle. Lay the holes out as a sketch, then tap each one.
   It is one step in History, opened again like any other.
 - **Thread** - tap a round face or a hole's rim: a shank at the nominal size
   gets an outside thread, a hole at the tap-drill size an inside one. The
@@ -506,6 +509,16 @@ can't be rebuilt after a change, it's marked and the reason is shown.
 
 This section describes the app so an assistant can explain it, guide a user
 step by step, or read and write project files.
+
+**Assistants: start at https://supergeometry.app/llms.txt** (`public/llms.txt` here), a short page written for
+you: how to build a model in the person's open tab with the page's `sg` handle, one call per change
+(`sg.make`, `sg.add`, `sg.change`; see `src/assist.ts`). The full reference, with the project file format and
+complete examples, is https://supergeometry.app/llms-full.txt; everything both pages say is tested against the
+app on every change (`tests/llms.test.ts`).
+
+**People:** on a computer, the **Claude** button at the bottom right shows how to model by asking. It needs
+Claude's extension for Chrome: open it beside the app, say what you want, and Claude builds the model in your
+tab. The app sends nothing anywhere; the extension works in your own browser.
 
 **What it is.** A browser-based parametric solid modeler. Geometry is
 OpenCascade (via replicad) running in a Web Worker; the UI is plain DOM over a

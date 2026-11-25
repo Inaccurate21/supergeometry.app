@@ -1,13 +1,15 @@
 // Hole: a screw's hole in a flat face, by the screw's size.
 //
-// Asked for after the app was posted ("drop in pre-defined, common 3D features, similarly to ... a hole designer ...
-// holes and bores for a pre-defined screw size"). A hole for an M3 screw was a sketch, a circle, knowing that 3.4 is
+// A hole for an M3 screw was a sketch, a circle, knowing that 3.4 is
 // the size that lets it through, a cut - and a second circle for the head. Here: tap the face where the screw goes,
 // choose the screw and the head. Every size it fills in can be typed over.
 //
 // Where it is: the tap, moved by its dot. It catches on the middle of the face and on the centre of a round edge
 // (a boss's rim), and stays there when the model changes; anywhere else it is held from the two nearest straight
 // edges, by the two sizes shown - typed over, they place it exactly, and it keeps them when the face is resized.
+// It catches, too, on the point where an axis passes through the face and on a sketch drawn on the face (a line's
+// end, where lines meet, a circle's centre - see holeSnaps.ts): put exactly there, and held from the edges as
+// anywhere else.
 
 import type { EdgeRef, FaceRef, HoleFeature, Vec3 } from "../doc/types";
 import { distanceFrom, headFor, holeFor, holeFromLines, screwSize, SCREW_SIZES, sideOf, sinkDepth } from "../doc/holeSizes";
@@ -19,6 +21,7 @@ import { DimWidget } from "./annotate";
 import { FeatureOp } from "./featureOp";
 import { Handle } from "./handles";
 import { faceIndexOf, type AppContext } from "./tool";
+import { holeSnaps, type SnapPoint } from "./holeSnaps";
 
 type Head = HoleFeature["head"];
 const HEADS: { id: Head; label: string }[] = [
@@ -29,6 +32,9 @@ const HEADS: { id: Head; label: string }[] = [
 
 /** The hole made last: the next one starts as the same screw, head and depth (four of them are one choice, not four). */
 let lastHole: Pick<HoleFeature, "size" | "diameter" | "head" | "headDiameter" | "headDepth" | "through" | "depth"> | null = null;
+
+/** How near (on screen) a tap or the dragged dot must be to a point it catches on. */
+const CATCH_PX = 16;
 
 interface Line {
   a: Vec3;
@@ -50,6 +56,8 @@ export class HoleOp extends FeatureOp<HoleFeature> {
   /** What it can catch on and be held from: the round and straight edges lying in the face's plane. */
   private rounds: Round[] = [];
   private lines: Line[] = [];
+  /** Points it catches on that are not the face's own: where an axis comes through, a sketch's ends and crossings. */
+  private snaps: SnapPoint[] = [];
   /** The two edges its sizes are measured from (shown also when it sits on a centre: typed over, they take it off). */
   private edges2: [Line, Line] | null = null;
 
@@ -105,8 +113,9 @@ export class HoleOp extends FeatureOp<HoleFeature> {
         if (c && !this.rounds.some((r) => dist(r.c, c) < 1e-6)) this.rounds.push({ c, ref });
       }
     });
+    this.snaps = holeSnaps(app.store.doc.features, app.store.doc.hidden ?? [], this.on, this.out, size0);
     this.feature.at = this.flatten(this.feature.at);
-    if (!existing) this.place(this.feature.at, app.view.cam.worldPerPixel(app.view.height) * Math.max(12, tolPx));
+    if (!existing) this.place(this.feature.at, Math.max(CATCH_PX, tolPx));
     else this.hold();
   }
 
@@ -151,8 +160,18 @@ export class HoleOp extends FeatureOp<HoleFeature> {
   }
 
   /**
-   * Put down at a point of the face: on the face's middle or a round edge's centre when within `catchAt` of one,
-   * else held from the two nearest straight edges, their sizes in steps of `step`.
+   * How far apart two points of the face are as seen on the screen, in pixels. (Not along the face: looked at from
+   * the side a face is squeezed, and a tap that is plainly on a point was then millimetres from it.)
+   */
+  private apart(a: Vec3, b: Vec3): number {
+    const [s, q] = [this.app.view.toScreen(a), this.app.view.toScreen(b)];
+    if (s && q) return Math.hypot(s[0] - q[0], s[1] - q[1]);
+    return dist(a, b) / Math.max(1e-9, this.app.view.cam.worldPerPixel(this.app.view.height));
+  }
+
+  /**
+   * Put down at a point of the face: on the face's middle or a round edge's centre when within `catchAt` (pixels,
+   * on the screen) of one, else held from the two nearest straight edges, their sizes in steps of `step`.
    */
   private place(p: Vec3, catchAt: number, step = 0): void {
     const f = this.feature;
@@ -163,15 +182,30 @@ export class HoleOp extends FeatureOp<HoleFeature> {
     delete f.from;
     let best: { c: Vec3; d: number; round?: Round } | null = null;
     for (const c of [{ c: this.flatten(this.middle) }, ...this.rounds.map((round) => ({ c: round.c, round }))]) {
-      const d = dist(c.c, p);
+      const d = this.apart(c.c, p);
       if (d <= catchAt && (!best || d < best.d)) best = { ...c, d };
     }
-    if (best) {
+    // An axis's point, a point of a sketch on the face - the nearer of that and the face's own wins (its own, when
+    // they are one place: the middle of the face stays "the middle" though an axis comes through there).
+    let snap: (SnapPoint & { d: number }) | null = null;
+    for (const s of this.snaps) {
+      const d = this.apart(s.at, p);
+      if (d <= catchAt && (!snap || d < snap.d)) snap = { ...s, d };
+    }
+    if (best && !(snap && snap.d < best.d - 1e-6)) {
       f.at = best.c;
       if (best.round) f.around = best.round.ref;
       else f.centered = true;
       this.edges2 = this.nearest(f.at);
       this.caught = best.round ? "On the centre of the round edge" : "In the middle of the face";
+      return;
+    }
+    // Exactly there (its sizes from the edges as they come out).
+    if (snap) {
+      f.at = this.flatten(snap.at);
+      this.edges2 = this.nearest(f.at);
+      this.keepSizes(0);
+      this.caught = snap.what;
       return;
     }
     this.caught = null;
@@ -272,7 +306,7 @@ export class HoleOp extends FeatureOp<HoleFeature> {
   }
 
   private catchAt(p: ToolPointer): number {
-    return this.app.view.cam.worldPerPixel(this.app.view.height) * Math.max(12, p.tol);
+    return Math.max(CATCH_PX, p.tol);
   }
 
   private pointOn(p: ToolPointer): Vec3 | null {
@@ -309,7 +343,9 @@ export class HoleOp extends FeatureOp<HoleFeature> {
 
   /** A tap on the body puts the hole there; a tap on nothing ends the tool (the hole is kept). */
   tap(p: ToolPointer): void {
-    const hit = this.app.view.pick(p.x, p.y, { edgeTolPx: p.tol });
+    // (The body alone: a sketch drawn on the face, or an axis through it, is what the hole is put on - a tap on one
+    // is a tap on the face under it.)
+    const hit = this.app.view.pick(p.x, p.y, { edgeTolPx: p.tol, profiles: false, planes: false, axes: false });
     if (!hit || !("body" in hit) || hit.body !== this.feature.face.body) return super.tap(p);
     // On its face (or in the hole itself): there. Another face of the body - a side wall - is not a place on this one.
     const mine = hit.kind === "face" && this.app.view.body(hit.body)?.faces[hit.face]?.step === this.feature.id;
@@ -325,7 +361,8 @@ export class HoleOp extends FeatureOp<HoleFeature> {
   protected hint(): string {
     const f = this.feature;
     const what = `${f.size ? `${f.size} hole` : `Hole ${fmtLen(f.diameter)} across`}${f.head === "none" ? "" : `, ${f.head}`}${f.through ? ", right through" : `, ${fmtLen(f.depth)} deep`}`;
-    const where = f.around ? "It is on the centre of the round edge, and stays there." : f.centered ? "It is in the middle of the face, and stays there." : f.from ? "Type its two sizes from the edges, or drag its dot." : "Drag its dot to move it.";
+    const on = this.caught && !f.around && !f.centered ? `${this.caught}. ` : "";
+    const where = f.around ? "It is on the centre of the round edge, and stays there." : f.centered ? "It is in the middle of the face, and stays there." : f.from ? `${on}Type its two sizes from the edges, or drag its dot.` : `${on}Drag its dot to move it.`;
     return `${what}. ${where}`;
   }
 

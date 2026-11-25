@@ -960,7 +960,7 @@ export class Viewport {
         this.sketchGroup.add(l);
       }
       if (dashed.length) {
-        // As wide as the sketch's other lines (asked for: "should be more visible, like the normal line"): told
+        // As wide as the sketch's other lines: told
         // from them by its dashes and its colour, not by being faint.
         const mat = this.lineMaterial(COLORS.construction, active ? 2.2 : 1.6, !onTop);
         mat.transparent = true;
@@ -1637,9 +1637,7 @@ export class Viewport {
   /**
    * A sketch's shape at or right beside the pointer that is too narrow there to be tapped without tapping its own
    * outline - the frame between a face's edge and a small offset of it, a letter's stroke: that shape. (Its lines
-   * and the body's edges took every tap; to pick it, the view had to be zoomed right in on it. Asked for: "because
-   * the surface is so small, it doesn't select that sketch surface and I have to rotate the camera and zoom in
-   * very much to select it".) Null where the shape under the pointer is wide enough to tap, or there is none.
+   * and the body's edges took every tap; to pick it, the view had to be zoomed right in on it.) Null where the shape under the pointer is wide enough to tap, or there is none.
    */
   thinProfileNear(x: number, y: number, tol: number): PickHit | null {
     if (!this.profileMeshes.length) return null;
@@ -1988,8 +1986,7 @@ function makeAxes(): Object3D {
     // The axes are the background of whatever is made: a hair further from the eye than they are (a third of a
     // percent of the way to what is looked at), so a body's edge or a sketch's line that runs along one is drawn
     // whole, in its own colour. (Lying in the very same place, the two fought for each pixel - an edge along X came
-    // out in dashes of red, a sketch line there lost its colour to the axis. Asked for: "I want the line of
-    // whatever was made to be on top of everything. The axis lines should be in the background".)
+    // out in dashes of red, a sketch line there lost its colour to the axis.)
     mat.onBeforeCompile = (shader) => {
       shader.vertexShader = shader.vertexShader.replace("#include <project_vertex>", "#include <project_vertex>\n  gl_Position.z += 3.0e-6 * gl_Position.w;");
     };

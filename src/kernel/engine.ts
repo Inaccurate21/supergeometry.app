@@ -1398,14 +1398,21 @@ async function apply(f: Feature, ctx: Ctx): Promise<void> {
         const edge = (r: number) =>
           f.type === "fillet" && f.g2 ? g2Fillet(body, edges, r) : f.type === "fillet" ? (f.chord ? chordFillet(body, edges, r, r2 ? (r2 * r) / f.radius : r, !!f.flip) : r2 ? variable(r) : body.fillet(r, (finder) => finder.inList(edges))) : d2 ? twoDistance(r) : body.chamfer(r, (finder) => finder.inList(edges));
         try {
-          result = edge(f.radius);
+          // Edges that run on from each other along one line but lie between different walls: one after another
+          // (see edgesApart). Else all at once.
+          const plain = (f.type === "fillet" && !f.g2 && !r2 && !f.chord) || (f.type === "chamfer" && !d2);
+          const runs = plain ? edgesApart(body, edges) : null;
+          result = (runs && oneAfterAnother(body, runs, (b, list) => (f.type === "fillet" ? b.fillet(f.radius, (finder) => finder.inList(list)) : b.chamfer(f.radius, (finder) => finder.inList(list))) as Shape3D)) ?? edge(f.radius);
         } catch (err) {
           if (err instanceof Error && !/WebAssembly|kernel/i.test(err.message)) throw err;
           // Exactly the size that uses up a face (4 mm on both edges of an
           // 8 mm block: a full round): the two roundings meet with nothing
           // between, and that exact case fails where 3.999 works. A hair
           // less gives the same shape, to a millionth of a millimetre.
-          for (const k of [1 - 1e-6, 1 - 1e-5, 1 - 1e-4]) {
+          // (A little more than a hair where a face beside it is not exact: a shelled bowl's inner rim is a curve
+          // fitted to a circle, its wall a 1 mm that is not 1 everywhere, and both rim edges rounded 0.5 - a full
+          // round rim - failed at 0.49995 too and worked at 0.499. Three thousandths less at most: 0.0015 mm of that rim.)
+          for (const k of [1 - 1e-6, 1 - 1e-5, 1 - 1e-4, 1 - 1e-3, 1 - 3e-3]) {
             try {
               result = edge(f.radius * k);
               break;
@@ -2174,9 +2181,7 @@ function shapeThrough(s: Shape3D, m: Affine): Shape3D {
 /**
  * Linked bodies follow each other: a step that changed one body of a group (rounded an edge of it, cut a hole in
  * it, joined something to it...) leaves every other body of the group changed the same way - the changed body's
- * new shape, put where the other stands. (Asked for: "if it's linked, whatever change I do to any copy of that
- * body or the original, it should also change the other ones exactly the same. We should also have this in
- * patterns".) Moving or turning one of them is its own business: that only changes where it stands. One deleted,
+ * new shape, put where the other stands. Moving or turning one of them is its own business: that only changes where it stands. One deleted,
  * or used up by a join, leaves the group; the others stay.
  */
 function followLinks(step: string, before: Ctx, out: Ctx): void {
@@ -3414,7 +3419,7 @@ let stepsNow = new Set<string>();
 
 /**
  * A threaded body grown by `by` (the clearance a Subtract keeps round it). The kernel's own offset of a thread's
- * helical faces fails every time (asked: "when I want to subtract a thread and I put clearance, it always fails").
+ * helical faces fails every time.
  * So: its grooves filled back in (a cylinder over the thread's reach - what it was before the thread), that
  * grown, and the same thread cut on its round face - a thread that much bigger all round (in a hole: that much
  * smaller), which is what a nut cut with it needs to turn on the bolt with that gap.
@@ -5557,6 +5562,104 @@ const MAX_COPIES = 1000;
 function patternCount(n: number): void {
   if (!(n >= 1) || !Number.isFinite(n)) throw new Error("The count must be 2 or more");
   if (n > MAX_COPIES) throw new Error(`${Math.round(n)} copies is too many - up to ${MAX_COPIES} at once`);
+}
+
+/**
+ * Picked edges in runs to round one after another - or null when they can all be rounded at once, as nearly always.
+ *
+ * Two edges that run on from each other in one line are taken by the kernel as one edge to round, whatever is
+ * either side of them. A block's upright corner with a slanting cut down its upper half is two such edges: the lower
+ * between the left wall and the front, the upper between the left wall and the cut's slanting wall. Rounded as one,
+ * the kernel made the lower round, a short piece of the upper, and between them a swooping surface down the slanting
+ * wall. Rounded one after the other they are two plain
+ * rounds, each the size asked. So: edges that meet end to end going the same way, with a wall beside one that is
+ * not a wall beside the other and does not run on smoothly into it, are put in different runs.
+ */
+function edgesApart(body: Shape3D, edges: Edge[]): Edge[][] | null {
+  if (edges.length < 2 || edges.length > 12) return null;
+  const P = (v: { toTuple(): number[] }) => v.toTuple() as Vec3;
+  const size = sizeOf(body);
+  const tol = size * 1e-6;
+  const info = edges.map((e) => ({ e, a: P(e.startPoint), b: P(e.endPoint), faces: body.faces.filter((fc) => fc.edges.some((x) => x.isSame(e))) }));
+  // Which run each is in: together to begin with, apart where two of them meet as said above.
+  const apart: [number, number][] = [];
+  for (let i = 0; i < info.length; i++)
+    for (let j = i + 1; j < info.length; j++) {
+      const [u, v] = [info[i], info[j]];
+      const at = [u.a, u.b].find((p) => dist(p, v.a) < tol || dist(p, v.b) < tol);
+      if (!at) continue;
+      // Going the same way where they meet (one line, or one smooth curve).
+      const tu = norm(P(u.e.tangentAt(dist(at, u.a) < tol ? 0 : 1)));
+      const tv = norm(P(v.e.tangentAt(dist(at, v.a) < tol ? 0 : 1)));
+      if (Math.abs(dot(tu, tv)) < 0.9999) continue;
+      // A wall of one that is no wall of the other, and turns away from each of the other's walls there.
+      const turns = (fc: Face, others: Face[]) =>
+        !others.some((o) => o.isSame(fc)) &&
+        others.every((o) => {
+          try {
+            return Math.abs(dot(norm(P(fc.normalAt(at))), norm(P(o.normalAt(at))))) < Math.cos((2 * Math.PI) / 180);
+          } catch {
+            return false;
+          }
+        });
+      if (u.faces.some((fc) => turns(fc, v.faces)) || v.faces.some((fc) => turns(fc, u.faces))) apart.push([i, j]);
+    }
+  if (!apart.length) return null;
+  // The fewest runs: each edge in the first run that has none it must be apart from.
+  const runs: number[][] = [];
+  info.forEach((_, i) => {
+    const run = runs.find((r) => !r.some((k) => apart.some(([x, y]) => (x === i && y === k) || (x === k && y === i))));
+    if (run) run.push(i);
+    else runs.push([i]);
+  });
+  return runs.length > 1 ? runs.map((r) => r.map((i) => edges[i])) : null;
+}
+
+/**
+ * Runs of edges worked one run after another (`work` rounds or bevels a body's edges): the body after one run is the
+ * body the next is worked on, its edges found again there. In the order given, or the other way round - which run
+ * must go first depends on the shape (the upper edge before the lower, in the case above). Null if neither works:
+ * the caller does them all at once, as before.
+ */
+function oneAfterAnother(body: Shape3D, runs: Edge[][], work: (body: Shape3D, edges: Edge[]) => Shape3D): Shape3D | null {
+  const P = (v: { toTuple(): number[] }) => v.toTuple() as Vec3;
+  const tol = sizeOf(body) * 1e-6;
+  const ends = runs.map((run) => run.map((e) => [P(e.startPoint), P(e.endPoint)] as [Vec3, Vec3]));
+  // An edge of the first body, on a later one: the same two ends, or - trimmed by a round before it - what is left
+  // of it, on its line.
+  const again = (now: Shape3D, [a, b]: [Vec3, Vec3]): Edge | null => {
+    const d = norm(sub(b, a));
+    const span = dist(a, b);
+    const on = (p: Vec3) => {
+      const t = dot(sub(p, a), d);
+      return t > -tol && t < span + tol && dist(p, add(a, scale(d, t))) < tol * 10;
+    };
+    let best: { e: Edge; len: number } | null = null;
+    for (const e of now.edges) {
+      if (e.geomType !== "LINE") continue;
+      const [p, q] = [P(e.startPoint), P(e.endPoint)];
+      const len = dist(p, q);
+      if (on(p) && on(q) && len > span * 0.05 && (!best || len > best.len)) best = { e, len };
+    }
+    return best?.e ?? null;
+  };
+  // (Straight edges only: what is left of a curved one cannot be told as simply.)
+  if (runs.some((run) => run.some((e) => e.geomType !== "LINE"))) return null;
+  for (const order of [runs.map((_, i) => i), runs.map((_, i) => runs.length - 1 - i)]) {
+    try {
+      let now = body;
+      for (const k of order) {
+        const list = k === order[0] ? runs[k] : ends[k].map((x) => again(now, x));
+        if (list.some((e) => !e)) throw new Error("gone");
+        now = work(now, list as Edge[]);
+        if (!shapeValid(now) || subShapes(now, "SOLID").length !== 1) throw new Error("not sound");
+      }
+      return now;
+    } catch (err) {
+      if (isFault(err)) throw err;
+    }
+  }
+  return null;
 }
 
 /** Edits that change a solid in place (their results are checked). */

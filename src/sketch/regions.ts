@@ -178,8 +178,7 @@ function compute(entities: SketchEntity[]): Arrangement {
   // ---- ends that lie on another curve
   // A line drawn up to a circle, its end held on it, meets the circle - but not the straight pieces the circle is
   // looked at as above: its end is on the true round, a hair outside them, and nothing crossed. The shape the line
-  // closed was no shape (reported: "Points are coincidents. The area under the circle doesn't fill, unless the
-  // circle crosses the bottom line"). So each open curve's ends are looked for on every other curve itself, and
+  // closed was no shape. So each open curve's ends are looked for on every other curve itself, and
   // that curve is cut where one lies on it.
   const onTol = eps * 50;
   const endBoxes = samples.map((s) => {
@@ -236,15 +235,22 @@ function compute(entities: SketchEntity[]): Arrangement {
   prims.forEach((p, pi) => {
     const closed = isClosedPrim(p);
     let ts = [...splits[pi]].map((t) => Math.min(1, Math.max(0, t))).sort((a, b) => a - b);
+    // Cuts nearer each other than two ends are told apart (see nodeOf) are one cut. A circle that just touches a
+    // line is cut there twice, a hair apart: the two were kept, the piece between them began and ended at one
+    // point, and so did the rest of the circle - all of it, as one arc from a point to itself, which the kernel
+    // broke down on.
+    const along = samples[pi].pts.reduce((s, q, k, all) => (k ? s + Math.hypot(q[0] - all[k - 1][0], q[1] - all[k - 1][1]) : 0), 0) || 1;
+    const near = Math.max(1e-9, (eps * 75) / along);
+    let uniq: number[];
     if (closed) {
-      ts = ts.map((t) => (t >= 1 - 1e-9 ? 0 : t)).sort((a, b) => a - b);
-      if (ts.length === 0) ts = [0, 0.5];
-      else if (ts.length === 1) ts.push(ts[0] + 0.5 > 1 ? ts[0] - 0.5 : ts[0] + 0.5), ts.sort((a, b) => a - b);
+      ts = ts.map((t) => (t >= 1 - near ? 0 : t)).sort((a, b) => a - b);
+      uniq = ts.filter((t, k) => k === 0 || t - ts[k - 1] > near);
+      if (uniq.length === 0) uniq = [0, 0.5];
+      else if (uniq.length === 1) uniq = [uniq[0], uniq[0] + 0.5 > 1 ? uniq[0] - 0.5 : uniq[0] + 0.5].sort((a, b) => a - b);
     } else {
-      ts.unshift(0);
-      ts.push(1);
+      // (Its own two ends stay: a cut a hair from one is that end.)
+      uniq = [0, ...ts.filter((t, k) => t > near && t < 1 - near && (k === 0 || t - ts[k - 1] > near)), 1];
     }
-    const uniq = ts.filter((t, k) => k === 0 || t - ts[k - 1] > 1e-9);
     const bounds: [number, number][] = [];
     for (let k = 0; k < uniq.length - 1; k++) bounds.push([uniq[k], uniq[k + 1]]);
     if (closed) bounds.push([uniq[uniq.length - 1], uniq[0] + 1]);

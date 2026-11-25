@@ -325,10 +325,8 @@ export class SelectTool implements Tool {
       this.app.setSelection([...sel.filter((x) => !("body" in x && x.body === b)), s]);
     } else {
       // Each tap adds to what is picked, whatever it is (a face, then an edge, then a plane); a tap on a picked one
-      // lets that one go; a tap on nothing lets them all go. (Asked for: "I don't like that now I have to click the
-      // + icon after I select to add another one ... I should just be able to select another to add to the
-      // selection. If I want to deselect an element from the selection, I can just click on that element again".
-      // A tap had picked that thing alone, with a + on the line - or Shift - to add.)
+      // lets that one go; a tap on nothing lets them all go.
+      // (A tap had picked that thing alone, with a + on the line - or Shift - to add.)
       const i = sel.findIndex((x) => sameSel(x, s!));
       this.app.setSelection(i >= 0 ? sel.filter((_, j) => j !== i) : [...sel, s]);
     }
@@ -353,8 +351,7 @@ export class SelectTool implements Tool {
       return true;
     }
     // (A shape's region tapped is picked, like anything else: its arrow to drag and its tools beside it - Extrude,
-    // Revolve, Delete and the rest. It went straight into Extrude, which showed the arrow alone; asked for: "I want
-    // them to appear from the first click". Extrude still starts by dragging the arrow or the shape, or typing a size.)
+    // Revolve, Delete and the rest. It went straight into Extrude, which showed the arrow alone. Extrude still starts by dragging the arrow or the shape, or typing a size.)
     return true;
   }
 
@@ -578,9 +575,7 @@ export class SelectTool implements Tool {
     // (Picks of different kinds: no one handle is for all of them.)
     if (!first || sel.some((x) => x.kind !== first.kind)) return;
     // The most likely next step gets a handle.
-    // Several picked: the handle is on the one picked last - where the hand and the eye are (asked for: "I want the
-    // arrow / fillet or chamfer circle ... to appear on the last element I selected. Now it stays on the first one
-    // and I have to navigate back to it"). The tool started from it works from there too.
+    // Several picked: the handle is on the one picked last - where the hand and the eye are. The tool started from it works from there too.
     const lastFirst = sel.length > 1 ? [sel[sel.length - 1], ...sel.slice(0, -1)] : sel;
     if (first.kind === "profile") {
       const src = sourcesOf(this.app, lastFirst)[0];
@@ -1515,9 +1510,7 @@ export class SelectTool implements Tool {
   /**
    * A freeform that is still an open surface (faces deleted from it, or made as a surface): the one kind of freeform
    * body that isn't worked on like any other - no arrow to push its faces, no dot to round its edges, its points
-   * moved in Edit Freeform. A finished freeform solid is a body like any other: every body tool is its too (asked
-   * for: "a freeform body that is finished (not in freeform edit mode) should be treated like a regular body ... I
-   * want to have access to normal body tools, to polish it even further"). Edit Freeform is still there for it -
+   * moved in Edit Freeform. A finished freeform solid is a body like any other: every body tool is its too. Edit Freeform is still there for it -
    * beside the body when it is double tapped, and in History.
    */
   private sheetFreeform(body: string): boolean {

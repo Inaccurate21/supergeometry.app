@@ -111,7 +111,7 @@ export interface MousePreset {
 }
 
 /**
- * The presets. Asked for: "it should have controls presets from all major CAD apps". Each as its program's own
+ * The presets. Each as its program's own
  * help gives it (2026-11); programs that work the same way share a row. The wheel's way round is its own switch
  * (programs differ, and each lets it be turned over).
  */

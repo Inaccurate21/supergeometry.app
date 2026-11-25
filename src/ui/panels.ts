@@ -57,8 +57,7 @@ export function setupRightColumn(ui: UI, view: Viewport, store: DocStore, onUnit
       for (const [u, label] of list) host.append(choiceRow(label, units() === u, () => (onUnits(u), ui.refreshPopover())));
       host.append(heading("Grid"));
       const s = settings.value;
-      // Switched on, it keeps the squares as they are right now, at this zoom (asked for: "I want the lock grid size
-      // toggle to adjust to whatever the zoom level is so I can just click toggle on").
+      // Switched on, it keeps the squares as they are right now, at this zoom.
       const lockRow = toggleRow(s.gridLocked ? `Lock grid size (${fmtStep(s.gridStep)})` : `Lock grid size (now ${fmtStep(view.grid.step)})`, s.gridLocked, (v) => {
         if (v) settings.set("gridStep", +view.grid.step.toPrecision(6));
         settings.set("gridLocked", v);
@@ -80,8 +79,7 @@ export function setupRightColumn(ui: UI, view: Viewport, store: DocStore, onUnit
       const gridNote = el("div", "pop-note", s.gridLocked ? "The squares stay this size at any zoom, and a sketch snaps to them. Switch the lock off for a grid that follows the zoom." : `The grid follows the zoom (now ${fmtStep(view.grid.step)} a square), and a sketch snaps to the squares shown. Lock it to keep them as they are now.`);
       host.append(gridNote);
       // Not locked, the size follows the zoom while this is open: the row, the box and the note say the squares'
-      // size as it is now (asked for: "the lock grid size should change on the fly when I zoom so I can see what
-      // size grid it is in that moment"). They said the size it was when the window opened.
+      // size as it is now. They said the size it was when the window opened.
       if (!s.gridLocked) {
         let shown = view.grid.step;
         const follow = () => {
@@ -116,8 +114,7 @@ export function setupRightColumn(ui: UI, view: Viewport, store: DocStore, onUnit
   }), undefined, stash);
 
   // Mouse: which drags turn, move and zoom the view - the app's own way or another CAD program's, for hands used
-  // to it (asked for by many: "a setting menu with a list: default, Autodesk, onshape, etc", then "it should have
-  // controls presets from all major CAD apps"). Only where there is a mouse.
+  // to it. Only where there is a mouse.
   lists.mouse = (host) => {
     const s = settings.value;
     const now = mousePreset(s.mouse);

@@ -19,6 +19,7 @@ import type { PickHit } from "./view/viewport";
 import type { ProjectDoc } from "./doc/types";
 import { parseProject } from "./doc/store";
 import { newProjectId } from "./doc/library";
+import { assistMethods } from "./assist";
 
 // (The app's insides it reads: kept out of the classes' public faces on purpose.)
 interface Insides {
@@ -515,5 +516,7 @@ export function installDebug(app: App): void {
     },
   };
 
+  // What an assistant builds with: make, add, change, remove, vars, check, ref, guide (see assist.ts).
+  Object.assign(sg, assistMethods(app, () => sg.idle()));
   (window as unknown as { sg: typeof sg }).sg = sg;
 }

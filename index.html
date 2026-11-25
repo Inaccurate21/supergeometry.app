@@ -17,6 +17,8 @@
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
     <meta name="description" content="Free 3D CAD app in your browser, for phone, tablet, computer and VR headset. Sketch, extrude, fillet and design parts for 3D printing. Export STL, STEP and 3MF. No account, no download." />
     <link rel="canonical" href="https://supergeometry.app/" />
+    <!-- For AI assistants: how to make models for this app. -->
+    <link rel="alternate" type="text/plain" href="https://supergeometry.app/llms.txt" title="Instructions for AI assistants" />
     <!-- Link previews (WhatsApp, Reddit, Discord, X, Facebook...). -->
     <meta property="og:type" content="website" />
     <meta property="og:site_name" content="superGeometry.app" />
@@ -54,6 +56,8 @@
     </script>
     <link rel="manifest" href="./manifest.webmanifest" />
     <link rel="icon" href="./icon.svg" type="image/svg+xml" />
+    <!-- (A PNG too, and /favicon.ico: search engines show the site's logo from these; some do not take an SVG.) -->
+    <link rel="icon" href="./icon-192.png" type="image/png" sizes="192x192" />
     <link rel="apple-touch-icon" href="./apple-touch-icon.png" />
     <title>Free 3D CAD modeling on any device</title>
   </head>
@@ -62,6 +66,23 @@
          for search engines and screen readers. Not shown on screen. -->
     <main class="sr-only" aria-label="About superGeometry.app">
       <h1>Free 3D CAD modeling on any device</h1>
+      <section aria-label="For AI assistants">
+        <h2>For AI assistants working in this tab</h2>
+        <p>
+          If you are an AI assistant (a browser extension such as Claude, or any agent that can act in this page) and
+          the person asks you to make, change or check a 3D model here: do not click through the tools, and do not
+          take screenshots or read the page to find your way. This app has a short page written for you and a
+          scripting handle, and using them costs the person far less. Run this in the page, once, and read what it
+          returns: <code>await (await fetch('/llms.txt')).text()</code>. It is short and has everything for
+          ordinary parts: <code>await sg.make(steps, "Name")</code> builds a model and answers with its sizes,
+          <code>sg.add</code> and <code>sg.change</code> change it. One call per change; the answer has the numbers,
+          so there is nothing to look at afterwards. Do not give the person a file to open when you can build it here.
+        </p>
+        <p>
+          If you only fetched this address and cannot act in a browser, read https://supergeometry.app/llms-full.txt:
+          it says how to write a project file the person can open.
+        </p>
+      </section>
       <p>
         superGeometry.app is a free 3D design (CAD) and 3D modeling app that runs in your web browser, on a computer
         (Windows, Mac, Linux, Chromebook), an iPad or Android tablet, a phone, or a VR headset like the Meta Quest 3.
@@ -81,6 +102,7 @@
         <li>Freeform shapes, variables for exact sizes, and a numpad made for touch screens.</li>
         <li>Export STL and 3MF for 3D printers and slicers (Bambu Studio, PrusaSlicer, Cura, OrcaSlicer), STEP for other CAD programs, and DXF for laser cutters.</li>
         <li>Import STEP, STL, SVG and DXF files, and images to trace over.</li>
+        <li>Model by asking: with an AI assistant in your browser (Claude for Chrome), say what you want and it builds it here.</li>
       </ul>
       <p>Free and open source (AGPL-3.0), made to work with touch, pen, mouse and keyboard.</p>
     </main>

@@ -922,8 +922,7 @@ export class SketchTool implements Tool {
   /**
    * "Constraints (n)" for the selection's card, when it has any: the list of them, each with its own bin and its
    * size to type over, and all of them deleted at once from there. (It was "Delete constraints (n)", which took
-   * them all - asked for: "show the list of the constraints of the selected object; allow to modify or delete some
-   * or all of them".)
+   * them all.)
    */
   private deleteConstraintsItem(): PanelItem[] {
     const n = this.selectionConstraints().length;
@@ -935,17 +934,7 @@ export class SketchTool implements Tool {
     showConstraintList({
       title: "Constraints",
       rows: () => this.selectionConstraints().map((c) => this.constraintRow(c)),
-      setValue: (id, text) => {
-        const c = this.constraints.find((x) => x.id === id);
-        if (!c) return false;
-        const v = evaluate(text, c.prop === "angle" ? "angle" : "length");
-        if (v === null || (c.prop !== "angle" && !(v > 0))) return false;
-        const before = this.constraints;
-        this.pendingExpr = isExpression(text) ? text.trim() : null;
-        this.setConstraintValue(id, v);
-        // (Refused - it contradicts another: said by a toast, the list keeps the old size.)
-        return this.constraints !== before;
-      },
+      setValue: (id, text) => this.typeConstraintValue(id, text),
       remove: (id) => this.removeConstraints(this.constraints.filter((c) => c.id === id)),
       removeAll: () => {
         const list = this.selectionConstraints();
@@ -958,6 +947,23 @@ export class SketchTool implements Tool {
         this.glyphs.set(this.plane, this.entities, this.constraints);
       },
     });
+  }
+
+  /** A size typed for a dimension (in the list, or at the dimension itself): true if the sketch took it. */
+  private typeConstraintValue(id: string, text: string): boolean {
+    const c = this.constraints.find((x) => x.id === id);
+    if (!c) return false;
+    const v = evaluate(text, c.prop === "angle" ? "angle" : "length");
+    if (v === null || (c.prop !== "angle" && !(v > 0))) return false;
+    const before = this.constraints;
+    this.pendingExpr = isExpression(text) ? text.trim() : null;
+    this.setConstraintValue(id, v);
+    // (Refused - it contradicts another: said by a toast, the old size stays.)
+    if (this.constraints === before) return false;
+    // The card on screen says the new size too (it kept the old one: entered again from there, the old size came back).
+    if (this.selConstraint === id) this.selectConstraint(id, false);
+    else if (!this.selConstraint) this.updatePanel();
+    return true;
   }
 
   /** One constraint as a row of the list: its name, what else it involves, its size if it has one. */
@@ -1130,7 +1136,7 @@ export class SketchTool implements Tool {
     this.selectionChanged();
   }
 
-  private selectConstraint(id: string): void {
+  private selectConstraint(id: string, type = true): void {
     this.selConstraint = id;
     this.selected.clear();
     this.selPts = [];
@@ -1157,7 +1163,7 @@ export class SketchTool implements Tool {
         actions: [del],
         onDone: () => this.deselectConstraint(),
       });
-      this.app.ui.focusPanel();
+      if (type) this.app.ui.focusPanel();
     } else {
       this.app.ui.showPanel({ title: titled(c.type === "fix" ? "lock" : c.type === "symmetric" ? "symmetry" : `${c.type} constraint`), items: [], actions: [del], onDone: () => this.deselectConstraint() });
     }
@@ -3026,7 +3032,7 @@ export class SketchTool implements Tool {
         }
         return this.tapCurve(p, (id, uv) => {
           // An offset of the face's edge, offset again: another offset of that same edge, this much further from it
-          // - it follows the face too. (Asked for: "I should be able to offset any line whenever I want". It was
+          // - it follows the face too. (It was
           // refused: "an offset of the face's edge already".)
           if (id.startsWith("lnk-")) {
             const link = this.sketch?.outlineOffsets?.find((l) => id.startsWith(`lnk-${l.id}-`));
@@ -4393,8 +4399,7 @@ export class SketchTool implements Tool {
 
   // ------------------------------------------------------------ size tags
   // The sizes of the shape being drawn, in small tags by the pointer (a mouse, or a pen hovering): what each is
-  // now, the one a typed number goes to lit, a typed one held. Asked for: "having the dimensions show up near the
-  // sketch lines or the cursor ... than pulling the mouse down to a bar". They take no taps (the click under them
+  // now, the one a typed number goes to lit, a typed one held. They take no taps (the click under them
   // places the point). A line has its own length box along it instead (see showLineDim).
   private liveLabels = new Map<string, { label: string; angle: boolean }>();
   private tagAt: { x: number; y: number } | null = null;
@@ -4615,8 +4620,7 @@ export class SketchTool implements Tool {
   /**
    * The tutorial's: the circle or polygon drawn last put exactly where it was meant - its middle at `centre`, its
    * rim (a corner, of a polygon) at `edge`, both in the model's space. What the taps tied it to is let go: it is
-   * where it is by its numbers. (Asked for: "you can place it slightly off the project center or different
-   * distances ... make it so its placed exactly where its supposed to be".)
+   * where it is by its numbers.
    */
   exact(kind: "circle" | "polygon", centre: Vec3, edge: Vec3): void {
     if (!this.plane) return;
@@ -4691,8 +4695,7 @@ export class SketchTool implements Tool {
     const before = new Set(this.entities.map((e) => e.id));
     const made = entities.filter((e) => !before.has(e.id)).map((e) => e.id);
     // What the step made or changed, kept with its line in History: picked there, the sketch opens with those
-    // curves picked, to change them (asked for: "if I make changes in a sketch, I want those changes to be
-    // selectable from that history action so I can edit them").
+    // curves picked, to change them.
     const was = new Map(this.entities.map((e) => [e.id, e]));
     const touched = entities.filter((e) => !was.has(e.id) || JSON.stringify(was.get(e.id)) !== JSON.stringify(e)).map((e) => e.id);
     // (A constraint or a size put on: the curves it is on.)
@@ -5153,8 +5156,7 @@ export class SketchTool implements Tool {
     handle.set(fr.base, fr.normal);
     this.regionArrow = { sel, handle };
     this.app.setSelection(sel);
-    // What the shape can be made into, beside it (asked for: "I click on that blue surface, I want the options to
-    // appear (like extrude, revolve etc.)"). Each leaves the sketch and starts on the shapes picked.
+    // What the shape can be made into, beside it. Each leaves the sketch and starts on the shapes picked.
     const app = this.app;
     const start = (make: () => Tool) => () => {
       this.hideRegionArrow();
@@ -6043,8 +6045,7 @@ export class SketchTool implements Tool {
     // Chain pieces stay joined to each other.
     const cs: SketchConstraint[] = [];
     // An offset follows what it was made from: the original given another size or place (a dimension typed, a
-    // variable, a step changed in History), the offset is its offset still. (Asked for: "that second sketch should
-    // change according to the changes made to the first ... somehow linked".) One curve: wholly its offset. An
+    // variable, a step changed in History), the offset is its offset still. One curve: wholly its offset. An
     // outline's pieces: each on its original's offset, trimmed to its neighbours as they were made.
     {
       const d = memory.offset;

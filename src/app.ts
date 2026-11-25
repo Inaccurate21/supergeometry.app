@@ -9,6 +9,7 @@ import { currentProjectId, forgetProject, keepProject, libraryEntries, newProjec
 import { showLibrary } from "./ui/library";
 import { showAbout } from "./ui/about";
 import { showWhatsNew } from "./ui/whatsNew";
+import { initAssistant } from "./ui/assistant";
 import { findAction, openCommandSearch, showShortcuts } from "./ui/commands";
 import type { EdgeFeature, EdgeRef, ExtrudeFeature, ExtrudeSource, Feature, FillToPlaneFeature, ImageFeature, LoftFeature, PathRef, PinDef, PlaneDef, PlaneFeature, ProjectDoc, RevolveFeature, ShellFeature, SketchEntity, SketchFeature, SplitFeature, SweepFeature, TransformFeature, Units, Vec3 } from "./doc/types";
 import { emptyDoc } from "./doc/types";
@@ -172,8 +173,7 @@ export class App implements AppContext {
         busyTimer = window.setTimeout(() => {
           if (!this.kernel.busy) return;
           busy.hidden = false;
-          // Shown only while there is work: looked at again as it stands, so it can never stay up over nothing
-          // (asked for: "sometimes the working icon still is showing even if there's nothing to work on").
+          // Shown only while there is work: looked at again as it stands, so it can never stay up over nothing.
           busyWatch = window.setInterval(() => {
             if (this.kernel.busy) return;
             busy.hidden = true;
@@ -359,8 +359,7 @@ export class App implements AppContext {
   /**
    * An assembly's pose - where its parts were left - is on the screen while nothing is being worked on: no tool
    * open, nothing picked. With something picked or a tool open the parts are where they were modelled (a tool's
-   * arrows and sizes are there). Assemblies itself shows its own. (Asked for: "when i click OK, it resets to the
-   * original stance".)
+   * arrows and sizes are there). Assemblies itself shows its own.
    */
   private showPose(): void {
     if (this.tool instanceof AssemblyTool) return;
@@ -1266,7 +1265,6 @@ export class App implements AppContext {
           { id: "revolve", label: "Revolve", icon: "revolve", run: wait("Revolve", ["profile", "face"], () => src() && this.setTool(new RevolveOp(this, src()!))) },
           { id: "sweep", label: "Sweep", icon: "sweep", run: wait("Sweep", ["profile", "face"], () => src() && this.setTool(new SweepOp(this, src()!))) },
           { id: "loft", label: "Loft", icon: "loft", run: wait("Loft", ["profile", "face"], () => this.setTool(new LoftOp(this, sourcesOf(this, this.selection).flatMap((s): ExtrudeSource[] => (s.kind === "profile" ? s.regions.map((r) => ({ ...s, regions: [r] })) : [s])), this.selection))) },
-          // (Asked for in Create: "Add another button in Create?" - looked for there, "i dont see it in create".)
           { id: "hole", label: "Hole", icon: "hole", run: wait("Hole (tap a flat face where the screw goes)", ["face"], () => this.startHole()) },
         ],
       },
@@ -1685,9 +1683,11 @@ export class App implements AppContext {
     on("file-btn", () => ((more.hidden = true), menu.toggleAttribute("hidden"), !menu.hidden && phoneItemsAway()));
     on("more-btn", () => ((menu.hidden = true), more.toggleAttribute("hidden"), !more.hidden && phoneItemsAway()));
     on("history-btn", () => ((menu.hidden = more.hidden = true), this.ui.toggleHistory()));
-    // Version: a tap shows what is new (asked for: "when we click on More>Version, it pops up a window that shows whats new").
+    // Version: a tap shows what is new.
     document.getElementById("m-version")!.textContent = `Version ${__APP_VERSION__} · What's new`;
     on("m-version", () => ((more.hidden = true), showWhatsNew(__APP_VERSION__)));
+    // On a computer: the Claude button, bottom right.
+    initAssistant();
     const moreItem = (id: string, fn: () => void) => on(id, () => ((more.hidden = true), fn()));
     // Fullscreen (the label follows the state; Esc also leaves it).
     const fs = document.getElementById("m-fullscreen")!;
@@ -1737,8 +1737,7 @@ export class App implements AppContext {
     const help = new HelpPanel();
     moreItem("m-help", () => help.toggle());
     // The guide text (what to tap next): on or off.
-    // (Each a switch on its row - they said On or Off in words. Asked for: "make the two buttons (guide text and
-    // offline mode) have a toggle icon. I don't like how right now it's only on or off in text".)
+    // (Each a switch on its row - they said On or Off in words.)
     const switchOf = (id: string, on: boolean) => {
       const b = document.getElementById(id)!;
       b.classList.toggle("on", on);
@@ -2158,9 +2157,7 @@ export class App implements AppContext {
 
   /**
    * The first time the app is opened on a device, once the welcome window is closed: would they like the tutorial?
-   * Asked once, whatever the answer (More > Tutorial has it from then on). (Asked for: "a popup only for the first
-   * time someone opens the app, after they close the welcome window, that asks them if they want to start the
-   * tutorial".)
+   * Asked once, whatever the answer (More > Tutorial has it from then on).
    */
   private offerTutorial(): void {
     let asked = true;
@@ -2174,8 +2171,8 @@ export class App implements AppContext {
     // (After what closing the window started - a new project, a file being opened - has had its turn.)
     setTimeout(() => {
       // (The welcome window was closed by its own Tutorial button: the tutorial is running, there is nothing to
-      // ask - the question came up over it, where the tutorial lets nothing be tapped but its lit spot. Reported:
-      // "now i cant do the tutorial on PC. i cant click draw", in a private window - a first visit.)
+      // ask - the question came up over it, where the tutorial lets nothing be tapped but its lit spot.
+      // Seen in a private window - a first visit.)
       if (this.tutorial?.running) return;
       const back = el("div", "dialog-back");
       const box = el("div", "dialog tutorial-ask");

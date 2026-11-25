@@ -19,12 +19,10 @@ import { clampToFree } from "./annotate";
 export const QUICK = {
   // (A freeform surface's face: Edit Freeform first - shaping it again is what it is for.)
   face: ["editFreeform", "thread", "sketch", "move", "fillet", "thicken"],
-  // (Fillet first, before Chamfer - asked for: "when I select an edge, I also want the fillet tool icon ... before
-  // chamfer". Its dot is on the edge to drag as well.)
+  // (Fillet first, before Chamfer. Its dot is on the edge to drag as well.)
   edge: ["fillet", "chamfer", "move", "thread", "connect"],
   vertex: ["moveVertex", "delete"],
-  // (A body that is, or began as, a freeform: Edit Freeform first - asked for: "when I double click a freeform body,
-  // I want the edit freeform button there".)
+  // (A body that is, or began as, a freeform: Edit Freeform first.)
   body: ["editFreeform", "fillet", "mirror"],
   profile: ["extrude", "revolve"],
   plane: ["sketch", "plane"],
@@ -49,8 +47,7 @@ export interface QuickPlace {
 /** At most this many: only the important things (the rest is under More at the row's end). */
 const MOST = 2;
 /**
- * An edge has three: Fillet, Chamfer and Move/Rotate Edge (asked for: "if I select an edge I want the move and
- * rotate edge icon there"). Move/Rotate Edge is for one straight edge: with a curved one, or several, it is not
+ * An edge has three: Fillet, Chamfer and Move/Rotate Edge. Move/Rotate Edge is for one straight edge: with a curved one, or several, it is not
  * offered and the row is the two.
  */
 const MOST_OF: Partial<Record<QuickKind, number>> = { edge: 3, curve: 3 };
@@ -71,15 +68,14 @@ export class QuickActions {
     walk(items);
     const picked = (QUICK[kind] as readonly string[]).map((id) => byId.get(id)).filter((it): it is ToolItem => !!it && !it.disabled && !!it.run && (!it.beta || it.id === "editFreeform")).slice(0, MOST_OF[kind] ?? MOST);
     if (!all) return picked.length ? new QuickActions(view, picked, at, place) : null;
-    // On the model: Delete beside them, and a last button that opens every other tool the pick has (asked for: "I
-    // also want to have other tools there that could be used on that element. And also delete"). The few most likely
+    // On the model: Delete beside them, and a last button that opens every other tool the pick has. The few most likely
     // stay the row; the rest come up under it only when asked for, so nothing is crowded.
     const usable = (it: ToolItem | undefined): it is ToolItem => !!it && !it.disabled && !!it.run;
     const del = [byId.get("delete"), byId.get("deleteBody")].find(usable);
     const row = del && !picked.includes(del) ? [...picked, del] : picked;
     const rest: ToolItem[] = [];
-    // (Beside a corner, not Move/Rotate Body: it moves the whole body, which is not what a corner was picked for -
-    // asked for: "it doesn't make sense to be there". It is still under Transform on the line.)
+    // (Beside a corner, not Move/Rotate Body: it moves the whole body, which is not what a corner was picked for.
+    // It is still under Transform on the line.)
     const skip = new Set(["deselect", "reveal", "color", "opacity", "material", "wholePattern", ...(kind === "vertex" ? ["move"] : [])]);
     const gather = (its: ToolItem[]) => {
       for (const it of its) {

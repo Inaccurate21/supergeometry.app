@@ -1,0 +1,83 @@
+# superGeometry.app, for AI assistants
+
+> A free 3D CAD app that runs in the browser. Parametric: every step stays in History and can be changed later. For 3D printing parts mostly. Units: millimetres.
+
+If you **cannot run JavaScript in the person's tab** (you only fetched this address): read https://supergeometry.app/llms-full.txt and write the person a project file, as it says.
+
+If you **work in the person's tab** (a browser extension or agent), build the model with the page's `sg` handle. Everything for ordinary parts is on this page.
+
+## Spend little
+
+Each call you make costs the person money. So:
+
+- **One JavaScript call per change.** Every command below waits for the model and answers with the result. Put several commands in one call when you can.
+- **Do not take screenshots or read the page** to check your work. The answer has the numbers: `{ ok, steps, errors?, bodies: [{ id, size: [x,y,z], from: [x,y,z], volume }] }`. `size` is the body's box, `from` its lowest corner.
+- Do not click the app's buttons. Do not hand the person a file.
+- Read more only when you need it: `await sg.guide("revolve")` gives one part of the full reference; `await sg.guide()` lists the parts.
+
+## Commands
+
+- `await sg.make(steps, "Name")` starts a new model from a list of steps.
+- `await sg.add(step, step, ...)` adds steps to the open model.
+- `await sg.change("id", { distance: 30 })` changes a step. A dotted key reaches inside: `{ "entities.0.w": 80 }`.
+- `await sg.remove("id")` deletes a step. `await sg.vars({ t: 6 })` sets variables. `await sg.check()` gives the answer again.
+- `sg.ref.faces("body", "top")` and `sg.ref.edges("body", "vertical")` give faces and edges in the form steps take. Words for faces: `top bottom left right front back flat round hole largest smallest`. For edges: `top bottom left right front back vertical straight round longest shortest`. Several words narrow it: `"top straight"`. Use them inside the call that needs them, so you never have to read them.
+- `sg.steps()` lists the model's steps (id, name, type), for when the person asks you to change a model you did not make.
+
+To change a model, change its steps (`sg.change`): do not build it again. For a new, unrelated part, `sg.make`.
+
+## Steps
+
+X is to the right, Y away from the viewer, Z up. A body's id is the id of the step that made it. Give every step you will refer to an `id`.
+
+```js
+// A sketch: one or more closed shapes on a plane. plane: "XY" (the ground), "XZ" (upright, from the front), "YZ", or "XY@10" (10 up).
+{ id: "s", type: "sketch", plane: "XY", entities: [
+  { id: "r", kind: "rect", center: [0, 0], w: 60, h: 40 },
+  { id: "c", kind: "circle", center: [0, 0], radius: 5 },
+  { id: "p", kind: "polygon", center: [0, 0], radius: 10, sides: 6 },
+  { id: "t", kind: "polyline", points: [[0, 0], [20, 0], [0, 10]], closed: true } ] }
+
+// Extrude a shape of a sketch, named by its curve's id. Negative distance goes the other way.
+{ id: "plate", type: "extrude", source: { sketch: "s", regions: ["r"] }, distance: 6 }
+// A shape with a hole drawn in it is named by both curves: regions: [["c", "r"]]
+// Add to a body or cut from it: mode: "join" | "cut", target: "plate". A cut right through: extent: "through".
+
+// Round or bevel edges.
+{ type: "fillet", radius: 5, edges: sg.ref.edges("plate", "vertical") }
+{ type: "chamfer", radius: 1, edges: sg.ref.edges("plate", "top") }
+
+// A screw hole: M2 M2.5 M3 M4 M5 M6 M8 M10 M12, head "none" | "counterbore" | "countersink". Or diameter: 6. Not through: depth: 4.
+{ type: "hole", face: sg.ref.faces("plate", "top")[0], at: [22, 12, 6], size: "M4" }
+
+// Hollow a body, leaving these faces open.
+{ type: "shell", body: "plate", thickness: 2, faces: sg.ref.faces("plate", "top") }
+
+// Combine: op "union" | "subtract" | "intersect". The result keeps the target's id.
+{ type: "boolean", op: "subtract", target: "a", tools: ["b"] }
+
+// Move; with copy: true the copy is "m:a:0". Mirror and patterns: sg.guide("pattern").
+{ id: "m", type: "transform", bodies: ["a"], copy: false, op: { kind: "move", translate: [10, 0, 0] } }
+```
+
+Also there, through `sg.guide`: `revolve`, `variables`, lines / arcs / splines / ellipses in a sketch (`sketch`), `pattern`, and three complete `example`s.
+
+## A whole part in one call
+
+A plate 60 x 40 x 6 with rounded corners and four M4 holes:
+
+```js
+await sg.make([
+  { id: "s", type: "sketch", plane: "XY", entities: [{ id: "r", kind: "rect", center: [0, 0], w: 60, h: 40 }] },
+  { id: "plate", type: "extrude", source: { sketch: "s", regions: ["r"] }, distance: 6 },
+], "Plate");
+await sg.add({ type: "fillet", radius: 5, edges: sg.ref.edges("plate", "vertical") });
+const top = sg.ref.faces("plate", "top")[0];
+await sg.add(...[[22, 12], [-22, 12], [22, -12], [-22, -12]].map(([x, y]) => ({ type: "hole", face: top, at: [x, y, 6], size: "M4" })));
+```
+
+The last line's value is the answer. If `ok` is false, `errors` says which step failed and why, in words: fix that step with `sg.change`, or `sg.remove` it and add it again.
+
+## Then
+
+Tell the person in a sentence or two what you made and its size. They can change any step themselves in History, and undo your changes with Ctrl + Z. Remind them once to check sizes before printing; printed holes come out a little tight (0.2 to 0.3 mm more on a diameter is common).

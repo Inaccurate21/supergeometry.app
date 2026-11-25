@@ -1,9 +1,7 @@
 // Fill Pattern: a closed shape of a sketch filled with a pattern of curves - lines from edge to edge (straight,
 // crossed, zigzag, waves) or small shapes inside it (dots, a honeycomb, squares, diamonds). The pattern's curves
 // are curves of the sketch like any other, so the strips and cells they make can be extruded or cut: a texture on
-// a model. (Asked for: "a new tool in sketch mode named fill pattern ... different line patterns that you can only
-// put in closed shapes that go from edges to edges ... very useful when I want different textures on my models.
-// Also I should be able to change the space between lines, or distance between shapes".)
+// a model.
 
 import type { SketchEntity, SketchFill, Vec2 } from "../doc/types";
 import { arcFrom3, entityCorners, entityPrims, evalPrim, pointInPoly, type Prim } from "./curves";

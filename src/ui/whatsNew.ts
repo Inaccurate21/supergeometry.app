@@ -1,5 +1,4 @@
-// More → Version: what is new. A short list per update, newest first, written for whoever uses the app (asked for:
-// "when we click on More>Version, it pops up a window that shows whats new in the latest push").
+// More → Version: what is new. A short list per update, newest first, written for whoever uses the app.
 //
 // EVERY PUSH adds to this list (with the version it came in): a new entry at the top for a new day, or more lines in today's. Plain words, what
 // it does for the person, where it is. No other programs' names.
@@ -138,14 +137,23 @@ export const UPDATES: Update[] = [
   {
     date: "2026-11-25",
     added: [
+      "Hole catches on more: tap near the point where an axis passes through the face, or near a sketch drawn on the face (the end of a line, where lines meet or cross, the centre of a circle), and the hole sits exactly there.",
       "A mesh you can edit: an STL, OBJ or 3MF mesh now comes in with real faces where it can. Flat sides are one face each, and plain holes, bosses, pins and rounded upright corners are truly round, so Hole, Thread, Fillet and push/pull work on them. It helps simple parts most: chamfered holes, rounded edges and sculpted shapes come in as before. A mesh already in a project: tap its body, then Make Faces.",
       "A mesh file that holds several separate parts comes in as one body for each part.",
+      "Pick a line, click Length and press Enter: that length is now a dimension, without retyping it.",
+      "Extrude, Revolve and Sweep say when only one part of a cut-up shape is picked, and that tapping its other parts adds them.",
       "In a sketch, Constraints (n) on a picked line or shape opens the list of its constraints: delete one, type a new size, or delete them all.",
       "More → About: the app's name at the top opens the project's page on GitHub.",
+      "Model with Claude, on a computer: open Claude's extension for Chrome beside the app and say what you want. It builds it in your tab, every step in History for you to change. The Claude button at the bottom right says where to get it.",
+      "For any AI assistant: the app has a page written for assistants (supergeometry.app/llms.txt) that says how to build models here.",
+      "Claude builds with far fewer steps, so a part costs much less of your Claude usage and appears sooner. Its changes go into your open project one at a time: Ctrl + Z steps back through them, and your project list is not filled with copies.",
     ],
     fixed: [
       "Every change to a body with very many faces is quicker.",
+      "A shell's rim can be rounded on both edges by half the wall (two 0.5 mm fillets on a 1 mm wall), for a fully round rim.",
+      "Two edges in one line with different walls beside them, rounded together, come out as two clean rounds.",
       "In a sketch, a line that ends on a circle closes the shape it should: the area between them fills and can be extruded.",
+      "Several touching areas of a sketch extruded together always come out whole. A ring could go missing from the body when one of its circles ran a hair from another line.",
     ],
   },
   {

@@ -512,6 +512,11 @@ export class ExtrudeOp extends FeatureOp<ExtrudeFeature> {
     super.tap(p);
   }
 
+  /** (Extrude takes another shape by a tap until it has been pulled.) */
+  protected addsRegions(): boolean {
+    return this.feature.distance === 0;
+  }
+
   protected regionsChanged(): void {
     this.frame = sourceFrame(this.app, this.feature.source);
   }
@@ -1818,7 +1823,7 @@ export class TransformOp extends FeatureOp<TransformFeature> {
     };
     const copy: PanelItem[] = this.feature.copy && !this.existing ? [copyToggle, link] : [copyToggle];
     // A pattern's Link: its copies and what they were made from change together afterwards - a hole cut in one is
-    // cut in all (asked for: "we should also have this in patterns"). Off, each is a body of its own.
+    // cut in all. Off, each is a body of its own.
     const patternLink: PanelItem = {
       type: "toggle",
       label: "Link",
