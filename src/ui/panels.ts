@@ -14,6 +14,7 @@ import type { UI } from "./ui";
 import { el } from "./ui";
 import { textField } from "./textField";
 import { penTestOn, setPenTest } from "./penTest";
+import { PEN_DRAGS, PEN_TAPS, penButtonSettings, setPenButton } from "../penButton";
 import { androidInfo, buildReport, clearLog, logLines, sendReport } from "../diagnostics";
 import { setUiScale, uiScale, uiScaleWorks, UI_SCALE_MAX, UI_SCALE_MIN } from "../uiScale";
 import { lang, LANGS, saveLang, type Lang } from "../i18n";
@@ -334,8 +335,22 @@ export function setupRightColumn(ui: UI, view: Viewport, store: DocStore, onUnit
     });
   });
 
+  // S Pen: what its side button does (in the Android app, which passes the button on).
+  kept("pen", (host) => {
+    const p = penButtonSettings();
+    host.append(heading("S Pen side button"));
+    if (!("SGAndroid" in window)) host.append(el("div", "pop-note", "The side button works in the Android app (Settings → Updates → Android app): a browser doesn't pass it on."));
+    host.append(heading("Touch with the button held"));
+    for (const [id, label] of PEN_TAPS) host.append(choiceRow(label, p.tap === id, () => (setPenButton({ tap: id }), ui.refreshPopover())));
+    host.append(heading("Drag with the button held"));
+    for (const [id, label] of PEN_DRAGS) host.append(choiceRow(label, p.drag === id, () => (setPenButton({ drag: id }), ui.refreshPopover())));
+    host.append(heading("Press the button over the screen"));
+    for (const [id, label] of PEN_TAPS) host.append(choiceRow(label, p.hover === id, () => (setPenButton({ hover: id }), ui.refreshPopover())));
+    host.append(el("div", "pop-note", "If pressing the button over the screen opens Samsung's Air command instead, switch that off in the phone's settings (S Pen → Air command), or leave this on Nothing."));
+  });
+
   // Settings: one row for each thing set now and then, saying how it is set; a tap opens its list (and back).
-  let page: "units" | "snap" | "appearance" | "lang" | "update" | "diag" | null = null;
+  let page: "units" | "snap" | "appearance" | "lang" | "update" | "diag" | "pen" | null = null;
   const gear = ui.addRight(
     "settings",
     "settings",
@@ -365,6 +380,7 @@ export function setupRightColumn(ui: UI, view: Viewport, store: DocStore, onUnit
         scaleRow(() => ui.refreshPopover()),
         nav("Language", LANGS.find(([l]) => l === lang)![1], "lang"),
         nav("Updates", pkg ? "Own package" : `v${__APP_VERSION__}`, "update"),
+        nav("S Pen", PEN_TAPS.find(([id]) => id === penButtonSettings().tap)![1], "pen"),
         nav("Diagnostics", `${logLines().filter((l) => l.level === "error").length} errors`, "diag"),
       );
     },

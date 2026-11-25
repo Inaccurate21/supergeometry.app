@@ -1631,7 +1631,10 @@ export class App implements AppContext {
     const fs = document.getElementById("m-fullscreen")!;
     const doc = document as Document & { webkitFullscreenElement?: Element; webkitExitFullscreen?: () => void };
     const root = document.documentElement as HTMLElement & { webkitRequestFullscreen?: () => void };
-    const isFull = () => !!(document.fullscreenElement ?? doc.webkitFullscreenElement);
+    // The Android app: its own full screen (no status or navigation bar), kept for its next start.
+    const androidApp = (window as unknown as { SGAndroid?: { isFullscreen?: () => boolean; setFullscreen?: (on: boolean) => void } }).SGAndroid;
+    const nativeFull = androidApp?.setFullscreen ? androidApp : null;
+    const isFull = () => (nativeFull ? !!nativeFull.isFullscreen?.() : !!(document.fullscreenElement ?? doc.webkitFullscreenElement));
     const paint = () => {
       fs.firstChild!.textContent = isFull() ? "Exit fullscreen" : "Fullscreen";
       // Tablets draw their own close button at the top left in fullscreen: the top bar makes room.
@@ -1640,19 +1643,25 @@ export class App implements AppContext {
     document.addEventListener("fullscreenchange", paint);
     document.addEventListener("webkitfullscreenchange", paint);
     const goFull = () => {
+      if (nativeFull) return void (nativeFull.setFullscreen!(true), setTimeout(paint, 100));
       if (root.requestFullscreen) void root.requestFullscreen().catch(() => this.ui.toast("This browser won't go fullscreen here"));
       else if (root.webkitRequestFullscreen) root.webkitRequestFullscreen();
       // iPhone Safari has no fullscreen for pages: the Home Screen app is.
       else this.ui.toast("Tip: Share → Add to Home Screen opens superGeometry.app full screen");
     };
+    const leaveFull = () => {
+      if (nativeFull) return void (nativeFull.setFullscreen!(false), setTimeout(paint, 100));
+      void (document.exitFullscreen?.() ?? doc.webkitExitFullscreen?.());
+    };
+    paint();
     moreItem("m-fullscreen", () => {
-      if (isFull()) return void (document.exitFullscreen?.() ?? doc.webkitExitFullscreen?.());
+      if (isFull()) return leaveFull();
       goFull();
     });
     // The welcome window (and File → Open) has a Full screen button too (a
     // browser only allows it from a tap). Everywhere but an app that already
     // has the whole screen; where a browser has none (iPhone), it says how.
-    this.fullscreen = !matchMedia("(display-mode: fullscreen)").matches ? { isFull, toggle: () => (isFull() ? void (document.exitFullscreen?.() ?? doc.webkitExitFullscreen?.()) : goFull()) } : null;
+    this.fullscreen = nativeFull || !matchMedia("(display-mode: fullscreen)").matches ? { isFull, toggle: () => (isFull() ? leaveFull() : goFull()) } : null;
     // Help and Tutorial: placeholders for now.
     // A newer build out? More pulses and its Update item says NEW.
     this.updates = new Updates(() => this.store.flush());

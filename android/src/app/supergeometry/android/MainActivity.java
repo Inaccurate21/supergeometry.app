@@ -14,6 +14,9 @@ import android.os.Environment;
 import android.provider.MediaStore;
 import android.util.Base64;
 import android.view.MotionEvent;
+import android.view.View;
+import android.view.WindowInsets;
+import android.view.WindowInsetsController;
 import android.webkit.CookieManager;
 import android.webkit.JavascriptInterface;
 import android.webkit.ValueCallback;
@@ -127,6 +130,38 @@ public class MainActivity extends Activity {
 
         if (saved != null) web.restoreState(saved);
         else web.loadUrl(HOME);
+        applyFullscreen();
+    }
+
+    // ------------------------------------------------------------ fullscreen
+
+    private boolean fullscreen() {
+        return getPreferences(MODE_PRIVATE).getBoolean("fullscreen", true);
+    }
+
+    /** Full screen: no status bar, no navigation bar (a swipe from an edge shows them for a moment). */
+    void applyFullscreen() {
+        boolean on = fullscreen();
+        if (Build.VERSION.SDK_INT >= 30) {
+            getWindow().setDecorFitsSystemWindows(!on);
+            WindowInsetsController c = getWindow().getInsetsController();
+            if (c != null) {
+                if (on) {
+                    c.hide(WindowInsets.Type.systemBars());
+                    c.setSystemBarsBehavior(WindowInsetsController.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE);
+                } else c.show(WindowInsets.Type.systemBars());
+            }
+        } else {
+            getWindow().getDecorView().setSystemUiVisibility(on
+                    ? View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY | View.SYSTEM_UI_FLAG_FULLSCREEN | View.SYSTEM_UI_FLAG_HIDE_NAVIGATION | View.SYSTEM_UI_FLAG_LAYOUT_STABLE | View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION | View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN
+                    : View.SYSTEM_UI_FLAG_VISIBLE);
+        }
+    }
+
+    @Override
+    public void onWindowFocusChanged(boolean focus) {
+        super.onWindowFocusChanged(focus);
+        if (focus) applyFullscreen();
     }
 
     private String offlinePage(String why) {
@@ -246,6 +281,17 @@ public class MainActivity extends Activity {
         }
 
         @JavascriptInterface
+        public boolean isFullscreen() {
+            return fullscreen();
+        }
+
+        @JavascriptInterface
+        public void setFullscreen(boolean on) {
+            getPreferences(MODE_PRIVATE).edit().putBoolean("fullscreen", on).apply();
+            runOnUiThread(MainActivity.this::applyFullscreen);
+        }
+
+        @JavascriptInterface
         public void shareText(String text) {
             Intent i = new Intent(Intent.ACTION_SEND);
             i.setType("text/plain");
@@ -279,6 +325,57 @@ public class MainActivity extends Activity {
             pending = false;
             evaluateJavascript(gone ? "window.sgNativeHover&&sgNativeHover(null)" : "window.sgNativeHover&&sgNativeHover(" + hx + "," + hy + "," + getWidth() + ")", null);
         };
+
+        /** The pen's side button: held while touching (the touch is the button's, not the page's), or pressed while hovering. */
+        private boolean touchButton, hoverButton;
+
+        private boolean stylus(MotionEvent e) {
+            int t = e.getToolType(0);
+            return t == MotionEvent.TOOL_TYPE_STYLUS || t == MotionEvent.TOOL_TYPE_ERASER;
+        }
+
+        private boolean sideButton(MotionEvent e) {
+            return (e.getButtonState() & (MotionEvent.BUTTON_STYLUS_PRIMARY | MotionEvent.BUTTON_SECONDARY)) != 0;
+        }
+
+        private void button(String kind, MotionEvent e) {
+            evaluateJavascript("window.sgPenButton&&sgPenButton('" + kind + "'," + e.getX() + "," + e.getY() + "," + getWidth() + ")", null);
+        }
+
+        @Override
+        public boolean dispatchTouchEvent(MotionEvent e) {
+            if (stylus(e)) {
+                int a = e.getActionMasked();
+                if (a == MotionEvent.ACTION_DOWN && sideButton(e)) {
+                    touchButton = true;
+                    report("info", "pen side button: touch down");
+                    button("touch-down", e);
+                    return true;
+                }
+                if (touchButton) {
+                    if (a == MotionEvent.ACTION_MOVE) button("touch-move", e);
+                    else if (a == MotionEvent.ACTION_UP || a == MotionEvent.ACTION_CANCEL) {
+                        touchButton = false;
+                        button(a == MotionEvent.ACTION_UP ? "touch-up" : "touch-cancel", e);
+                    }
+                    return true;
+                }
+            }
+            return super.dispatchTouchEvent(e);
+        }
+
+        @Override
+        public boolean dispatchGenericMotionEvent(MotionEvent e) {
+            if (stylus(e)) {
+                boolean b = sideButton(e);
+                if (b != hoverButton) {
+                    hoverButton = b;
+                    report("info", "pen side button while hovering: " + (b ? "pressed" : "released"));
+                    button(b ? "hover-down" : "hover-up", e);
+                }
+            }
+            return super.dispatchGenericMotionEvent(e);
+        }
 
         @Override
         public boolean onHoverEvent(MotionEvent e) {

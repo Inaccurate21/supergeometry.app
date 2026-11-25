@@ -3,6 +3,7 @@ import "./diagnostics";
 import "./i18n";
 import "./uiScale";
 import "./android";
+import "./penButton";
 import "./style.css";
 import { App } from "./app";
 import { outerScrollbars } from "./ui/scrollbars";
