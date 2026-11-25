@@ -3,7 +3,8 @@
 
 import type { ConstraintType, PlaneDef, PointRef, SketchConstraint, SketchEntity, Vec2 } from "../doc/types";
 import { applicable, pointOf, pointsOf, sizeOf } from "../sketch/constraints";
-import { arcFrom3 } from "../sketch/curves";
+import { arcFrom3, entityPolylines } from "../sketch/curves";
+import { numpadInput, openNumpad } from "../ui/numpad";
 import { uid } from "../sketch/edit";
 import { el } from "../ui/ui";
 import { fmtLen, trim } from "../units";
@@ -153,34 +154,128 @@ export function dimOf(list: SketchConstraint[], entity: string, prop: string): S
   return list.find((c) => c.type === "dim" && c.curves?.[0] === entity && c.curves.length === 1 && c.prop === prop);
 }
 
-/** Badges + dimension labels for the constraints of the sketch being edited. */
+/** What the sketch does for its marks: pick one, give a dimension's size as it is typed, take a new one. */
+export interface GlyphHost {
+  click(id: string): void;
+  /** A dimension's size as text to type over ("20", or its formula). */
+  text(id: string): string;
+  /** A size typed at the dimension itself: true if it was taken. */
+  edit(id: string, text: string): boolean;
+}
+
+/** How a dimension is drawn: between two points (its line set off to one side), on a round, or between two ways. */
+type DimShape =
+  | { kind: "span"; a: Vec2; b: Vec2; out: Vec2 }
+  | { kind: "round"; c: Vec2; rim: Vec2; across: boolean }
+  | { kind: "angle"; v: Vec2; d1: Vec2; d2: Vec2 };
+
+interface Mark {
+  /** Its chip: the constraint's id, and which of the things it ties this mark is on. */
+  key: string;
+  c: SketchConstraint;
+  at: Vec2;
+  dir: Vec2;
+  dist: number;
+  shape?: DimShape;
+  /** Where its chip's middle is on screen, as last laid out (for the pointer). */
+  x: number;
+  y: number;
+  w: number;
+  /** It is on one of the curves picked in the sketch. */
+  mine?: boolean;
+}
+
+const SVG = "http://www.w3.org/2000/svg";
+
+/**
+ * The constraints of the sketch being edited, on the drawing:
+ *  - a small mark for each, on every curve or point it ties (a parallel's sign on both lines, not on one of them);
+ *  - a dimension as a dimension: thin lines out from what it measures, a line with arrows, the size on it - a
+ *    round's as a leader to its rim, an angle's as an arc - not a number near the shape;
+ *  - the one pointed at (the mouse over its mark, or picked) lit, with everything it ties lit with it; and with
+ *    curves picked, their constraints' marks stand out and the curves they are tied to show faintly;
+ *  - a dimension's size typed where it is: a click on it puts a box there.
+ * Asked for: "it's not really possible to see what constraints work on work parts ... You need highlighting to show
+ * these relations", "Dimensions are also placed weird with no visible guide to what they are relating to. Double
+ * clicking dimensions should also make it possible to edit them."
+ */
 export class ConstraintGlyphs {
   private host = el("div", "cglyphs");
+  private svg = document.createElementNS(SVG, "svg");
+  private lines = document.createElementNS(SVG, "path");
+  private heads = document.createElementNS(SVG, "path");
+  private litLines = document.createElementNS(SVG, "path");
+  private litHeads = document.createElementNS(SVG, "path");
+  private tied = document.createElementNS(SVG, "path");
+  private lit = document.createElementNS(SVG, "path");
   private chips = new Map<string, HTMLElement>();
   private hook = () => this.layout();
-  /** Each mark: where on the drawing, which way is "outside" there (sketch units), and how far out (px). */
-  private items: { c: SketchConstraint; at: Vec2; dir: Vec2; dist: number }[] = [];
+  private marks: Mark[] = [];
   private plane: PlaneDef | null = null;
+  private entities = new Map<string, SketchEntity>();
+  private outlines = new Map<string, Vec2[][]>();
+  private constraints: SketchConstraint[] = [];
+  /** The one picked (its card is up). */
   selected: string | null = null;
+  /** The one the pointer is on, or a list's row is. */
+  private pointed: string | null = null;
+  /** The curves picked in the sketch. */
+  private focus = new Set<string>();
+  private editing: { id: string; input: HTMLInputElement } | null = null;
 
   constructor(
     private view: Viewport,
-    private onClick: (id: string) => void,
+    private sketch: GlyphHost,
   ) {
+    this.svg.setAttribute("class", "cdims");
+    for (const [p, cls] of [[this.tied, "tied"], [this.lines, "line"], [this.heads, "head"], [this.lit, "lit"], [this.litLines, "line on"], [this.litHeads, "head on"]] as const) {
+      p.setAttribute("class", cls);
+      this.svg.append(p);
+    }
+    this.host.append(this.svg);
     document.body.append(this.host);
     view.frameHooks.add(this.hook);
+    window.addEventListener("pointermove", this.onMove, { passive: true });
+  }
+
+  /** The mouse over a mark: that constraint is the one pointed at. (Marks take no taps themselves - see hitAt.) */
+  private onMove = (e: PointerEvent): void => {
+    if (e.pointerType !== "mouse" || e.buttons || this.host.hidden || this.editing) return;
+    const over = e.target instanceof Element && (e.target === this.view.canvas || this.host.contains(e.target));
+    this.setPointed(over ? this.markAt(e.clientX, e.clientY, true) : null);
+  };
+
+  /** The constraint to light with all it ties (null: none but the picked one). */
+  setPointed(id: string | null): void {
+    if (id === this.pointed) return;
+    this.pointed = id;
+    this.classes();
+    this.layout();
+  }
+
+  /** The curves picked in the sketch: their constraints stand out, what those tie them to shows faintly. */
+  setFocus(ids: Iterable<string>): void {
+    const next = new Set(ids);
+    if (next.size === this.focus.size && [...next].every((id) => this.focus.has(id))) return;
+    this.focus = next;
+    this.classes();
+    this.layout();
   }
 
   set(plane: PlaneDef, entities: SketchEntity[], constraints: SketchConstraint[]): void {
     this.plane = plane;
-    const get = (id: string) => entities.find((e) => e.id === id);
+    this.constraints = constraints;
+    this.entities = new Map(entities.map((e) => [e.id, e]));
+    this.outlines.clear();
+    if (this.pointed && !constraints.some((c) => c.id === this.pointed)) this.pointed = null;
+    const get = (id: string) => this.entities.get(id);
     const mid = (e: SketchEntity): Vec2 | null => {
       if (e.kind === "line") return [(e.a[0] + e.b[0]) / 2, (e.a[1] + e.b[1]) / 2];
       if (e.kind === "arc") return e.m;
       if (e.kind === "circle" || e.kind === "ellipse" || e.kind === "rect" || e.kind === "polygon") return e.center;
       return e.points[0] ?? null;
     };
-    this.items = [];
+    this.marks = [];
     const inside = shapeCentres(entities);
     const norm = (v: Vec2): Vec2 | null => {
       const l = Math.hypot(v[0], v[1]);
@@ -192,87 +287,124 @@ export class ConstraintGlyphs {
       const d = c && norm([p[0] - c[0], p[1] - c[1]]);
       return d ?? fallback;
     };
-    // Several badges at one spot are fanned out (further out) so they stay readable.
+    /** A line's side that is away from its shape's middle (square off it). */
+    const offLine = (e: SketchEntity & { kind: "line" }): Vec2 => {
+      const n = norm([-(e.b[1] - e.a[1]), e.b[0] - e.a[0]]) ?? [0, 1];
+      const at: Vec2 = [(e.a[0] + e.b[0]) / 2, (e.a[1] + e.b[1]) / 2];
+      const c0 = inside.get(e.id);
+      return c0 && (at[0] - c0[0]) * n[0] + (at[1] - c0[1]) * n[1] < 0 ? [-n[0], -n[1]] : n;
+    };
+    /** Where a mark for a curve goes, and which way is out there. */
+    const onCurve = (e: SketchEntity): { at: Vec2; dir: Vec2 } | null => {
+      let at = mid(e);
+      if (!at) return null;
+      let dir: Vec2 = [Math.SQRT1_2, -Math.SQRT1_2];
+      if (e.kind === "line") dir = offLine(e);
+      else if (e.kind === "arc") {
+        const ac = arcFrom3(e.a, e.m, e.b)?.c;
+        dir = away(e, at, (ac && norm([e.m[0] - ac[0], e.m[1] - ac[1]])) ?? dir);
+      } else if (e.kind === "circle" || e.kind === "polygon") {
+        // Closed round shapes: on the rim at the top right, outside it.
+        dir = [Math.SQRT1_2, Math.SQRT1_2];
+        at = [e.center[0] + e.radius * dir[0], e.center[1] + e.radius * dir[1]];
+      } else if (e.kind === "ellipse" || e.kind === "rect") {
+        const [hx, hy] = e.kind === "ellipse" ? [e.rx * Math.SQRT1_2, e.ry * Math.SQRT1_2] : [e.w / 2, e.h / 2];
+        const cs = Math.cos(e.rotation);
+        const sn = Math.sin(e.rotation);
+        at = [e.center[0] + hx * cs - hy * sn, e.center[1] + hx * sn + hy * cs];
+        dir = norm([at[0] - e.center[0], at[1] - e.center[1]]) ?? dir;
+      } else dir = away(e, at, dir);
+      return { at, dir };
+    };
+    // Several marks at one spot are fanned out (further out) so they stay readable.
     const counts = new Map<string, number>();
+    const put = (c: SketchConstraint, key: string, at: Vec2, dir: Vec2, shape?: DimShape) => {
+      const k = shape ? `d${c.curves?.[0] ?? ""}${shape.kind}${at[0].toFixed(3)},${at[1].toFixed(3)}` : `${at[0].toFixed(4)},${at[1].toFixed(4)}`;
+      const n = counts.get(k) ?? 0;
+      counts.set(k, n + 1);
+      const isDim = c.type === "dim" || c.type === "distance";
+      this.marks.push({ key, c, at, dir, dist: isDim ? 22 + n * 22 : 14 + n * 18, shape, x: 0, y: 0, w: 0 });
+    };
     for (const c of constraints) {
       // (A pattern's copies have no badge each: there'd be one on every copy.)
       if (c.type === "pattern" || c.type === "follow") continue;
       // A mark only while everything it ties together is still drawn.
       if (![...(c.pts ?? []).map((p) => p.e), ...(c.curves ?? [])].every((id) => get(id))) continue;
-      let at: Vec2 | null = null;
-      let dir: Vec2 = [Math.SQRT1_2, -Math.SQRT1_2];
-      if (c.pts?.length) {
-        const e = get(c.pts[0].e);
-        at = e ? pointOf(e, c.pts[0].p) : null;
-        if (e && at) dir = away(e, at, dir);
-      } else if (c.curves?.length) {
-        const e = get(c.curves[0]);
-        at = e ? mid(e) : null;
-        if (e && at) {
-          if (e.kind === "line") {
-            // Square off the line, on the side away from its shape's middle.
-            const n = norm([-(e.b[1] - e.a[1]), e.b[0] - e.a[0]]) ?? dir;
-            const c0 = inside.get(e.id);
-            const flip = c0 && (at[0] - c0[0]) * n[0] + (at[1] - c0[1]) * n[1] < 0;
-            dir = flip ? [-n[0], -n[1]] : n;
-          } else if (e.kind === "arc") {
-            const ac = arcFrom3(e.a, e.m, e.b)?.c;
-            const out = ac ? norm([e.m[0] - ac[0], e.m[1] - ac[1]]) : null;
-            dir = away(e, at, out ?? dir);
-          } else if (e.kind === "circle" || e.kind === "polygon") {
-            // Closed round shapes: on the rim at the top right, outside it.
-            dir = [Math.SQRT1_2, Math.SQRT1_2];
-            at = [e.center[0] + e.radius * dir[0], e.center[1] + e.radius * dir[1]];
-          } else if (e.kind === "ellipse" || e.kind === "rect") {
-            const [hx, hy] = e.kind === "ellipse" ? [e.rx * Math.SQRT1_2, e.ry * Math.SQRT1_2] : [e.w / 2, e.h / 2];
-            const cs = Math.cos(e.rotation);
-            const sn = Math.sin(e.rotation);
-            at = [e.center[0] + hx * cs - hy * sn, e.center[1] + hx * sn + hy * cs];
-            dir = norm([at[0] - e.center[0], at[1] - e.center[1]]) ?? dir;
-          } else {
-            dir = away(e, at, dir);
-          }
+      if (c.type === "dim" || c.type === "distance") {
+        const shape = dimShape(c, get, offLine);
+        // Rounds about one middle (a ring's two circles): each leader its own way out, so their sizes don't sit
+        // on each other.
+        if (shape?.kind === "round" && get(c.curves![0])?.kind !== "arc") {
+          const k = `o${shape.c[0].toFixed(4)},${shape.c[1].toFixed(4)}`;
+          const turn = ((counts.get(k) ?? 0) * 55 * Math.PI) / 180;
+          counts.set(k, (counts.get(k) ?? 0) + 1);
+          const [x, y] = [shape.rim[0] - shape.c[0], shape.rim[1] - shape.c[1]];
+          shape.rim = [shape.c[0] + x * Math.cos(turn) - y * Math.sin(turn), shape.c[1] + x * Math.sin(turn) + y * Math.cos(turn)];
         }
-        if (e && c.type === "dim" && (c.prop === "radius" || c.prop === "diameter")) {
-          const r = e.kind === "circle" ? e.radius : e.kind === "arc" ? (arcFrom3(e.a, e.m, e.b)?.r ?? 0) : e.kind === "polygon" ? e.radius : 0;
-          const ctr = e.kind === "arc" ? (arcFrom3(e.a, e.m, e.b)?.c ?? at!) : at!;
-          at = [ctr[0] + r * 0.707, ctr[1] + r * 0.707];
-          dir = [Math.SQRT1_2, Math.SQRT1_2];
+        if (shape) {
+          put(c, c.id, shape.kind === "span" ? [(shape.a[0] + shape.b[0]) / 2, (shape.a[1] + shape.b[1]) / 2] : shape.kind === "round" ? shape.rim : shape.v, shape.kind === "span" ? shape.out : [Math.SQRT1_2, Math.SQRT1_2], shape);
+          continue;
         }
-        if (e && c.type === "dim" && e.kind === "rect" && (c.prop === "w" || c.prop === "h")) {
-          const cs = Math.cos(e.rotation);
-          const sn = Math.sin(e.rotation);
-          const off = c.prop === "w" ? [0, -e.h / 2] : [e.w / 2, 0];
-          at = [e.center[0] + off[0] * cs - off[1] * sn, e.center[1] + off[0] * sn + off[1] * cs];
-          dir = norm([at[0] - e.center[0], at[1] - e.center[1]]) ?? dir;
-        }
+        // (A size this has no drawing for - an ellipse's: its number by the shape, as before.)
+        const e = c.curves?.[0] ? get(c.curves[0]) : c.pts?.[0] ? get(c.pts[0].e) : undefined;
+        const spot = e && (c.pts?.length ? { at: pointOf(e, c.pts[0].p), dir: [Math.SQRT1_2, -Math.SQRT1_2] as Vec2 } : onCurve(e));
+        if (spot?.at) put(c, c.id, spot.at, spot.dir);
+        continue;
       }
-      if (!at) continue;
-      const k = `${at[0].toFixed(4)},${at[1].toFixed(4)}`;
-      const n = counts.get(k) ?? 0;
-      counts.set(k, n + 1);
-      const isDim = c.type === "dim" || c.type === "distance";
-      this.items.push({ c, at, dir, dist: isDim ? 18 + n * 20 : 14 + n * 18 });
+      // A mark on every point and every curve it ties (two ends joined at one spot: one mark there).
+      const spots: { at: Vec2; dir: Vec2 }[] = [];
+      for (const p of c.pts ?? []) {
+        const e = get(p.e);
+        const at = e ? pointOf(e, p.p) : null;
+        if (e && at && !spots.some((s) => Math.hypot(s.at[0] - at[0], s.at[1] - at[1]) < 1e-6)) spots.push({ at, dir: away(e, at, [Math.SQRT1_2, -Math.SQRT1_2]) });
+      }
+      for (const id of c.curves ?? []) {
+        const spot = onCurve(get(id)!);
+        if (spot && !spots.some((s) => Math.hypot(s.at[0] - spot.at[0], s.at[1] - spot.at[1]) < 1e-6)) spots.push(spot);
+      }
+      spots.forEach((s, k) => put(c, k ? `${c.id}#${k}` : c.id, s.at, s.dir));
     }
     // Sync chips.
-    const live = new Set(this.items.map((i) => i.c.id));
-    for (const [id, chip] of this.chips) if (!live.has(id)) (chip.remove(), this.chips.delete(id));
-    for (const { c } of this.items) {
-      let chip = this.chips.get(c.id);
+    const live = new Set(this.marks.map((m) => m.key));
+    for (const [key, chip] of this.chips) if (!live.has(key)) (chip.remove(), this.chips.delete(key));
+    for (const m of this.marks) {
+      const c = m.c;
+      let chip = this.chips.get(m.key);
       if (!chip) {
         chip = el("button", "cglyph");
         chip.addEventListener("pointerdown", (e) => e.stopPropagation());
-        chip.addEventListener("click", (e) => (e.stopPropagation(), this.onClick(c.id)));
+        chip.addEventListener("click", (e) => (e.stopPropagation(), this.sketch.click(c.id)));
         this.host.append(chip);
-        this.chips.set(c.id, chip);
+        this.chips.set(m.key, chip);
       }
-      chip.className = `cglyph${c.type === "dim" || c.type === "distance" ? " dim" : ""}${c.id === this.selected ? " sel" : ""}${c.expr ? " expr" : ""}`;
       chip.textContent = label(c, get);
       // Each kind its own colour (recognised at a glance).
       chip.dataset.type = c.type;
-      chip.title = c.type === "dim" ? `${c.prop} dimension${c.expr ? ` = ${c.expr}` : ""} (click to edit)` : `${c.type} (click to select)`;
+      chip.dataset.dim = c.type === "dim" || c.type === "distance" ? "1" : "";
+      chip.dataset.expr = c.expr ? "1" : "";
+      chip.title = chip.dataset.dim ? `${c.prop ?? "distance"} dimension${c.expr ? ` = ${c.expr}` : ""} (click to type a new size)` : `${c.type} (click to select)`;
+      // (About as wide as its text: for the pointer, without asking the page.)
+      m.w = chip.dataset.dim ? 14 + chip.textContent.length * 7.3 : 16;
     }
+    if (this.editing && !constraints.some((c) => c.id === this.editing!.id)) this.endEdit();
+    this.classes();
     this.layout();
+  }
+
+  /** The constraint that is lit with all it ties: the one pointed at, else the one picked. */
+  private get shown(): string | null {
+    return this.pointed ?? this.selected;
+  }
+
+  private classes(): void {
+    const shown = this.shown;
+    for (const m of this.marks) {
+      const chip = this.chips.get(m.key);
+      if (!chip) continue;
+      const mine = this.focus.size > 0 && refs(m.c).some((id) => this.focus.has(id));
+      m.mine = mine;
+      chip.className = `cglyph${chip.dataset.dim ? " dim" : ""}${m.c.id === shown ? " sel" : ""}${mine ? " on" : ""}${chip.dataset.expr ? " expr" : ""}`;
+    }
   }
 
   /**
@@ -281,11 +413,15 @@ export class ConstraintGlyphs {
    * the sketch asks here when a tap found nothing else.
    */
   hitAt(x: number, y: number): string | null {
+    return this.markAt(x, y, false);
+  }
+
+  private markAt(x: number, y: number, dims: boolean): string | null {
     if (this.host.hidden) return null;
-    for (const [id, chip] of this.chips) {
-      if (chip.hidden || chip.classList.contains("dim")) continue;
-      const r = chip.getBoundingClientRect();
-      if (x > r.left - 4 && x < r.right + 4 && y > r.top - 4 && y < r.bottom + 4) return id;
+    for (const m of this.marks) {
+      const chip = this.chips.get(m.key);
+      if (!chip || chip.hidden || (!dims && m.shape) || (!dims && chip.dataset.dim)) continue;
+      if (Math.abs(x - m.x) < m.w / 2 + 4 && Math.abs(y - m.y) < 13) return m.c.id;
     }
     return null;
   }
@@ -304,31 +440,290 @@ export class ConstraintGlyphs {
     this.host.classList.toggle("passive", !on);
   }
 
+  // ------------------------------------------------------------ a size typed at the dimension
+
+  /** A box on the dimension itself to type its size into: Enter takes it, Esc leaves it as it was. */
+  beginEdit(id: string): void {
+    if (this.editing?.id === id) return void this.editing.input.focus();
+    this.endEdit();
+    const chip = this.chips.get(id);
+    if (!chip || !chip.dataset.dim || this.host.hidden) return;
+    const input = document.createElement("input");
+    input.className = "cglyph-edit";
+    input.inputMode = "decimal";
+    input.spellcheck = false;
+    input.value = this.sketch.text(id);
+    numpadInput(input);
+    const was = input.value;
+    const take = (): boolean => {
+      if (input.value.trim() === was.trim()) return true;
+      if (this.sketch.edit(id, input.value)) return true;
+      input.classList.add("invalid");
+      return false;
+    };
+    input.addEventListener("pointerdown", (e) => e.stopPropagation());
+    input.addEventListener("input", () => input.classList.remove("invalid"));
+    input.addEventListener("keydown", (e) => {
+      e.stopPropagation();
+      if (e.key === "Enter") (e.preventDefault(), take() && this.endEdit());
+      if (e.key === "Escape") (e.preventDefault(), this.endEdit());
+    });
+    // (Left for somewhere else: the size typed so far is taken if the sketch can take it.)
+    input.addEventListener("blur", () => this.editing?.input === input && (take(), this.endEdit()));
+    this.host.append(input);
+    this.editing = { id, input };
+    chip.classList.add("editing");
+    this.layout();
+    input.focus();
+    input.select();
+    // (On a touch screen: the number pad, as for every other size.)
+    openNumpad(input);
+  }
+
+  private endEdit(): void {
+    const ed = this.editing;
+    if (!ed) return;
+    this.editing = null;
+    ed.input.remove();
+    this.chips.get(ed.id)?.classList.remove("editing");
+  }
+
+  // ------------------------------------------------------------ drawn
+
   private layout(): void {
-    if (!this.plane) return;
-    for (const it of this.items) {
-      const chip = this.chips.get(it.c.id);
+    const plane = this.plane;
+    if (!plane || this.host.hidden) return;
+    const to = (p: Vec2) => this.view.toScreen(sketchToWorld(plane, p));
+    const shown = this.shown;
+    const d = { line: "", head: "", litLine: "", litHead: "" };
+    const seg = (a: number[], b: number[]) => `M${a[0].toFixed(1)} ${a[1].toFixed(1)}L${b[0].toFixed(1)} ${b[1].toFixed(1)}`;
+    /** An arrowhead with its point at `tip`, pointing the way of (ux, uy). */
+    const head = (tip: number[], ux: number, uy: number) => {
+      const bx = tip[0] - ux * 8;
+      const by = tip[1] - uy * 8;
+      return `M${tip[0].toFixed(1)} ${tip[1].toFixed(1)}L${(bx - uy * 3).toFixed(1)} ${(by + ux * 3).toFixed(1)}L${(bx + uy * 3).toFixed(1)} ${(by - ux * 3).toFixed(1)}Z`;
+    };
+    for (const m of this.marks) {
+      const chip = this.chips.get(m.key);
       if (!chip) continue;
-      const s = this.view.toScreen(sketchToWorld(this.plane, it.at));
+      const s = to(m.at);
       chip.hidden = !s;
       if (!s) continue;
       // "Outside" on screen: the sketch direction as the view shows it (any turn, any zoom).
-      const s2 = this.view.toScreen(sketchToWorld(this.plane, [it.at[0] + it.dir[0] * 1e-3, it.at[1] + it.dir[1] * 1e-3]));
+      const s2 = to([m.at[0] + m.dir[0] * 1e-3, m.at[1] + m.dir[1] * 1e-3]);
       let dx = s2 ? s2[0] - s[0] : 1;
       let dy = s2 ? s2[1] - s[1] : 1;
       const l = Math.hypot(dx, dy);
       // Looking along the sketch (edge-on): no way out on screen - right and below.
       [dx, dy] = l > 1e-9 ? [dx / l, dy / l] : [Math.SQRT1_2, Math.SQRT1_2];
-      // A mark is ~16 px across: its centre goes far enough out that all of it clears the line.
-      const d = it.dist + 4;
-      chip.style.transform = `translate(${Math.round(s[0] + dx * d)}px, ${Math.round(s[1] + dy * d)}px) translate(-50%, -50%)`;
+      let at: number[] = [s[0] + dx * (m.dist + 4), s[1] + dy * (m.dist + 4)];
+      const on = m.c.id === shown;
+      // What it measures is too small on screen to carry a dimension (the whole sketch seen at once, on a phone
+      // above all: every size piled on the next): left out until it is zoomed to - unless it is the one picked or
+      // pointed at, or on a curve that is picked.
+      if (m.shape && !on && !m.mine && this.editing?.id !== m.key && this.tooSmall(m.shape, to)) {
+        chip.hidden = true;
+        continue;
+      }
+      let line = "";
+      let heads = "";
+      const sh = m.shape;
+      if (sh?.kind === "span") {
+        const a = to(sh.a);
+        const b = to(sh.b);
+        if (a && b) {
+          // Thin lines out from the two ends, past the dimension's own line; that line between them, with arrows
+          // where it is long enough for them; the size at its middle.
+          const a2 = [a[0] + dx * m.dist, a[1] + dy * m.dist];
+          const b2 = [b[0] + dx * m.dist, b[1] + dy * m.dist];
+          line = seg([a[0] + dx * 4, a[1] + dy * 4], [a2[0] + dx * 5, a2[1] + dy * 5]) + seg([b[0] + dx * 4, b[1] + dy * 4], [b2[0] + dx * 5, b2[1] + dy * 5]) + seg(a2, b2);
+          const len = Math.hypot(b2[0] - a2[0], b2[1] - a2[1]);
+          if (len > 34) {
+            const ux = (b2[0] - a2[0]) / len;
+            const uy = (b2[1] - a2[1]) / len;
+            heads = head(a2, -ux, -uy) + head(b2, ux, uy);
+          }
+          at = [(a2[0] + b2[0]) / 2, (a2[1] + b2[1]) / 2];
+          // (Too short for its size to sit on it: the size past its end, in line with it.)
+          if (len < m.w + 22 && len > 1e-6) at = [b2[0] + ((b2[0] - a2[0]) / len) * (m.w / 2 + 8), b2[1] + ((b2[1] - a2[1]) / len) * (m.w / 2 + 8)];
+        }
+      } else if (sh?.kind === "round") {
+        const c = to(sh.c);
+        const rim = to(sh.rim);
+        if (c && rim) {
+          const len = Math.hypot(rim[0] - c[0], rim[1] - c[1]) || 1;
+          const ux = (rim[0] - c[0]) / len;
+          const uy = (rim[1] - c[1]) / len;
+          // From the middle (a radius) or the far rim (a diameter) out through the rim, the size past it.
+          const from = sh.across ? [c[0] - ux * len, c[1] - uy * len] : c;
+          const out = [rim[0] + ux * (m.dist - 6), rim[1] + uy * (m.dist - 6)];
+          line = seg(from, out);
+          heads = head(rim, ux, uy) + (sh.across ? head(from, -ux, -uy) : "");
+          at = [out[0] + ux * (m.w / 2 + 4), out[1] + uy * (m.w / 2 + 4)];
+        }
+      } else if (sh?.kind === "angle") {
+        const v = to(sh.v);
+        const p1 = to([sh.v[0] + sh.d1[0] * 1e-3, sh.v[1] + sh.d1[1] * 1e-3]);
+        const p2 = to([sh.v[0] + sh.d2[0] * 1e-3, sh.v[1] + sh.d2[1] * 1e-3]);
+        if (v && p1 && p2) {
+          const a1 = Math.atan2(p1[1] - v[1], p1[0] - v[0]);
+          const a2 = Math.atan2(p2[1] - v[1], p2[0] - v[0]);
+          let sweep = a2 - a1;
+          while (sweep > Math.PI) sweep -= 2 * Math.PI;
+          while (sweep < -Math.PI) sweep += 2 * Math.PI;
+          const r = 26 + (m.dist - 22);
+          const q1 = [v[0] + r * Math.cos(a1), v[1] + r * Math.sin(a1)];
+          const q2 = [v[0] + r * Math.cos(a2), v[1] + r * Math.sin(a2)];
+          // An arc from one way round to the other, the size outside its middle.
+          line = `M${q1[0].toFixed(1)} ${q1[1].toFixed(1)}A${r} ${r} 0 0 ${sweep > 0 ? 1 : 0} ${q2[0].toFixed(1)} ${q2[1].toFixed(1)}`;
+          const am = a1 + sweep / 2;
+          at = [v[0] + (r + m.w / 2 + 6) * Math.cos(am), v[1] + (r + 14) * Math.sin(am)];
+        }
+      }
+      if (on) (d.litLine += line), (d.litHead += heads);
+      else (d.line += line), (d.head += heads);
+      m.x = at[0];
+      m.y = at[1];
+      chip.style.transform = `translate(${Math.round(at[0])}px, ${Math.round(at[1])}px) translate(-50%, -50%)`;
+      if (this.editing?.id === m.key) this.editing.input.style.transform = chip.style.transform;
     }
+    this.lines.setAttribute("d", d.line);
+    this.heads.setAttribute("d", d.head);
+    this.litLines.setAttribute("d", d.litLine);
+    this.litHeads.setAttribute("d", d.litHead);
+    // What the lit constraint ties, drawn over; and, with curves picked, what their constraints tie them to.
+    const stroke = (ids: Iterable<string>, points: Vec2[] = []) => {
+      let out = "";
+      for (const id of ids) {
+        let lines = this.outlines.get(id);
+        const e = this.entities.get(id);
+        if (!lines && e) this.outlines.set(id, (lines = entityPolylines(e)));
+        for (const poly of lines ?? []) {
+          let pen = "M";
+          for (const p of poly) {
+            const s = to(p);
+            if (!s) continue;
+            out += `${pen}${s[0].toFixed(1)} ${s[1].toFixed(1)}`;
+            pen = "L";
+          }
+        }
+      }
+      for (const p of points) {
+        const s = to(p);
+        if (s) out += `M${(s[0] - 5).toFixed(1)} ${s[1].toFixed(1)}a5 5 0 1 0 10 0a5 5 0 1 0 -10 0`;
+      }
+      return out;
+    };
+    const one = shown ? this.constraints.find((c) => c.id === shown) : undefined;
+    const pointsOfIt = (c: SketchConstraint): Vec2[] => (c.pts ?? []).flatMap((p) => {
+      const e = this.entities.get(p.e);
+      const at = e ? pointOf(e, p.p) : null;
+      return at ? [at] : [];
+    });
+    this.lit.setAttribute("d", one ? stroke(one.curves ?? [], pointsOfIt(one)) : "");
+    const partners = new Set<string>();
+    if (this.focus.size && !one) for (const c of this.constraints) {
+      if (c.type === "pattern" || c.type === "follow") continue;
+      const ids = refs(c);
+      if (ids.some((id) => this.focus.has(id))) for (const id of ids) if (!this.focus.has(id)) partners.add(id);
+    }
+    this.tied.setAttribute("d", stroke(partners));
+  }
+
+  /** Is what a dimension measures only a few pixels on screen? */
+  private tooSmall(sh: DimShape, to: (p: Vec2) => number[] | null): boolean {
+    const [p, q] = sh.kind === "span" ? [sh.a, sh.b] : sh.kind === "round" ? [sh.c, sh.rim] : [sh.v, [sh.v[0] + sh.d2[0], sh.v[1] + sh.d2[1]] as Vec2];
+    const a = to(p);
+    const b = to(q);
+    if (!a || !b) return false;
+    const px = Math.hypot(a[0] - b[0], a[1] - b[1]);
+    // (An angle: by how big one unit of the sketch is - a millimetre a pixel or two is the whole drawing in a thumb's width.)
+    return sh.kind === "span" ? px < 34 : sh.kind === "round" ? px < 11 : px < 1.6;
   }
 
   dispose(): void {
+    this.endEdit();
+    window.removeEventListener("pointermove", this.onMove);
     this.view.frameHooks.delete(this.hook);
     this.host.remove();
   }
+}
+
+/** Every curve a constraint names, by its curves and by its points. */
+const refs = (c: SketchConstraint): string[] => [...(c.curves ?? []), ...(c.pts ?? []).map((p) => p.e)];
+
+/** How a dimension is drawn, from what it measures; null for a size this has no drawing for. */
+function dimShape(c: SketchConstraint, get: (id: string) => SketchEntity | undefined, offLine: (e: SketchEntity & { kind: "line" }) => Vec2): DimShape | null {
+  const unit = (v: Vec2): Vec2 | null => {
+    const l = Math.hypot(v[0], v[1]);
+    return l > 1e-9 ? [v[0] / l, v[1] / l] : null;
+  };
+  const foot = (p: Vec2, a: Vec2, b: Vec2): Vec2 => {
+    const t = ((p[0] - a[0]) * (b[0] - a[0]) + (p[1] - a[1]) * (b[1] - a[1])) / ((b[0] - a[0]) ** 2 + (b[1] - a[1]) ** 2 || 1);
+    return [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t];
+  };
+  if (c.type === "distance") {
+    const pts = (c.pts ?? []).map((p) => {
+      const e = get(p.e);
+      return e ? pointOf(e, p.p) : null;
+    });
+    const l0 = c.curves?.[0] ? get(c.curves[0]) : undefined;
+    const l1 = c.curves?.[1] ? get(c.curves[1]) : undefined;
+    let a: Vec2 | null = null;
+    let b: Vec2 | null = null;
+    let along: Vec2 | null = null;
+    if (pts.length === 1 && l0?.kind === "line") {
+      // A point from a line: square across to the line, set off along it.
+      a = pts[0];
+      b = a && foot(a, l0.a, l0.b);
+      along = unit([l0.b[0] - l0.a[0], l0.b[1] - l0.a[1]]);
+    } else if (!pts.length && l0?.kind === "line" && l1?.kind === "line") {
+      a = [(l1.a[0] + l1.b[0]) / 2, (l1.a[1] + l1.b[1]) / 2];
+      b = foot(a, l0.a, l0.b);
+      along = unit([l0.b[0] - l0.a[0], l0.b[1] - l0.a[1]]);
+    } else if (pts.length === 2) {
+      [a, b] = pts;
+      const u = a && b && unit([b[0] - a[0], b[1] - a[1]]);
+      along = u ? [-u[1], u[0]] : null;
+    }
+    return a && b && along ? { kind: "span", a, b, out: along } : null;
+  }
+  const e = c.curves?.[0] ? get(c.curves[0]) : undefined;
+  if (!e || !c.prop) return null;
+  if (c.prop === "length" && e.kind === "line") return { kind: "span", a: e.a, b: e.b, out: offLine(e) };
+  if ((c.prop === "w" || c.prop === "h") && e.kind === "rect") {
+    const cs = Math.cos(e.rotation);
+    const sn = Math.sin(e.rotation);
+    const at = (x: number, y: number): Vec2 => [e.center[0] + x * cs - y * sn, e.center[1] + x * sn + y * cs];
+    // The width under the rectangle, the height to its right.
+    return c.prop === "w" ? { kind: "span", a: at(-e.w / 2, -e.h / 2), b: at(e.w / 2, -e.h / 2), out: [sn, -cs] } : { kind: "span", a: at(e.w / 2, -e.h / 2), b: at(e.w / 2, e.h / 2), out: [cs, sn] };
+  }
+  if (c.prop === "radius" || c.prop === "diameter") {
+    if (e.kind === "circle" || e.kind === "polygon") return { kind: "round", c: e.center, rim: [e.center[0] + e.radius * Math.SQRT1_2, e.center[1] + e.radius * Math.SQRT1_2], across: c.prop === "diameter" };
+    if (e.kind === "arc") {
+      const round = arcFrom3(e.a, e.m, e.b);
+      // (An arc's: out through its own middle, where there is arc to point at.)
+      return round ? { kind: "round", c: round.c, rim: e.m, across: false } : null;
+    }
+    return null;
+  }
+  if (c.prop === "angle" && e.kind === "line") {
+    const d1 = unit([e.b[0] - e.a[0], e.b[1] - e.a[1]]);
+    if (!d1) return null;
+    const other = c.curves?.[1] ? get(c.curves[1]) : undefined;
+    if (!other) return { kind: "angle", v: e.a, d1: [1, 0], d2: d1 };
+    if (other.kind !== "line") return null;
+    const d2 = unit([other.b[0] - other.a[0], other.b[1] - other.a[1]]);
+    if (!d2) return null;
+    // Where the two lines meet (run on, if they stop short); each way out from there along its line.
+    const den = d1[0] * d2[1] - d1[1] * d2[0];
+    if (Math.abs(den) < 1e-9) return null;
+    const t = ((other.a[0] - e.a[0]) * d2[1] - (other.a[1] - e.a[1]) * d2[0]) / den;
+    const v: Vec2 = [e.a[0] + d1[0] * t, e.a[1] + d1[1] * t];
+    const far = (l: { a: Vec2; b: Vec2 }, d: Vec2): Vec2 => (Math.hypot(l.a[0] - v[0], l.a[1] - v[1]) > Math.hypot(l.b[0] - v[0], l.b[1] - v[1]) ? [-d[0], -d[1]] : d);
+    return { kind: "angle", v, d1: far(e, d1), d2: far(other, d2) };
+  }
+  return null;
 }
 
 function label(c: SketchConstraint, get: (id: string) => SketchEntity | undefined): string {

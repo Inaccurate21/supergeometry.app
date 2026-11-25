@@ -715,8 +715,17 @@ export class SketchTool implements Tool {
   /** Constraint column (enabled per selection) and badges on the geometry. */
   private refreshConstraintUI(): void {
     if (this.phase !== "draw" || !this.plane) return;
-    this.glyphs ??= new ConstraintGlyphs(this.app.view, (id) => this.selectConstraint(id));
+    this.glyphs ??= new ConstraintGlyphs(this.app.view, {
+      click: (id) => this.selectConstraint(id),
+      text: (id) => {
+        const c = this.constraints.find((x) => x.id === id);
+        if (!c || c.value === undefined) return "";
+        return c.expr ?? (c.prop === "angle" ? trimNum(c.value, 2) : trimNum(toDisplay(c.value), 3));
+      },
+      edit: (id, text) => this.typeConstraintValue(id, text),
+    });
     this.glyphs.selected = this.selConstraint;
+    this.glyphs.setFocus(this.kind === "select" ? this.selected : []);
     this.glyphs.set(this.plane, this.entities, this.constraints);
     this.glyphs.setVisible(settings.value.showConstraintGlyphs);
     this.glyphs.setTappable(this.kind === "select");
@@ -885,29 +894,28 @@ export class SketchTool implements Tool {
     showConstraintList({
       title: "Constraints",
       rows: () => this.selectionConstraints().map((c) => this.constraintRow(c)),
-      setValue: (id, text) => {
-        const c = this.constraints.find((x) => x.id === id);
-        if (!c) return false;
-        const v = evaluate(text, c.prop === "angle" ? "angle" : "length");
-        if (v === null || (c.prop !== "angle" && !(v > 0))) return false;
-        const before = this.constraints;
-        this.pendingExpr = isExpression(text) ? text.trim() : null;
-        this.setConstraintValue(id, v);
-        // (Refused - it contradicts another: said by a toast, the list keeps the old size.)
-        return this.constraints !== before;
-      },
+      setValue: (id, text) => this.typeConstraintValue(id, text),
       remove: (id) => this.removeConstraints(this.constraints.filter((c) => c.id === id)),
       removeAll: () => {
         const list = this.selectionConstraints();
         this.removeConstraints(list);
         this.app.ui.toast(`${list.length} constraint${list.length === 1 ? "" : "s"} removed - the shape stays as it is, free to change`);
       },
-      point: (id) => {
-        if (!this.glyphs || !this.plane) return;
-        this.glyphs.selected = id ?? this.selConstraint;
-        this.glyphs.set(this.plane, this.entities, this.constraints);
-      },
+      point: (id) => this.glyphs?.setPointed(id),
     });
+  }
+
+  /** A size typed for a dimension (in the list, or at the dimension itself): true if the sketch took it. */
+  private typeConstraintValue(id: string, text: string): boolean {
+    const c = this.constraints.find((x) => x.id === id);
+    if (!c) return false;
+    const v = evaluate(text, c.prop === "angle" ? "angle" : "length");
+    if (v === null || (c.prop !== "angle" && !(v > 0))) return false;
+    const before = this.constraints;
+    this.pendingExpr = isExpression(text) ? text.trim() : null;
+    this.setConstraintValue(id, v);
+    // (Refused - it contradicts another: said by a toast, the old size stays.)
+    return this.constraints !== before;
   }
 
   /** One constraint as a row of the list: its name, what else it involves, its size if it has one. */
@@ -1107,7 +1115,8 @@ export class SketchTool implements Tool {
         actions: [del],
         onDone: () => this.deselectConstraint(),
       });
-      this.app.ui.focusPanel();
+      // Its size is typed where it is, on the drawing (the card keeps its Delete, and the size for a formula).
+      this.glyphs?.beginEdit(id);
     } else {
       this.app.ui.showPanel({ title: titled(c.type === "fix" ? "lock" : c.type === "symmetric" ? "symmetry" : `${c.type} constraint`), items: [], actions: [del], onDone: () => this.deselectConstraint() });
     }
@@ -4902,6 +4911,8 @@ export class SketchTool implements Tool {
       ...this.selPts.map((r) => ({ kind: "point" as const, sketch: this.sketchId!, entity: r.e, p: r.p })),
       ...this.offsetLit,
     ]);
+    // (Their constraints' marks stand out, and what those tie them to shows faintly.)
+    this.glyphs?.setFocus(this.kind === "select" ? this.selected : []);
     this.refreshGimbal();
   }
 
