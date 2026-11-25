@@ -38,6 +38,8 @@ export type SketchEntity = EntityBase &
     | { kind: "rect"; center: Vec2; w: number; h: number; rotation: number }
     | { kind: "polygon"; center: Vec2; radius: number; sides: number; angle: number }
     | { kind: "polyline"; points: Vec2[]; closed: boolean }
+    /** A lone point (a hole's centre, a reference to dimension to): no curve, only its point "p". */
+    | { kind: "point"; at: Vec2 }
   );
 
 /** A sketch region, referenced by where it is rather than an index (see regions.ts). */

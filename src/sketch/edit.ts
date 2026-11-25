@@ -46,6 +46,8 @@ export function transformEntity(e: SketchEntity, xf: Xf, newId = false): SketchE
   const vy = xf([0, 1]);
   const mirrored = (ux[0] - o[0]) * (vy[1] - o[1]) - (ux[1] - o[1]) * (vy[0] - o[0]) < 0;
   switch (e.kind) {
+    case "point":
+      return { ...base, kind: "point", at: xf(e.at) };
     case "line":
       return { ...base, kind: "line", a: xf(e.a), b: xf(e.b) };
     case "arc":
@@ -308,6 +310,55 @@ export function trim(entities: SketchEntity[], id: string, at: Vec2): SketchEnti
     pieces[i] = { ...pieces[i], id: target.id };
   }
   return list.flatMap((e) => (e.id === target!.id ? pieces : [e]));
+}
+
+/**
+ * Break (as Trim, but nothing goes): the curve under `at` is cut where the curves crossing it nearest the tap on
+ * either side cross it, so the piece between them is a curve of its own (a shape: the tapped side first comes off
+ * it). Null when nothing crosses it.
+ */
+export function breakAt(entities: SketchEntity[], id: string, at: Vec2): { entities: SketchEntity[]; parts: string[]; exploded: boolean } | null {
+  let list = entities;
+  let target = list.find((e) => e.id === id);
+  if (!target) return null;
+  let exploded = false;
+  if (target.kind === "rect" || target.kind === "polygon" || target.kind === "polyline") {
+    const parts = explode(target);
+    list = list.flatMap((e) => (e.id === id ? parts : [e]));
+    target = parts.reduce((best, e) => (closestOnPrim(entityPrims(e)[0], at).d < closestOnPrim(entityPrims(best)[0], at).d ? e : best));
+    exploded = true;
+  }
+  const prim = entityPrims(target)[0];
+  if (!prim) return null;
+  const others = list.filter((e) => e.id !== target!.id && !e.construction).flatMap(entityPrims);
+  const ts = crossings(prim, others).filter((t, i, a) => i === 0 || t - a[i - 1] > 1e-6);
+  const tap = closestOnPrim(prim, at).t;
+  const closed = isClosedPrim(prim);
+  let spans: [number, number][];
+  if (closed) {
+    if (ts.length < 2) return null;
+    let lo = ts[ts.length - 1] - 1;
+    let hi = ts[0];
+    for (let i = 0; i < ts.length - 1; i++) if (tap >= ts[i] && tap <= ts[i + 1]) ((lo = ts[i]), (hi = ts[i + 1]));
+    if (tap > ts[ts.length - 1]) ((lo = ts[ts.length - 1]), (hi = ts[0] + 1));
+    spans = [[hi, lo + 1], [lo, hi]];
+  } else {
+    const inner = ts.filter((t) => t > 1e-6 && t < 1 - 1e-6);
+    if (!inner.length) return null;
+    const lo = Math.max(0, ...inner.filter((t) => t <= tap));
+    const hi = Math.min(1, ...inner.filter((t) => t >= tap));
+    spans = [[0, lo], [lo, hi], [hi, 1]].filter(([t0, t1]) => t1 - t0 > 1e-6) as [number, number][];
+    if (spans.length < 2) return null;
+  }
+  const pieces = spans.map(([t0, t1], i) => {
+    const piece = pieceEntity(prim, t0, t1, target!.construction);
+    if (!closed && (piece.kind === "line" || piece.kind === "arc") && (target!.kind === "line" || target!.kind === "arc")) {
+      if (t0 === 0) piece.a = target!.a;
+      if (t1 === 1) piece.b = target!.b;
+    }
+    return i === 0 ? { ...piece, id: target!.id } : piece;
+  });
+  return { entities: list.flatMap((e) => (e.id === target!.id ? pieces : [e])), parts: pieces.map((x) => x.id), exploded };
 }
 
 /** Entity for part [t0, t1] of a primitive (t may exceed 1 for closed curves). */
@@ -1048,6 +1099,8 @@ export function defaultOffset(e: SketchEntity): number {
 export function offsetEntity(e: SketchEntity, d: number): SketchEntity | null {
   const base = { id: uid(), construction: e.construction };
   switch (e.kind) {
+    case "point":
+      return null;
     case "circle":
       return e.radius + d > 0 ? { ...base, kind: "circle", center: e.center, radius: e.radius + d } : null;
     case "ellipse":

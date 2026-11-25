@@ -18,6 +18,8 @@ function middle(e: SketchEntity): Vec2 {
       const n = Math.max(1, e.points.length);
       return [e.points.reduce((s, p) => s + p[0], 0) / n, e.points.reduce((s, p) => s + p[1], 0) / n];
     }
+    case "point":
+      return e.at;
     default:
       return e.center;
   }

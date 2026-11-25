@@ -158,13 +158,13 @@ const notSep = (it: ToolItem) => !it.id.startsWith("---");
 /** In a sketch: the tools that act where the view is tapped. With a curve picked they start on it, at the place it was picked (no second tap). */
 const SK_RETAP = new Set(["trim", "extend", "split", "offset", "fillet"]);
 /** And of those, the ones done at that tap (nothing more to set): picking is on again after it. */
-const SK_ONCE = new Set(["trim", "split"]);
+const SK_ONCE = new Set(["trim", "split", "break"]);
 /** The model's groups, in the order they are on the line (the tool wheel's own, each always in its place). */
 const GROUPS = ["create", "combine", "modify", "construct", "transform", "freeform", "sketch"];
 /** A sketch's groups (as its wheel has them): what each holds, most used first; anything else is under More. */
 const SK_GROUPS: { id: string; label: string; icon: IconName; tools: string[] }[] = [
-  { id: "draw", label: "Draw", icon: "line", tools: ["line", "rect", "circle", "arc", "spline", "polygon", "ellipse", "text", "project", "fill"] },
-  { id: "modify", label: "Modify", icon: "trim", tools: ["trim", "fillet", "offset", "extend", "split", "align"] },
+  { id: "draw", label: "Draw", icon: "line", tools: ["line", "rect", "circle", "arc", "spline", "polygon", "ellipse", "slot", "point", "text", "project", "fill"] },
+  { id: "modify", label: "Modify", icon: "trim", tools: ["trim", "fillet", "offset", "extend", "break", "split", "align"] },
   { id: "transform", label: "Transform", icon: "transform", tools: ["move", "mirror", "rotate", "pattern", "scale"] },
   // Object snaps, each on or off (as AutoCAD's OSNAP): src/tools/sketch.ts puts them in the sketch's column.
   { id: "skview", label: "View", icon: "eye", tools: ["skv-normal", "skv-ghost", "skv-hidden", "skv-pick", "skv-region", "skv-dims", "skv-marks", "skv-grid"] },

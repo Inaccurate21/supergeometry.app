@@ -25,6 +25,8 @@ function params(e: SketchEntity): number[] {
     }
     case "circle":
       return [...e.center, e.radius];
+    case "point":
+      return [...e.at];
     case "ellipse":
       return [...e.center, e.rx, e.ry, e.rotation];
     case "rect":
@@ -76,6 +78,8 @@ function withParams(e: SketchEntity, x: number[]): SketchEntity {
     }
     case "circle":
       return { ...e, center: [x[0], x[1]], radius: Math.abs(x[2]) };
+    case "point":
+      return { ...e, at: [x[0], x[1]] };
     case "ellipse":
       return { ...e, center: [x[0], x[1]], rx: Math.abs(x[2]), ry: Math.abs(x[3]), rotation: x[4] };
     case "rect":
@@ -102,6 +106,8 @@ export function pointsOf(e: SketchEntity): { p: string; at: Vec2 }[] {
     }
     case "circle":
       return [{ p: "c", at: e.center }];
+    case "point":
+      return [{ p: "c", at: e.at }];
     case "ellipse": {
       if (e.sweep === undefined) return [{ p: "c", at: e.center }];
       // Part of an ellipse: its two ends too.

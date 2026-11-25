@@ -73,6 +73,9 @@ export function primSegments(p: Prim): number {
 export function entityPrims(e: SketchEntity): Prim[] {
   const src = e.id;
   switch (e.kind) {
+    case "point":
+      // (A lone point is no curve: nothing to draw as a line, cut or close a shape with.)
+      return [];
     case "line":
       return [{ t: "line", a: e.a, b: e.b, src }];
     case "arc": {

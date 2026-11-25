@@ -187,6 +187,7 @@ export class ConstraintGlyphs {
       if (e.kind === "line") return [(e.a[0] + e.b[0]) / 2, (e.a[1] + e.b[1]) / 2];
       if (e.kind === "arc") return e.m;
       if (e.kind === "circle" || e.kind === "ellipse" || e.kind === "rect" || e.kind === "polygon") return e.center;
+      if (e.kind === "point") return e.at;
       return e.points[0] ?? null;
     };
     this.items = [];
@@ -487,6 +488,7 @@ function shapeCentres(entities: SketchEntity[]): Map<string, Vec2> {
     if (e.kind === "line") return [e.a, e.b];
     if (e.kind === "arc") return [e.a, e.m, e.b];
     if (e.kind === "spline" || e.kind === "polyline") return e.points;
+    if (e.kind === "point") return [e.at];
     return [e.center];
   };
   const sum = new Map<number, [number, number, number]>();

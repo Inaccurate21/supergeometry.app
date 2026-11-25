@@ -30,6 +30,7 @@ import {
   extend,
   joinEnds,
   splitAny,
+  breakAt,
   carryConstraints,
   centreArc,
   chamferConstraints,
@@ -78,6 +79,9 @@ type Kind =
   | "rect"
   | "circle"
   | "ellipse"
+  | "point"
+  | "slot"
+  | "break"
   | "polygon"
   | "text"
   | "project"
@@ -112,6 +116,9 @@ const HINTS: Record<Kind, string> = {
   rect: "Tap one corner, then the opposite corner.",
   circle: "Tap the centre, then tap again to set the size.",
   ellipse: "Tap the centre, then the end of the long side, then tap to set the width.",
+  point: "Tap where a point goes (it snaps to ends, middles and centres). Each tap is a point.",
+  slot: "Tap the centre of one rounded end, then of the other, then tap to set the width.",
+  break: "Tap a curve where another crosses it: it is cut there, and every piece stays (Trim would take one away).",
   polygon: "Tap the centre, then where a corner should be.",
   text: "Tap where the text should start, then type it in the card.",
   project: "Tap edges of a body, or lines of another sketch, to copy them into this sketch. Double-tap copies a whole sketch.",
@@ -176,7 +183,7 @@ function describePieces(es: SketchEntity[]): string {
   return [part(n("line"), "line", "lines"), part(n("arc"), "arc", "arcs"), part(n("circle"), "circle", "circles"), part(n("spline"), "curve", "curves")].filter(Boolean).join(", ");
 }
 
-const memory = { arc: "3pt" as "3pt" | "center", circle: "center" as "center" | "2pt" | "3pt", corner: "round" as "round" | "chamfer", textFont: "roboto", trim: "cut" as "cut" | "join", offsetMode: "chain" as "edge" | "chain", pattern: "patternLinear" as "patternLinear" | "patternCircular", rect: "diagonal" as "diagonal" | "center" | "3pt", spline: "fit" as "fit" | "control" | "draw", sides: 6, fillet: 2, offset: 2, textSize: storedTextSize(), textAlign: "left" as TextAlign };
+const memory = { arc: "3pt" as "3pt" | "center", circle: "center" as "center" | "2pt" | "3pt", corner: "round" as "round" | "chamfer", textFont: "roboto", trim: "cut" as "cut" | "join", offsetMode: "chain" as "edge" | "chain", pattern: "patternLinear" as "patternLinear" | "patternCircular", rect: "center" as "diagonal" | "center" | "3pt", ellipse: "center" as "center" | "axis" | "box", slot: "cc" as "cc" | "overall" | "center", spline: "fit" as "fit" | "control" | "draw", sides: 6, fillet: 2, offset: 2, textSize: storedTextSize(), textAlign: "left" as TextAlign };
 
 /** Fill Pattern as it was last used: the next shape filled starts the same. */
 const fillMemory: Omit<SketchFill, "id" | "at"> = { kind: "lines", spacing: 2, angle: 45, size: 3 };
@@ -185,10 +192,16 @@ const fillMemory: Omit<SketchFill, "id" | "at"> = { kind: "lines", spacing: 2, a
  * The way each tool draws (Rectangle: Center, Diagonal...) survives a reload:
  * a window drawn all by centre rectangles came back to Diagonal halfway through.
  */
-const VARIANTS: Record<string, readonly string[]> = { rect: ["diagonal", "center", "3pt"], circle: ["center", "2pt", "3pt"], arc: ["3pt", "center"], spline: ["fit", "control", "draw"], corner: ["round", "chamfer"], trim: ["cut", "join"] };
+const VARIANTS: Record<string, readonly string[]> = { ellipse: ["center", "axis", "box"], slot: ["cc", "overall", "center"], rect: ["diagonal", "center", "3pt"], circle: ["center", "2pt", "3pt"], arc: ["3pt", "center"], spline: ["fit", "control", "draw"], corner: ["round", "chamfer"], trim: ["cut", "join"] };
 try {
   const saved = JSON.parse(localStorage.getItem("sg.sketchVariants") ?? "{}") as Record<string, string>;
   for (const [k, v] of Object.entries(saved)) if (VARIANTS[k]?.includes(v)) (memory as unknown as Record<string, string>)[k] = v;
+  // Rectangle draws from its centre by default (asked for): a Diagonal kept from before that is set back once.
+  if (!localStorage.getItem("sg.rectCentre")) {
+    memory.rect = "center";
+    localStorage.setItem("sg.rectCentre", "1");
+    storeVariants();
+  }
 } catch {
   /* nothing saved, or no storage */
 }
@@ -1251,8 +1264,8 @@ export class SketchTool implements Tool {
       variantsWhenActive: true,
       ...extra,
     });
-    const icons: Partial<Record<Kind, string>> = { rect: "rect", trim: "trim", arc: "arc", circle: "circle", fillet: "sketchFillet" };
-    const variant = <T extends string>(kind: Kind, key: "rect" | "spline" | "trim" | "arc" | "circle" | "corner", options: [T, string][]): ToolItem[] =>
+    const icons: Partial<Record<Kind, string>> = { ellipse: "ellipse", slot: "slot", rect: "rect", trim: "trim", arc: "arc", circle: "circle", fillet: "sketchFillet" };
+    const variant = <T extends string>(kind: Kind, key: "rect" | "spline" | "trim" | "arc" | "circle" | "corner" | "ellipse" | "slot", options: [T, string][]): ToolItem[] =>
       options.map(([v, l]) => ({ id: `${kind}-${v}`, label: l, icon: icons[kind] ?? "spline", active: memory[key] === v, run: () => (((memory as unknown as Record<string, string>)[key] = v), storeVariants(), this.setKind(kind)) }) as ToolItem);
     // A new sketch with nothing in it yet can still go on another plane.
     const fresh = !this.sketchId && !this.entities.length;
@@ -1267,7 +1280,9 @@ export class SketchTool implements Tool {
       t("spline", "Spline", "spline", "I", { sub: memory.spline === "fit" ? "Fit" : memory.spline === "draw" ? "Draw" : "Control", children: variant("spline", "spline", [["fit", "Fit points"], ["control", "Control points"], ["draw", "Draw (freehand)"]]) }),
       t("rect", "Rectangle", "rect", "R", { sub: { diagonal: "Diagonal", center: "Center", "3pt": "3 Points" }[memory.rect], children: variant("rect", "rect", [["center", "Center"], ["diagonal", "Diagonal"], ["3pt", "3 Points"]]) }),
       t("circle", "Circle", "circle", "C", { sub: { center: "Center", "2pt": "2 Points", "3pt": "3 Points" }[memory.circle], children: variant("circle", "circle", [["center", "Center"], ["2pt", "2 Points"], ["3pt", "3 Points"]]) }),
-      t("ellipse", "Ellipse", "ellipse"),
+      t("ellipse", "Ellipse", "ellipse", undefined, { sub: { center: "Center", axis: "Axis ends", box: "In a box" }[memory.ellipse], children: variant("ellipse", "ellipse", [["center", "Center"], ["axis", "Axis ends"], ["box", "In a box (2 corners)"]]) }),
+      t("slot", "Slot", "slot", undefined, { sub: { cc: "Centre to centre", overall: "Overall", center: "Center" }[memory.slot], children: variant("slot", "slot", [["cc", "Centre to centre"], ["overall", "Overall (end to end)"], ["center", "Center"]]) }),
+      t("point", "Point", "sketchPoint"),
       t("polygon", "Polygon", "polygon", "G", {
         sub: POLYGON_NAMES[memory.sides] ?? `${memory.sides} sides`,
         // The usual ones a tap away (any other count: type it on the drawing).
@@ -1284,6 +1299,7 @@ export class SketchTool implements Tool {
       t("align", "Align", "alignLine"),
       t("extend", "Extend", "extend", "E"),
       t("split", "Split", "splitLine"),
+      t("break", "Break", "breakLine"),
       t("move", "Move/Rotate", "move", "M"),
       // Turned about a point tapped (a tie rod a quarter way round the axis
       // centre): the code had it, the menu didn't.
@@ -1463,7 +1479,10 @@ export class SketchTool implements Tool {
     if (k === "rect" && memory.rect === "diagonal") return `First corner placed. Now tap the opposite corner, ${typed}.`;
     if (k === "circle" && memory.circle === "center") return `Centre placed. Now tap a point on the edge, ${typed}.`;
     if (k === "polygon") return `Centre placed. Now tap a corner, ${typed}.`;
+    if (k === "ellipse" && memory.ellipse === "box") return "First corner placed. Now tap the opposite corner of the box round it.";
+    if (k === "ellipse" && memory.ellipse === "axis") return "One end placed. Now tap the other end of its long axis.";
     if (k === "ellipse") return `Centre placed. Now tap the end of one axis, ${typed}.`;
+    if (k === "slot") return memory.slot === "overall" ? "One end placed. Now tap the other end of the slot." : memory.slot === "center" ? "Middle placed. Now tap the centre of one rounded end." : "One centre placed. Now tap the centre of the other rounded end.";
     return undefined;
   }
 
@@ -1920,7 +1939,7 @@ export class SketchTool implements Tool {
       else this.app.setHover(null);
       return;
     }
-    if (["trim", "delete", "extend", "offset", "split", "fillet", "align"].includes(this.kind) || this.isSelectionTool()) {
+    if (["trim", "delete", "extend", "offset", "split", "break", "fillet", "align"].includes(this.kind) || this.isSelectionTool()) {
       const hit = this.app.view.pick(p.x, p.y, { curves: this.sketchId ?? true, profiles: false, bodies: false, planes: false, axes: false, edgeTolPx: p.tol });
       const onCurve = hit?.kind === "curve" && hit.sketch === this.sketchId;
       this.app.setHover(onCurve ? { kind: "curve", sketch: hit.sketch, entity: hit.entity } : null);
@@ -2957,6 +2976,8 @@ export class SketchTool implements Tool {
         return this.tapCurve(p, (id, uv) => this.tapExtend(id, uv));
       case "split":
         return this.tapCurve(p, (id, uv) => this.tapSplit(id, uv, p.shift));
+      case "break":
+        return this.tapCurve(p, (id, uv) => this.tapBreak(id, uv));
       case "fill": {
         // Inside a closed shape: that shape is the one to fill (one with a pattern already: that pattern, to change).
         const uv = this.uvAt(p);
@@ -3650,6 +3671,31 @@ export class SketchTool implements Tool {
     if (!this.pts.length) this.startRef = snapRef ?? null;
     if (!this.pts.length) this.startSnap = locked ? null : this.cursor;
     if (!this.pts.length) this.firstSnap = this.cursor;
+    // Point: each tap one (held on what it snapped to).
+    if (k === "point") {
+      const id = uid();
+      const cs = snapRef ? [{ id: uid(), type: "coincident" as const, pts: [{ e: id, p: "c" }, snapRef] }] : [];
+      this.commitAdd([{ id, kind: "point", at: [...pt] as Vec2 }], cs);
+      this.refreshPreview();
+      return;
+    }
+    // Slot: its two points, then its width.
+    if (k === "slot") {
+      this.pts.push(pt);
+      if (this.pts.length >= 3) {
+        const out = this.buildSlot(this.pts);
+        this.pts = [];
+        this.locks = {};
+        this.app.ui.setLabel(0, 0, null);
+        if (out) {
+          this.commitAdd(out.es, out.cs);
+          return this.shapeClosed();
+        }
+      }
+      this.updatePanel();
+      this.refreshPreview();
+      return;
+    }
     if (k === "line") {
       if (count >= 2 || (this.pts.length && samePt(pt, this.pts[this.pts.length - 1]))) return this.resetDrawing();
       if (this.pts.length) {
@@ -3740,7 +3786,7 @@ export class SketchTool implements Tool {
       // (Centre arcs have no bend: their third tap is where they end.)
       if (k === "arc" && memory.arc === "3pt" && this.pts.length === 2) this.arcM = this.defaultArcMid(this.pts[0], this.pts[1]);
       if (k === "arc" && (memory.arc !== "3pt" || this.pts.length !== 2)) this.arcM = null;
-      const need = k === "arc" || k === "ellipse" || (k === "rect" && memory.rect === "3pt") || (k === "circle" && memory.circle === "3pt") ? 3 : 2;
+      const need = k === "arc" || (k === "ellipse" && memory.ellipse !== "box") || (k === "rect" && memory.rect === "3pt") || (k === "circle" && memory.circle === "3pt") ? 3 : 2;
       if (this.pts.length >= need) {
         const e = this.buildShape(this.pts);
         const cs: SketchConstraint[] = [];
@@ -3958,6 +4004,22 @@ export class SketchTool implements Tool {
       }
       case "ellipse": {
         if (!b) return null;
+        // In a box: the two corners of the box round it (square to the sketch).
+        if (memory.ellipse === "box") {
+          const rx = Math.abs(b[0] - a[0]) / 2;
+          const ry = Math.abs(b[1] - a[1]) / 2;
+          return rx > 1e-9 && ry > 1e-9 ? { id, kind: "ellipse", center: [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2], rx, ry, rotation: 0 } : null;
+        }
+        // By the two ends of its long axis: the centre between them.
+        if (memory.ellipse === "axis") {
+          const m: Vec2 = [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2];
+          const rx = Math.hypot(b[0] - a[0], b[1] - a[1]) / 2;
+          const rot = Math.atan2(b[1] - a[1], b[0] - a[0]);
+          let ry = rx / 2;
+          if (c) ry = Math.abs((c[1] - m[1]) * Math.cos(rot) - (c[0] - m[0]) * Math.sin(rot));
+          if (this.locks.ry !== undefined) ry = this.locks.ry / 2;
+          return rx > 1e-9 && ry > 1e-9 ? { id, kind: "ellipse", center: m, rx, ry, rotation: rot } : null;
+        }
         const rx = Math.hypot(b[0] - a[0], b[1] - a[1]);
         const rot = Math.atan2(b[1] - a[1], b[0] - a[0]);
         let ry = rx / 2;
@@ -4189,6 +4251,11 @@ export class SketchTool implements Tool {
         if (e) ghosts.push(e);
         label = dimLabel(e, pts);
       }
+    }
+    if (this.kind === "slot" && this.pts.length && c) {
+      const out = this.buildSlot([...this.pts, c]);
+      if (out) ghosts.push(...out.es);
+      else if (this.pts.length === 1) this.drawGhosts([{ id: "slot-axis", kind: "line", a: this.pts[0], b: c }], 0xffc23d, true);
     }
     if (!keepLineDim && !(this.kind === "line" && this.pts.length && c)) this.hideLineDim();
     if (this.kind === "text" && this.pts.length) {
@@ -4658,7 +4725,7 @@ export class SketchTool implements Tool {
       if (this.phase === "draw" && !this.sdrag) this.refreshPreview();
     }
     // Tools with nothing to set show the step just done.
-    if (["trim", "extend", "split", "align", "delete", "project"].includes(this.kind)) this.updatePanel();
+    if (["trim", "extend", "split", "break", "align", "delete", "project"].includes(this.kind)) this.updatePanel();
   }
 
   private commitAdd(es: SketchEntity[], cs: SketchConstraint[] = []): void {
@@ -4884,6 +4951,72 @@ export class SketchTool implements Tool {
   }
 
   /** Split: cut a line/arc at its midpoint (Shift: where tapped). The pieces stay joined. */
+  /** Break: the curve cut where the curves nearest the tap cross it; all its pieces stay, joined end to end. */
+  private tapBreak(id: string, uv: Vec2): void {
+    const out = breakAt(this.entities, id, uv);
+    if (!out) return this.app.ui.toast("Nothing crosses that curve there to break it at");
+    const cs = this.constraints.flatMap((c): SketchConstraint[] => {
+      if (out.exploded && (c.curves?.includes(id) || c.pts?.some((r) => r.e === id))) return [];
+      if (c.type === "dim" && c.curves?.[0] === id && c.prop === "length") return [];
+      const last = out.parts[out.parts.length - 1];
+      const pts = c.pts?.map((r) => (r.e === id && r.p === "b" && last !== id ? { e: last, p: "b" } : r));
+      return [{ ...c, ...(pts ? { pts } : {}) }];
+    });
+    const made = out.entities.filter((e) => out.parts.includes(e.id));
+    for (const x of made)
+      for (const y of made) {
+        if (x === y || !(x.kind === "line" || x.kind === "arc") || !(y.kind === "line" || y.kind === "arc")) continue;
+        if (samePt(x.b, y.a)) cs.push({ id: uid(), type: "coincident", pts: [{ e: x.id, p: "b" }, { e: y.id, p: "a" }] });
+      }
+    this.commit(out.entities, cs);
+  }
+
+  /**
+   * A slot from its points (the two centres of its round ends - or its two tips, or its middle and one centre - and
+   * a point its side runs through): two lines and two half circles, joined and tangent, and its centre line.
+   */
+  private buildSlot(pts: Vec2[]): { es: SketchEntity[]; cs: SketchConstraint[] } | null {
+    const [p0, p1, p2] = pts;
+    if (!p0 || !p1) return null;
+    const L = Math.hypot(p1[0] - p0[0], p1[1] - p0[1]);
+    if (L < 1e-9) return null;
+    const u: Vec2 = [(p1[0] - p0[0]) / L, (p1[1] - p0[1]) / L];
+    const n: Vec2 = [-u[1], u[0]];
+    // Half its width: from the third point (before it, a quarter of its length), or typed.
+    let r = p2 ? Math.abs((p2[0] - p0[0]) * n[0] + (p2[1] - p0[1]) * n[1]) : L / 4;
+    if (this.locks.w !== undefined) r = this.locks.w / 2;
+    if (r < 1e-9) return null;
+    let c0 = p0;
+    let c1 = p1;
+    if (memory.slot === "overall") {
+      if (L <= 2 * r) return null;
+      c0 = [p0[0] + u[0] * r, p0[1] + u[1] * r];
+      c1 = [p1[0] - u[0] * r, p1[1] - u[1] * r];
+    } else if (memory.slot === "center") c0 = [2 * p0[0] - p1[0], 2 * p0[1] - p1[1]];
+    const add = (q: Vec2, d: Vec2, k: number): Vec2 => [q[0] + d[0] * k, q[1] + d[1] * k];
+    const top: SketchEntity = { id: uid(), kind: "line", a: add(c0, n, r), b: add(c1, n, r) };
+    const bot: SketchEntity = { id: uid(), kind: "line", a: add(c1, n, -r), b: add(c0, n, -r) };
+    const end1: SketchEntity = { id: uid(), kind: "arc", a: add(c1, n, r), m: add(c1, u, r), b: add(c1, n, -r) };
+    const end0: SketchEntity = { id: uid(), kind: "arc", a: add(c0, n, -r), m: add(c0, u, -r), b: add(c0, n, r) };
+    const axis: SketchEntity = { id: uid(), kind: "line", a: c0, b: c1, construction: true };
+    const co = (e1: string, q1: string, e2: string, q2: string): SketchConstraint => ({ id: uid(), type: "coincident", pts: [{ e: e1, p: q1 }, { e: e2, p: q2 }] });
+    const cs: SketchConstraint[] = [
+      co(top.id, "b", end1.id, "a"),
+      co(end1.id, "b", bot.id, "a"),
+      co(bot.id, "b", end0.id, "a"),
+      co(end0.id, "b", top.id, "a"),
+      co(axis.id, "a", end0.id, "c"),
+      co(axis.id, "b", end1.id, "c"),
+      { id: uid(), type: "tangent", curves: [top.id, end1.id] },
+      { id: uid(), type: "tangent", curves: [bot.id, end1.id] },
+      { id: uid(), type: "tangent", curves: [bot.id, end0.id] },
+      { id: uid(), type: "tangent", curves: [top.id, end0.id] },
+      { id: uid(), type: "equal", curves: [end0.id, end1.id] },
+    ];
+    if (this.locks.w !== undefined) cs.push({ id: uid(), type: "dim", curves: [end1.id], prop: "radius", value: r });
+    return { es: [top, end1, bot, end0, axis], cs };
+  }
+
   private tapSplit(id: string, uv: Vec2, atTap: boolean): void {
     // Curves split where the grid crosses them (nearest the tap); lines and the
     // sides of shapes in half (Shift: right where tapped).
