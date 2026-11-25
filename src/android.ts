@@ -43,17 +43,112 @@ if (native) {
     true,
   );
 
-  // Where the phone's camera cutout is, in full screen: the buttons keep clear of it (CSS --native-safe-*).
-  (window as unknown as { sgNativeInsets: (t: number, l: number, r: number, b: number, w: number) => void }).sgNativeInsets = (t, l, r, b, w) => {
+  // Where the phone's edges and its camera's hole are, in full screen (in the app's pixels, with its width).
+  // The top bar stays at the very top, with a gap where the camera is: the button that would run into the hole,
+  // and those after it, move along to clear it. In the page's own pixels, so the interface size counts.
+  let insets: number[] | null = null;
+  const bar = () => document.getElementById("topbar");
+  const PAD = 10;
+  const clearHole = () => {
+    const b = bar();
+    if (!b) return;
+    b.querySelector(":scope > .hole-gap")?.remove();
+    b.style.removeProperty("--hole-shift");
+    const nm = b.querySelector<HTMLElement>(".project-name");
+    if (nm) nm.style.maxWidth = nm.style.minWidth = "";
+    const br = b.querySelector<HTMLElement>(".brand");
+    if (br) br.style.display = "";
+    if (!insets) return;
+    const [, , , , w, hl, , hr, hb] = insets;
+    if (!(hr > hl)) return;
+    const k = (window.visualViewport?.width ?? innerWidth) / (w || innerWidth);
+    const left = hl * k;
+    const right = hr * k;
+    const centre = (left + right) / 2;
+    if (b.getBoundingClientRect().top >= hb * k) return;
+    // Between which two buttons the gap goes: the pair nearest the hole (File | Items with the camera in the
+    // middle) whose bar still fits on the screen, else the one that sticks out least.
+    const kids = ([...b.children] as HTMLElement[]).filter((c) => c.getBoundingClientRect().width > 0);
+    const order: number[] = [];
+    for (let i = 1; i < kids.length; i++) order.push(i);
+    const mid = (i: number) => (kids[i - 1].getBoundingClientRect().right + kids[i].getBoundingClientRect().left) / 2;
+    order.sort((x, y) => Math.abs(mid(x) - centre) - Math.abs(mid(y) - centre));
+    const name = b.querySelector<HTMLElement>(".project-name");
+    const brand = b.querySelector<HTMLElement>(".brand");
+    const vw = window.visualViewport?.width ?? innerWidth;
+    const gap = document.createElement("span");
+    gap.className = "hole-gap";
+    gap.style.cssText = `flex:none;width:${Math.round(right - left + 2 * PAD)}px;height:1px`;
+    /** The gap before kids[at], the bar moved under the hole, the name narrowed (the icon hidden) to fit: how far it still sticks out. */
+    const fit = (at: number) => {
+      if (name) name.style.maxWidth = name.style.minWidth = "";
+      if (brand) brand.style.display = "";
+      kids[at].before(gap);
+      let over = 0;
+      // (The name stops getting narrower at its padding: then the icon goes.)
+      let lastName = Infinity;
+      for (let i = 0; i < 8; i++) {
+        b.style.setProperty("--hole-shift", "0px");
+        const g = gap.getBoundingClientRect();
+        b.style.setProperty("--hole-shift", `${Math.round(centre - (g.left + g.right) / 2)}px`);
+        const r = b.getBoundingClientRect();
+        over = Math.max(0, 6 - r.left, r.right - (vw - 6));
+        if (!over) break;
+        const nw = name?.getBoundingClientRect().width ?? 0;
+        if (name && nw > 26 && nw < lastName - 1) {
+          lastName = nw;
+          name.style.minWidth = "0";
+          name.style.maxWidth = `${Math.max(24, nw - 2 * over)}px`;
+        } else if (brand && brand.style.display !== "none") brand.style.display = "none";
+        else break;
+      }
+      return over;
+    };
+    let best = -1;
+    let bestOver = Infinity;
+    for (const at of order) {
+      const o = fit(at);
+      if (o < bestOver) (bestOver = o), (best = at);
+      if (!o) return;
+    }
+    if (best >= 0) fit(best);
+  };
+  const apply = () => {
+    if (!insets) return;
+    const [t, l, r, b, w, hl, , hr] = insets;
     const k = (window.visualViewport?.width ?? innerWidth) / (w || innerWidth);
     const root = document.documentElement.style;
-    // (The top bar's own 8 px margin goes on top of it: 4 of them are taken back, so it sits just under the camera.)
-    root.setProperty("--native-safe-t", `${Math.max(0, Math.round(t * k) - 4)}px`);
+    // A hole at the top: the bar goes up beside it (no room left above the bar); else below the cutout.
+    root.setProperty("--native-safe-t", `${hr > hl ? 0 : Math.round(t * k)}px`);
     root.setProperty("--native-safe-l", `${Math.round(l * k)}px`);
     root.setProperty("--native-safe-r", `${Math.round(r * k)}px`);
     root.setProperty("--native-safe-b", `${Math.round(b * k)}px`);
+    requestAnimationFrame(clearHole);
+  };
+  (window as unknown as { sgNativeInsets: (...v: number[]) => void }).sgNativeInsets = (...v) => {
+    insets = v;
+    apply();
     window.dispatchEvent(new Event("resize"));
   };
+  // The interface's size or the bar's buttons changed (a longer project name): cleared again.
+  window.addEventListener("resize", () => requestAnimationFrame(apply));
+  window.visualViewport?.addEventListener("resize", () => requestAnimationFrame(apply));
+  const watch = () => {
+    const b = bar();
+    if (!b) return void setTimeout(watch, 500);
+    // (Its width changes with the gap itself: only a change of the screen's width re-does it.)
+    let width = innerWidth;
+    new ResizeObserver(() => {
+      if (innerWidth === width) return;
+      width = innerWidth;
+      requestAnimationFrame(clearHole);
+    }).observe(b);
+    new MutationObserver((list) => {
+      if (list.every((m) => [...m.addedNodes, ...m.removedNodes].every((n) => (n as Element).classList?.contains("hole-gap")) && m.type === "childList")) return;
+      requestAnimationFrame(clearHole);
+    }).observe(b, { childList: true, subtree: true, characterData: true });
+  };
+  watch();
 
   let over: Element | null = null;
   (window as unknown as { sgNativeHover: (x: number | null, y?: number, w?: number) => void }).sgNativeHover = (x, y, w) => {

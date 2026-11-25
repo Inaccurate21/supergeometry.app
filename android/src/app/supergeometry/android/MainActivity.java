@@ -188,18 +188,24 @@ public class MainActivity extends Activity {
     /** Where the camera's cutout is (in full screen): the page keeps clear of it. In the view's pixels, with its width. */
     void sendInsets(WindowInsets wi) {
         int t = 0, l = 0, r = 0, b = 0;
+        // The camera's hole at the top edge (in full screen): the page leaves a gap in its top bar there.
+        int hl = -1, ht = 0, hr = -1, hb = 0;
         DisplayCutout dc = wi.getDisplayCutout();
         if (fullscreen() && dc != null) {
-            // The top: just under the camera's hole itself (the safe inset is the whole status bar's height).
             t = dc.getSafeInsetTop();
-            int hole = 0;
-            for (android.graphics.Rect box : dc.getBoundingRects()) if (box.top <= 0 && box.bottom < web.getHeight() / 3) hole = Math.max(hole, box.bottom);
-            if (hole > 0) t = hole;
             l = dc.getSafeInsetLeft();
             r = dc.getSafeInsetRight();
             b = dc.getSafeInsetBottom();
+            for (android.graphics.Rect box : dc.getBoundingRects()) {
+                if (box.top <= 0 && box.bottom < web.getHeight() / 3) {
+                    hl = box.left;
+                    ht = box.top;
+                    hr = box.right;
+                    hb = box.bottom;
+                }
+            }
         }
-        String js = "window.sgNativeInsets&&sgNativeInsets(" + t + "," + l + "," + r + "," + b + "," + web.getWidth() + ")";
+        String js = "window.sgNativeInsets&&sgNativeInsets(" + t + "," + l + "," + r + "," + b + "," + web.getWidth() + "," + hl + "," + ht + "," + hr + "," + hb + ")";
         web.post(() -> web.evaluateJavascript(js, null));
     }
 

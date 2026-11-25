@@ -7497,3 +7497,9 @@ html[data-theme="light"] .ref-win .ref-body img,
 html[data-theme="light"] .ref-win .ref-body canvas {
   filter: none;
 }
+/* The Android app: the top bar moved along so the gap left for the camera's hole is right under it (src/android.ts). */
+html.android-app body #topbar,
+html.android-app body.history-open #topbar,
+html.android-app body.items-open #topbar {
+  transform: translateX(calc(-50% + var(--hole-shift, 0px))) !important;
+}
