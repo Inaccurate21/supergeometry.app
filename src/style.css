@@ -7753,3 +7753,102 @@ html.android-app body.items-open #topbar {
   font: inherit;
   text-align: center;
 }
+
+/* A sketch's Move / Copy window, as Fusion's (src/tools/sketch.ts renderMoveDialog). */
+.sk-move-dlg {
+  position: fixed;
+  right: calc(70px + var(--safe-r));
+  top: calc(120px + var(--safe-t));
+  z-index: 30;
+  width: 264px;
+  padding: 0 0 10px;
+  border-radius: var(--radius);
+  background: var(--chrome);
+  border: 1px solid var(--line);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+  color: var(--text);
+  font-size: 13px;
+}
+.sk-move-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 10px;
+  font-weight: 600;
+  border-bottom: 1px solid var(--line);
+  cursor: move;
+  touch-action: none;
+}
+.sk-move-x {
+  border: 0;
+  background: none;
+  color: var(--muted);
+  font-size: 18px;
+  cursor: pointer;
+}
+.sk-move-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px 0;
+}
+.sk-move-label {
+  flex: 0 0 82px;
+  color: var(--muted);
+  font-size: 12px;
+}
+.sk-move-val {
+  font-size: 12px;
+}
+.sk-move-btn {
+  flex: 1;
+  min-height: 30px;
+  padding: 0 6px;
+  border-radius: 7px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  background: rgba(255, 255, 255, 0.05);
+  color: inherit;
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+.sk-move-btn.on {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+.sk-move-num {
+  flex: 1;
+  min-width: 0;
+  height: 30px;
+  padding: 0 8px;
+  border-radius: 7px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  background: rgba(0, 0, 0, 0.25);
+  color: inherit;
+  font: 12px ui-monospace, monospace;
+}
+.sk-move-foot {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  padding: 10px 10px 0;
+}
+.sk-move-ok,
+.sk-move-cancel {
+  min-width: 72px;
+  height: 32px;
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  background: rgba(255, 255, 255, 0.06);
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+.sk-move-ok {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+}
+.sk-move-ok:disabled {
+  opacity: 0.4;
+}

@@ -375,7 +375,7 @@ export class Viewport {
     for (const m of this.allBodyMats()) {
       // A see-through body (Transparency) is seen through in every view; while a
       // new solid is being sized from a sketch, everything is a little see-through.
-      const o = ((m.userData.opacity as number | undefined) ?? 1) * (this.ghost ? 0.62 : 1);
+      const o = ((m.userData.opacity as number | undefined) ?? 1) * (this.ghost ? 0.62 : 1) * (this.sketchBodies === "ghost" ? 0.3 : 1);
       const see = xray || o < 1;
       m.transparent = see;
       m.opacity = (xray ? 0.35 : 1) * o;
@@ -389,6 +389,20 @@ export class Viewport {
 
   /** Select Through (Ctrl+Shift+S): picking ignores the faces in front. */
   selectThrough = false;
+
+  /**
+   * While a sketch is open (its View list on the line at the bottom): the bodies as they are, see-through or
+   * hidden, and whether the model's faces, edges and corners can be picked or caught on (off: only the sketch).
+   */
+  sketchBodies: "normal" | "ghost" | "hidden" = "normal";
+  sketchIgnoresModel = false;
+
+  setSketchView(bodies: "normal" | "ghost" | "hidden", ignoreModel: boolean): void {
+    this.sketchBodies = bodies;
+    this.sketchIgnoresModel = ignoreModel;
+    this.applySettings();
+    this.requestRender();
+  }
 
   setSelectThrough(on: boolean): void {
     this.selectThrough = on;
@@ -619,7 +633,8 @@ export class Viewport {
 
   private applyHidden(): void {
     for (const [id, b] of this.bodies) {
-      const vis = !this.hiddenIds.has(id);
+      // (A sketch open with the bodies set hidden in its View list: none drawn.)
+      const vis = !this.hiddenIds.has(id) && this.sketchBodies !== "hidden";
       // Section only: the cut faces alone (and their outline), the rest of the model gone.
       const only = this.sectionStyle === "only" && !!this.clip;
       b.mesh.visible = vis && settings.value.shader !== "wireframe" && !only;
@@ -1474,7 +1489,8 @@ export class Viewport {
   }
 
   pick(x: number, y: number, opts: PickOptions = {}): PickHit | null {
-    const { edgeTolPx = 8, profiles = true, bodies = true, edges = true, curves = false, planes = true, axes = true, vertices = edges, planesFirst = false } = opts;
+    const o = this.sketchIgnoresModel || this.sketchBodies === "hidden" ? { ...opts, bodies: false, edges: false, vertices: false } : opts;
+    const { edgeTolPx = 8, profiles = true, bodies = true, edges = true, curves = false, planes = true, axes = true, vertices = edges, planesFirst = false } = o;
     this.setRay(x, y);
     // The origin, tapped near it on screen: it wins (a point you mean exactly).
     if (opts.origin) {

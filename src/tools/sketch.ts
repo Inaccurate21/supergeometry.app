@@ -6,7 +6,7 @@ import { Box3, BufferGeometry, Line, LineBasicMaterial, LineDashedMaterial, Poin
 import type { EdgeLink, FaceRef, OutlineOffset, PlaneDef, PointRef, SketchConstraint, SketchEntity, SketchFeature, SketchFill, SketchRef, SketchRepeat, Vec2, Vec3 } from "../doc/types";
 import { add as add3, dot, GROUND, niceStep as niceStepOf, originOnPlane, patternSpacing, planeY, roundSig, scale as scale3, sub as sub3, toPlane } from "../geom";
 import { addForUser, addStrict, constraintError, constraintName, LINKED, pointOf, pointsOf, refsOf, setValueStrict, sizeOf as sizeOfFn, solve, touchingEnds } from "../sketch/constraints";
-import { isExpression } from "../ui/ui";
+import { el, isExpression } from "../ui/ui";
 import { caretToEnd, selectAll, textField, type TextField } from "../ui/textField";
 import { nearestSnap } from "../sketch/snapPick";
 import { arrangement } from "../sketch/regions";
@@ -403,6 +403,8 @@ export class SketchTool implements Tool {
     | { kind: "pivot"; line: string }
     /** Points of a spline pulled off the sketch's plane (the gimbal's third arrow): each one's height as it began. */
     | { kind: "lift"; from: ToolPointer; origin: Vec3; pts: { e: string; i: number; z0: number }[]; dz: number }
+    /** The gimbal's centre dragged: where the curves are held and turned about (Fusion's Set pivot), they stay put. */
+    | { kind: "setPivot" }
     | null = null;
   /**
    * One line selected: where its rotation pivot sits along it (0 = start,
@@ -634,6 +636,10 @@ export class SketchTool implements Tool {
   }
 
   exit(): void {
+    this.moveDlg?.remove();
+    this.moveDlg = null;
+    // The bodies as they were outside the sketch.
+    this.app.view.setSketchView("normal", false);
     this.clearQuick();
     this.dropOffsetGrip();
     this.regionArrow?.handle.dispose();
@@ -744,6 +750,7 @@ export class SketchTool implements Tool {
     this.glyphs.setVisible(settings.value.showConstraintGlyphs);
     this.glyphs.setTappable(this.kind === "select");
     document.body.classList.add("sketching");
+    this.app.view.setSketchView(settings.value.sketchBodies, !settings.value.sketchModelPick);
     if (!this.listening) {
       this.listening = true;
       settings.onChange(this.onSettings);
@@ -1289,6 +1296,12 @@ export class SketchTool implements Tool {
       t("delete", "Delete", "trash", "Del", { run: () => (this.selected.size || this.selPts.length ? this.deleteSelected() : this.setKind("delete")) }),
       // OSNAP (as AutoCAD's): each object snap on or off, right on the line - while drawing and while moving.
       ...OSNAP_LIST.map(([k, label, mark]) => ({ id: `osnap-${k}`, label: `${mark}  ${label}`, icon: "magnet" as const, active: settings.value.osnap[k], run: () => (settings.set("osnap", { ...settings.value.osnap, [k]: !settings.value.osnap[k] }), this.updateMenu()) }) as ToolItem),
+      // The sketch's View (as Fusion's sketch palette): the bodies as they are, see-through or hidden; whether the
+      // model can be picked and caught on; the sizes and the grid shown.
+      ...(([["normal", "Bodies: as they are"], ["ghost", "Bodies: see-through"], ["hidden", "Bodies: hidden"]] as const).map(([v, label]) => ({ id: `skv-${v}`, label, icon: "body" as const, active: settings.value.sketchBodies === v, run: () => (settings.set("sketchBodies", v), this.app.view.setSketchView(v, !settings.value.sketchModelPick), this.updateMenu()) }) as ToolItem)),
+      { id: "skv-pick", label: "Pick and snap to the model", icon: "pointer", active: settings.value.sketchModelPick, run: () => (settings.set("sketchModelPick", !settings.value.sketchModelPick), this.app.view.setSketchView(settings.value.sketchBodies, !settings.value.sketchModelPick), this.updateMenu()) } as ToolItem,
+      { id: "skv-dims", label: "Show dimensions and constraints", icon: "constraints", active: settings.value.showConstraintGlyphs, run: () => (settings.set("showConstraintGlyphs", !settings.value.showConstraintGlyphs), this.updateMenu()) } as ToolItem,
+      { id: "skv-grid", label: "Show grid", icon: "grid", active: settings.value.showGrid, run: () => (settings.set("showGrid", !settings.value.showGrid), this.updateMenu()) } as ToolItem,
       { id: "osnap-all", label: "All on", icon: "magnet", run: () => (settings.set("osnap", Object.fromEntries(OSNAP_LIST.map(([k]) => [k, true])) as unknown as Osnap), this.updateMenu()) } as ToolItem,
       { id: "osnap-none", label: "All off", icon: "magnet", run: () => (settings.set("osnap", Object.fromEntries(OSNAP_LIST.map(([k]) => [k, false])) as unknown as Osnap), this.updateMenu()) } as ToolItem,
     ]);
@@ -1461,6 +1474,7 @@ export class SketchTool implements Tool {
   // ---------------------------------------------------------------- panel
 
   private updatePanel(): void {
+    this.renderMoveDialog();
     const ui = this.app.ui;
     this.sizeDim?.dispose();
     this.sizeDim = null;
@@ -2268,9 +2282,11 @@ export class SketchTool implements Tool {
   private startGimbalDrag(p: ToolPointer): boolean {
     const part = this.gimbal?.hit(p);
     if (!part || !this.gimbal) return false;
-    const line = this.singleLine();
-    if (part.kind === "center" && line) {
-      this.sdrag = { kind: "pivot", line: line.id };
+    // The centre dot: moved anywhere (caught on the snaps - the curves' own too: a circle's edge, a corner), the
+    // point the curves are held by and turned about. (A single line's slid along it, as before, unless taken off it.)
+    if (part.kind === "center") {
+      this.sdrag = { kind: "setPivot" };
+      this.snapEnts = null;
       this.gimbal.setHot(part);
       return true;
     }
@@ -2366,6 +2382,18 @@ export class SketchTool implements Tool {
 
   private dragGeometry(p: ToolPointer): void {
     const dr = this.sdrag!;
+    if (dr.kind === "setPivot") {
+      const s = this.snapAt(p);
+      const at = s?.uv ?? this.uvAt(p);
+      if (!at) return;
+      this.edit.moveFrom = [...at] as Vec2;
+      this.edit.moveTo = undefined;
+      this.gimbal?.setCenter(sketchToWorld(this.plane!, at).toArray() as Vec3);
+      this.cursor = s?.label ? s : null;
+      this.refreshPreview(p);
+      this.app.ui.setLabel(p.x, p.y, s?.label ? `Pivot · ${s.label}` : "Pivot");
+      return;
+    }
     if (dr.kind === "lift") {
       const view = this.app.view;
       const step = niceStepOf(view.cam.worldPerPixel(view.height) * 4);
@@ -2424,7 +2452,7 @@ export class SketchTool implements Tool {
     if (!a || !b) return;
     let d: Vec2 = [b[0] - a[0], b[1] - a[1]];
     if (dr.part.kind === "axis") d = dr.part.i === 0 ? [snap(d[0]), 0] : [0, snap(d[1])];
-    else d = this.moveSnap(dr.refs, a, p, this.kind === "move" ? this.edit.moveFrom : undefined) ?? this.snapDrop(dr.refs, [snap(d[0]), snap(d[1])], p);
+    else d = this.moveSnap(dr.refs, a, p, this.edit.moveFrom) ?? this.snapDrop(dr.refs, [snap(d[0]), snap(d[1])], p);
     this.applyGimbal(d, 0);
     this.app.ui.setLabel(p.x, p.y, this.dropOn ? "Joins here" : this.cursor?.label ? `${this.cursor.label} · ${fmtLen(Math.hypot(...d))}` : `${fmtLen(Math.hypot(...d))}  · type a value`);
   }
@@ -2518,6 +2546,9 @@ export class SketchTool implements Tool {
    * One point dragged near another curve's point: it snaps exactly onto it
    * (and joins it when let go). Returns the drag offset to use.
    */
+  /** Which pick the pivot (edit.moveFrom) was set for. */
+  private pivotFor = "";
+
   /** While curves or points are moved: the sketch without them, for snapping (they can't catch on themselves). */
   private snapEnts: SketchEntity[] | null = null;
 
@@ -2573,8 +2604,17 @@ export class SketchTool implements Tool {
 
   private endGeometryDrag(): void {
     this.snapEnts = null;
+    if (this.sdrag?.kind === "setPivot") {
+      this.sdrag = null;
+      this.cursor = null;
+      this.app.ui.setLabel(0, 0, null);
+      this.gimbal?.setHot(null);
+      this.refreshPreview();
+      this.updatePanel();
+      return this.refreshGimbal();
+    }
     // The point moved from goes along with the curves (the gimbal stays on it); a target set before is done with.
-    if (this.sdrag?.kind === "gimbal" && this.kind === "move" && this.edit.moveFrom && !copyMode.on) {
+    if (this.sdrag?.kind === "gimbal" && this.edit.moveFrom && !copyMode.on) {
       const [dx, dy] = this.sdrag.last.d;
       this.edit.moveFrom = [this.edit.moveFrom[0] + dx, this.edit.moveFrom[1] + dy];
       this.edit.moveTo = undefined;
@@ -2697,8 +2737,14 @@ export class SketchTool implements Tool {
       const t = this.pivotT?.line === line.id ? this.pivotT.t : 0.5;
       c = [line.a[0] + (line.b[0] - line.a[0]) * t, line.a[1] + (line.b[1] - line.a[1]) * t];
     }
-    // Move with a point taken to move from: the gimbal is on it (a drag catches that point on the snaps).
-    if (this.kind === "move" && this.edit.moveFrom) c = [...this.edit.moveFrom] as Vec2;
+    // A pivot set (the centre dot moved, or Move's From point): the gimbal is on it - the curves are held by that
+    // point (a drag catches it on the snaps) and turned about it. Picked again (other curves): back to their middle.
+    const key = [...this.selected].sort().join() + "|" + this.selPts.map(refKey).sort().join();
+    if (this.pivotFor !== key) {
+      this.pivotFor = key;
+      if (!this.sdrag) this.edit.moveFrom = this.edit.moveTo = undefined;
+    }
+    if (this.edit.moveFrom) c = [...this.edit.moveFrom] as Vec2;
     const plane = this.plane!;
     // Points of a spline: the arrow off the plane too, and the gimbal where they are (up off the plane with them).
     const lift = this.liftable();
@@ -3138,7 +3184,7 @@ export class SketchTool implements Tool {
       for (const e of this.boundary) for (const g of guidePoints(e)) if (g.kind === "mid" ? o.midpoint : o.endpoint) cands.push({ p: g.p, label: g.kind === "mid" ? "Midpoint" : "Edge point" });
       if (o.endpoint) for (const q of this.pts) cands.push({ p: q, label: "Point" });
     }
-    if (s.points3d) {
+    if (s.points3d && settings.value.sketchModelPick && settings.value.sketchBodies !== "hidden") {
       for (const b of view.bodyList) {
         for (const e of b.edges) {
           for (const v of [e.start, e.end]) {
@@ -5117,6 +5163,119 @@ export class SketchTool implements Tool {
     this.refDim.set(w(a), w([a[0] + (b[0] - a[0]) * k, a[1] + (b[1] - a[1]) * k]));
   }
 
+  /** Move's way (its window, as Fusion's Move/Copy): free (the gimbal, a pivot to set) or point to point. */
+  private moveMode: "free" | "p2p" = "free";
+  private moveDlg: HTMLElement | null = null;
+  private moveDlgAt: { x: number; y: number } | null = null;
+
+  /**
+   * Move/Rotate's own window, as Fusion's Move/Copy: the way to move (free with the gimbal, or point to point), the
+   * pivot (where the curves are held and turned about - a tap sets it), ΔX, ΔY, the angle, Copy, OK and Cancel.
+   * Beside the view, dragged by its title; the line at the bottom has the same.
+   */
+  private renderMoveDialog(): void {
+    if (this.kind !== "move" || this.phase !== "draw") {
+      this.moveDlg?.remove();
+      this.moveDlg = null;
+      return;
+    }
+    // (Not rebuilt under a number being typed: only its values follow.)
+    if (this.moveDlg?.contains(document.activeElement) && document.activeElement instanceof HTMLInputElement) return;
+    const d = this.moveDlg ?? el("div", "sk-move-dlg");
+    d.replaceChildren();
+    const head = el("div", "sk-move-head");
+    head.append(el("span", "", "Move / Copy"));
+    const x = el("button", "sk-move-x", "×");
+    x.title = "Close";
+    x.addEventListener("click", () => this.setKind("select"));
+    head.append(x);
+    // Dragged by its title anywhere on the screen (kept there while the sketch is open).
+    head.addEventListener("pointerdown", (e) => {
+      if (e.target === x) return;
+      const r = d.getBoundingClientRect();
+      const ox = e.clientX - r.left;
+      const oy = e.clientY - r.top;
+      const move = (ev: PointerEvent) => {
+        this.moveDlgAt = { x: ev.clientX - ox, y: ev.clientY - oy };
+        d.style.left = `${this.moveDlgAt.x}px`;
+        d.style.top = `${this.moveDlgAt.y}px`;
+        d.style.right = "auto";
+      };
+      const up = () => (window.removeEventListener("pointermove", move), window.removeEventListener("pointerup", up));
+      window.addEventListener("pointermove", move);
+      window.addEventListener("pointerup", up);
+    });
+    d.append(head);
+    const row = (label: string, ...kids: HTMLElement[]) => {
+      const r = el("div", "sk-move-row");
+      r.append(el("span", "sk-move-label", label), ...kids);
+      d.append(r);
+      return r;
+    };
+    const btn = (label: string, on: boolean, run: () => void) => {
+      const b = el("button", `sk-move-btn${on ? " on" : ""}`, label);
+      b.addEventListener("click", run);
+      return b;
+    };
+    const num = (value: number, kind: "length" | "angle", set: (v: number) => void) => {
+      const i = document.createElement("input");
+      i.className = "sk-move-num";
+      i.inputMode = "decimal";
+      i.value = trimNum(kind === "length" ? toDisplay(value) : value, 4);
+      i.addEventListener("keydown", (e) => {
+        e.stopPropagation();
+        if (e.key === "Enter") i.blur();
+      });
+      i.addEventListener("change", () => {
+        const v = evaluate(i.value, kind);
+        if (v === null) return this.app.ui.toast(`"${i.value}" isn't a valid value`, "error");
+        set(v);
+        this.refreshPreview();
+      });
+      return i;
+    };
+    const sel = this.selected.size + this.selPts.length;
+    row("Objects", el("span", "sk-move-val", sel ? `${sel} picked` : "Tap what to move"));
+    row(
+      "Type",
+      btn("Free move", this.moveMode === "free", () => ((this.moveMode = "free"), (this.edit.picking = undefined), this.updatePanel())),
+      btn("Point to point", this.moveMode === "p2p", () => ((this.moveMode = "p2p"), this.pickMovePoint(this.edit.moveFrom ? "moveTo" : "moveFrom"))),
+    );
+    const at = (q?: Vec2) => (q ? `${trimNum(toDisplay(q[0]))}, ${trimNum(toDisplay(q[1]))}` : "");
+    if (this.moveMode === "free") {
+      // Fusion's Set Pivot: a tap puts the gimbal there (its centre dot can be dragged there too).
+      row(
+        "Pivot",
+        btn(this.edit.picking === "moveFrom" ? "Tap a point…" : this.edit.moveFrom ? at(this.edit.moveFrom) : "Set pivot", this.edit.picking === "moveFrom", () => this.pickMovePoint("moveFrom")),
+        btn("Centre", false, () => ((this.edit.moveFrom = this.edit.moveTo = undefined), (this.edit.picking = undefined), this.updatePanel(), this.refreshGimbal())),
+      );
+    } else {
+      row("From", btn(this.edit.picking === "moveFrom" ? "Tap a point…" : at(this.edit.moveFrom) || "Tap a point", this.edit.picking === "moveFrom", () => this.pickMovePoint("moveFrom")));
+      row("To", btn(this.edit.picking === "moveTo" ? "Tap a point…" : at(this.edit.moveTo) || "Tap a point", this.edit.picking === "moveTo", () => this.pickMovePoint(this.edit.moveFrom ? "moveTo" : "moveFrom")));
+    }
+    row("X distance", num(this.edit.dx, "length", (v) => (this.edit.dx = v)));
+    row("Y distance", num(this.edit.dy, "length", (v) => (this.edit.dy = v)));
+    row("Angle", num(this.edit.moveRot, "angle", (v) => (this.edit.moveRot = v)));
+    const copy = document.createElement("input");
+    copy.type = "checkbox";
+    copy.checked = this.edit.copy;
+    copy.addEventListener("change", () => ((this.edit.copy = copy.checked), this.updatePanel()));
+    row("Create copy", copy);
+    const foot = el("div", "sk-move-foot");
+    const ok = el("button", "sk-move-ok", "OK");
+    ok.disabled = !sel;
+    ok.addEventListener("click", () => this.applyTransform());
+    const cancel = el("button", "sk-move-cancel", "Cancel");
+    cancel.addEventListener("click", () => ((this.edit.dx = this.edit.dy = this.edit.moveRot = 0), (this.edit.moveFrom = this.edit.moveTo = undefined), (this.edit.picking = undefined), this.setKind("select")));
+    foot.append(cancel, ok);
+    d.append(foot);
+    if (!this.moveDlg) {
+      document.body.append(d);
+      this.moveDlg = d;
+      if (this.moveDlgAt) Object.assign(d.style, { left: `${this.moveDlgAt.x}px`, top: `${this.moveDlgAt.y}px`, right: "auto" });
+    }
+  }
+
   /** Move point to point: the next tap takes the point to move from (on the curves) or to (anywhere it snaps). */
   private pickMovePoint(which: "moveFrom" | "moveTo"): void {
     this.edit.picking = which;
@@ -5134,7 +5293,12 @@ export class SketchTool implements Tool {
         this.edit.moveFrom = s.uv;
         this.edit.moveTo = undefined;
         this.edit.dx = this.edit.dy = 0;
-        this.pickMovePoint("moveTo");
+        // Free move: that is the pivot (the gimbal goes there). Point to point: now where it goes.
+        if (this.moveMode === "free" && this.moveDlg) {
+          this.edit.picking = undefined;
+          this.setHint("The gimbal is on that point now: drag it (it holds that point), or type the distances.");
+          this.updatePanel();
+        } else this.pickMovePoint("moveTo");
       } else {
         const from = this.edit.moveFrom!;
         this.edit.moveTo = s.uv;

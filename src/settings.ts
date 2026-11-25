@@ -18,6 +18,10 @@ export interface Settings {
    * drawing and while moving curves and points.
    */
   osnap: Osnap;
+  /** While a sketch is open: the bodies as they are, see-through, or hidden (its View list on the line). */
+  sketchBodies: "normal" | "ghost" | "hidden";
+  /** While a sketch is open: the model's faces, edges and corners can be picked and caught on. */
+  sketchModelPick: boolean;
   showGuidePoints: boolean;
   showSnapHints: boolean;
   gridLocked: boolean;
@@ -213,6 +217,8 @@ export const OSNAP_DEFAULT: Osnap = { endpoint: true, midpoint: true, center: tr
 const DEFAULTS: Settings = {
   snap: { grid: true, guidePoints: true, guideLines: true, points3d: true, distantEdges: false },
   osnap: OSNAP_DEFAULT,
+  sketchBodies: "normal",
+  sketchModelPick: true,
   showGuidePoints: true,
   showSnapHints: true,
   gridLocked: false,
