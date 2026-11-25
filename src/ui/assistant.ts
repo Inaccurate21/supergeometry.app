@@ -26,6 +26,32 @@ export function initAssistant(): void {
   btn.innerHTML = `${SPARK}<span>Claude</span>`;
   btn.addEventListener("click", () => showAssistant());
   document.body.append(btn);
+  besideHistory(btn);
+}
+
+/** History reaches this far down (from the bottom edge) before the button steps aside: its own height and gaps. */
+export const AI_BUTTON_ROOM = 54;
+
+/**
+ * The button's corner is History's too, when History's list is long enough to come down to it: the button then
+ * stands to the left of History, and goes back to the corner when History is shorter or closed. Looked at only when
+ * History opens, closes or changes size, or the window does.
+ */
+function besideHistory(btn: HTMLElement): void {
+  const history = document.getElementById("history");
+  if (!history) return;
+  // (Straight away, not on the next frame: these are told once per change as it is, and a frame may be long in coming.)
+  const later = () => {
+    const r = history.classList.contains("open") ? history.getBoundingClientRect() : null;
+    const over = !!r && r.width > 0 && r.left > innerWidth / 2 && r.bottom > innerHeight - AI_BUTTON_ROOM;
+    const to = over ? `${Math.round(innerWidth - r!.left + 10)}px` : "";
+    if (btn.style.right !== to) btn.style.right = to;
+  };
+  new ResizeObserver(later).observe(history);
+  // (Its rows as they come and go, too: the size is told only when the page next draws.)
+  new MutationObserver(later).observe(history, { attributes: true, attributeFilter: ["class"], childList: true, subtree: true });
+  window.addEventListener("resize", later);
+  later();
 }
 
 function showAssistant(): void {

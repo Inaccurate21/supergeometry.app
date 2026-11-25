@@ -21,6 +21,7 @@
 // the sentence by itself. Always on (the setting is kept for the code that
 // asks): it is the only way to the tools.
 
+import { AI_BUTTON_ROOM } from "./assistant";
 import { settings } from "../settings";
 import type { Vec3 } from "../doc/types";
 import type { Sel } from "../tools/tool";
@@ -348,7 +349,13 @@ export class Sentence {
       const col = document.getElementById("right-col")?.getBoundingClientRect();
       const low = col && col.width && col.bottom > innerHeight - (62 + (this.tag.hidden ? 0 : 44) + 18) ? innerWidth - col.left + 8 : 0;
       const left = Math.round((dock && dock.width ? dock.right : 0) + 10);
-      let right = Math.round(Math.max(low, hist && hist.width && hist.left > innerWidth / 2 ? innerWidth - hist.left + 10 : left > 140 || low ? 12 : left));
+      // (The Claude button, on a computer: in the bottom right corner, or left of History when that comes down to
+      // the corner - see assistant.ts. The line ends short of it either way.)
+      const ai = document.getElementById("ai-btn");
+      const aiW = ai && ai.offsetWidth ? ai.offsetWidth + 10 : 0;
+      const histSide = hist && hist.width && hist.left > innerWidth / 2;
+      const aiBeside = histSide && hist!.bottom > innerHeight - AI_BUTTON_ROOM ? aiW : 0;
+      let right = Math.round(Math.max(low, histSide ? innerWidth - hist!.left + 10 + aiBeside : left > 140 || low ? 12 : left, aiW ? aiW + 10 : 0));
       // (Items and History both open on a small screen leave no room to speak of: the line then runs over History's last
       // rows rather than shrink to buttons too small for a finger.)
       if (innerWidth - left - right < 400) right = Math.max(low, 12);
