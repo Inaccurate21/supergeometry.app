@@ -1,9 +1,16 @@
 // First: the language (the page's texts are translated as they appear).
+import "./diagnostics";
 import "./i18n";
+import "./uiScale";
+import "./android";
 import "./style.css";
 import { App } from "./app";
 import { outerScrollbars } from "./ui/scrollbars";
 import { installDebug } from "./debug";
+import { addReportSection } from "./diagnostics";
+import { lang } from "./i18n";
+import { settings } from "./settings";
+import { uiScale } from "./uiScale";
 
 // Update reloads with ?v=<time> so no stored copy is used; once loaded, the
 // address is plain again (it's what people copy to share the app).
@@ -23,3 +30,11 @@ const app = new App(document.getElementById("view") as HTMLCanvasElement);
 (window as unknown as { supergeometry: App }).supergeometry = app;
 // And sg: read and work the app from the console (sg.help()).
 installDebug(app);
+
+// The diagnostic report (Settings → Diagnostics): what the project is made of (no content), and how the app is set.
+addReportSection(() => {
+  const steps: Record<string, number> = {};
+  for (const f of app.store.features) steps[f.type] = (steps[f.type] ?? 0) + 1;
+  const failed = app.store.features.filter((f) => (f as { error?: unknown }).error).length;
+  return { steps, failedSteps: failed || undefined, tool: ((app as unknown as { tool: { id?: string } }).tool).id ?? "?", language: lang, uiScale: uiScale(), settings: settings.value };
+});

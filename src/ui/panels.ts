@@ -14,6 +14,8 @@ import type { UI } from "./ui";
 import { el } from "./ui";
 import { textField } from "./textField";
 import { penTestOn, setPenTest } from "./penTest";
+import { androidInfo, buildReport, clearLog, logLines, sendReport } from "../diagnostics";
+import { setUiScale, uiScale, uiScaleWorks, UI_SCALE_MAX, UI_SCALE_MIN } from "../uiScale";
 import { lang, LANGS, saveLang, type Lang } from "../i18n";
 import { loadPackage, packageInUse, packagesSupported, removePackage, type PackageInfo } from "./package";
 
@@ -210,6 +212,11 @@ export function setupRightColumn(ui: UI, view: Viewport, store: DocStore, onUnit
 
   // Update: the version running, and an own update package (src/ui/package.ts) to load in its place.
   let pkg: PackageInfo | null = null;
+  let apkLatest: { versionCode: number; versionName: string } | null = null;
+  void fetch("./apk.json", { cache: "no-store" })
+    .then((r) => (r.ok ? r.json() : null))
+    .then((j) => (apkLatest = j))
+    .catch(() => undefined);
   let pkgBusy = "";
   void packageInUse().then((p) => ((pkg = p), ui.refreshRight()));
   kept("update", (host) => {
@@ -251,11 +258,84 @@ export function setupRightColumn(ui: UI, view: Viewport, store: DocStore, onUnit
       });
       host.append(back);
     }
+    // The Android app: its download, and in it whether a newer one is out.
+    const native = androidInfo();
+    const apk = el("a", "pop-row", native ? `Android app ${String(native.versionName ?? "")} - download again` : "Android app (APK) - download") as HTMLAnchorElement;
+    apk.href = "./supergeometry.apk";
+    apk.setAttribute("download", "supergeometry.apk");
+    host.append(apk);
+    if (apkLatest) host.append(el("div", "pop-note", native && Number(native.versionCode) < apkLatest.versionCode ? `A newer Android app is out: ${apkLatest.versionName}. Download it above and install it over this one (projects stay).` : `Android app on the site: ${apkLatest.versionName}`));
     host.append(el("div", "pop-note", "A package is the app's built folder (dist) in a .zip - npm run package makes one. It replaces the version from the site on this device, in the installed app too, until it is removed (More → Update also goes back to the site's)."));
   });
 
+  // Diagnostics: the log, and a report of it to copy, save, share or send.
+  let diagNote = "";
+  let diagCode = "";
+  let diagBusy = false;
+  kept("diag", (host) => {
+    host.append(heading("Diagnostics"));
+    const errors = logLines().filter((l) => l.level === "error").length;
+    host.append(el("div", "pop-note", `The log keeps the last 400 lines: errors, messages shown and what was opened (now ${logLines().length}, errors ${errors}). A report adds the version, the device, the browser and the settings - nothing of the project's content.`));
+    const note = document.createElement("textarea");
+    note.className = "pop-input diag-note";
+    note.rows = 3;
+    note.placeholder = "What happened? (optional)";
+    note.value = diagNote;
+    note.addEventListener("input", () => (diagNote = note.value));
+    note.addEventListener("keydown", (e) => e.stopPropagation());
+    host.append(note);
+    const button = (label: string, run: () => void | Promise<void>) => {
+      const b = el("button", "pop-row", label);
+      b.addEventListener("click", () => void run());
+      host.append(b);
+      return b;
+    };
+    const send = button(diagBusy ? "Sending…" : "Send the report for analysis", async () => {
+      diagBusy = true;
+      ui.refreshPopover();
+      try {
+        diagCode = await sendReport(await buildReport(diagNote));
+        ui.toast(`Report sent - its code is ${diagCode}`);
+      } catch (e) {
+        ui.toast(`The report couldn't be sent (${e instanceof Error ? e.message : String(e)}): copy or save it instead`, "error");
+      }
+      diagBusy = false;
+      ui.refreshPopover();
+    });
+    send.disabled = diagBusy;
+    if (diagCode) host.append(el("div", "pop-note diag-code", `Sent - report code: ${diagCode}. Give this code in the chat.`));
+    button("Copy the report", async () => {
+      const text = await buildReport(diagNote);
+      try {
+        await navigator.clipboard.writeText(text);
+        ui.toast("Report copied");
+      } catch {
+        ui.toast("Copying isn't allowed here: save the report instead", "error");
+      }
+    });
+    button("Save the report (.txt)", async () => {
+      const a = document.createElement("a");
+      a.href = URL.createObjectURL(new Blob([await buildReport(diagNote)], { type: "text/plain" }));
+      a.download = `supergeometry-report-${new Date().toISOString().slice(0, 19).replace(/[:T]/g, "-")}.txt`;
+      a.click();
+      setTimeout(() => URL.revokeObjectURL(a.href), 5000);
+    });
+    button("Share the report", async () => {
+      const text = await buildReport(diagNote);
+      const native = (window as unknown as { SGAndroid?: { shareText?: (t: string) => void } }).SGAndroid;
+      if (native?.shareText) return native.shareText(text);
+      if (navigator.share) return void navigator.share({ title: "superGeometry.app report", text }).catch(() => undefined);
+      ui.toast("Sharing isn't available here: copy or save the report instead", "error");
+    });
+    button("Clear the log", () => {
+      clearLog();
+      diagCode = "";
+      ui.refreshPopover();
+    });
+  });
+
   // Settings: one row for each thing set now and then, saying how it is set; a tap opens its list (and back).
-  let page: "units" | "snap" | "appearance" | "lang" | "update" | null = null;
+  let page: "units" | "snap" | "appearance" | "lang" | "update" | "diag" | null = null;
   const gear = ui.addRight(
     "settings",
     "settings",
@@ -282,8 +362,10 @@ export function setupRightColumn(ui: UI, view: Viewport, store: DocStore, onUnit
         nav("Snapping", snaps ? `${snaps} of ${Object.keys(s.snap).length} on` : "Off", "snap"),
         toggleRow("Number pad on screen", s.numpad, (v) => settings.set("numpad", v)),
         nav("Appearance", `${s.ortho ? "Orthographic" : "Perspective"}${s.showGrid ? "" : " · no grid"}`, "appearance"),
+        scaleRow(() => ui.refreshPopover()),
         nav("Language", LANGS.find(([l]) => l === lang)![1], "lang"),
         nav("Updates", pkg ? "Own package" : `v${__APP_VERSION__}`, "update"),
+        nav("Diagnostics", `${logLines().filter((l) => l.level === "error").length} errors`, "diag"),
       );
     },
     () => UNIT_LABEL[units()],
@@ -297,6 +379,36 @@ export function setupRightColumn(ui: UI, view: Viewport, store: DocStore, onUnit
   settings.onChange(mark);
   mark();
   settings.onChange(() => ui.refreshRight());
+}
+
+/** Interface size: − 100% +, a tenth at a time (a computer's browser zooms with Ctrl + / Ctrl −). */
+function scaleRow(refresh: () => void): HTMLElement {
+  const row = el("div", "pop-row scale-row");
+  row.append(el("span", "", "Interface size"));
+  if (!uiScaleWorks()) {
+    row.append(el("span", "pop-value", "Ctrl + / Ctrl −"));
+    row.title = "On a computer the browser's own zoom sizes the app: Ctrl + and Ctrl −";
+    return row;
+  }
+  const step = (d: number) => {
+    setUiScale(uiScale() + d);
+    refresh();
+  };
+  const minus = el("button", "scale-btn", "−");
+  minus.title = "Smaller";
+  minus.disabled = uiScale() <= UI_SCALE_MIN + 1e-6;
+  minus.addEventListener("click", () => step(-0.1));
+  const plus = el("button", "scale-btn", "+");
+  plus.title = "Bigger";
+  plus.disabled = uiScale() >= UI_SCALE_MAX - 1e-6;
+  plus.addEventListener("click", () => step(0.1));
+  const value = el("button", "scale-value", `${Math.round(uiScale() * 100)}%`);
+  value.title = "Back to 100%";
+  value.addEventListener("click", () => ((setUiScale(1)), refresh()));
+  const box = el("span", "scale-box");
+  box.append(minus, value, plus);
+  row.append(box);
+  return row;
 }
 
 function heading(text: string): HTMLElement {

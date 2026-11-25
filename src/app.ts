@@ -70,6 +70,7 @@ import { isHeadset, screenClass } from "./device";
 import { Viewport } from "./view/viewport";
 import { VRMode, vrSupported } from "./view/xr";
 import { tr } from "./i18n";
+import { log } from "./diagnostics";
 
 /** The page's own title, from index.html (it names the app for search results). */
 const PAGE_TITLE = document.title;
@@ -473,6 +474,7 @@ export class App implements AppContext {
     this.tool.exit?.();
     this.tool = next;
     this.input.handler = next;
+    log("info", `tool: ${(next as { id?: string }).id ?? next.constructor.name}`);
     this.showPose();
     this.hover = null;
     this.ui.closeFlyout();

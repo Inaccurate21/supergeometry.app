@@ -93,7 +93,8 @@ const DEFAULTS: Settings = {
   // On by default on touch screens (phones, tablets, headsets).
   numpad: isTouchDevice,
   showHints: true,
-  offline: false,
+  // (The Android app keeps itself on the device from the start: it is an app, it should open with no connection.)
+  offline: typeof window !== "undefined" && "SGAndroid" in window,
   sentence: true,
   direct: true,
   version: 5,

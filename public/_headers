@@ -36,3 +36,12 @@
   Content-Security-Policy: default-src 'self'; script-src 'self' 'unsafe-eval' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https: http:; font-src 'self' data:; connect-src 'self' data: blob:; worker-src 'self' blob:; frame-src https: http:; media-src 'self' data: blob:; object-src 'none'; base-uri 'self'; form-action 'none'
   X-Content-Type-Options: nosniff
   Referrer-Policy: strict-origin-when-cross-origin
+
+# The Android app (android/build.sh): always the newest.
+/supergeometry.apk
+  Content-Type: application/vnd.android.package-archive
+  Content-Disposition: attachment; filename="supergeometry.apk"
+  Cache-Control: no-cache
+
+/apk.json
+  Cache-Control: no-cache

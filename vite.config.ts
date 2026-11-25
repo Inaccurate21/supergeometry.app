@@ -24,7 +24,7 @@ function offlineFiles(): Plugin {
       outDir = c.build.outDir;
     },
     closeBundle() {
-      const skip = new Set(["_headers", "robots.txt", "sitemap.xml", "og-image.png", "sw.js", "offline-files.json", "version.json"]);
+      const skip = new Set(["supergeometry.apk", "apk.json", "_headers", "robots.txt", "sitemap.xml", "og-image.png", "sw.js", "offline-files.json", "version.json"]);
       const files: string[] = [];
       const walk = (dir: string) => {
         for (const n of readdirSync(dir)) {

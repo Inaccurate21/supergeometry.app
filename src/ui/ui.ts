@@ -10,6 +10,7 @@ import { numpadInput, typingInto } from "./numpad";
 import { selectAll, textField } from "./textField";
 import { settings } from "../settings";
 import { says } from "../i18n";
+import { log } from "../diagnostics";
 
 export interface ToolItem {
   id: string;
@@ -791,6 +792,7 @@ export class UI {
   readonly recentToasts: string[] = [];
 
   toast(text: string, kind: "info" | "error" = "info"): void {
+    log(kind === "error" ? "warn" : "info", `toast: ${text}`);
     this.recentToasts.push(text);
     if (this.recentToasts.length > 20) this.recentToasts.shift();
     this.toastEl.textContent = text;
