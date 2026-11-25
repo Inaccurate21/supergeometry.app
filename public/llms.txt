@@ -1,0 +1,303 @@
+# superGeometry.app
+
+> A free, parametric, history-based 3D CAD app that runs entirely in the web browser (computer, tablet, phone, VR headset). No account, no install, nothing uploaded: projects stay on the person's device. It makes solids from sketches (extrude, revolve, sweep, loft), edits them (fillet, chamfer, shell, screw holes, threads, booleans, patterns), and reads and writes STEP, STL, 3MF, OBJ, DXF and SVG. Open source (AGPL-3.0): https://github.com/superGeometry/supergeometry.app
+
+This page is for AI assistants. If someone gave you the link https://supergeometry.app and asked you to help them model something, start here.
+
+The app itself is a program that runs in the browser, so fetching the page shows you almost nothing. You cannot make a model by fetching URLs. There are three ways you can help, depending on what you can do:
+
+1. **Write a project file** (any assistant can do this). A project is a small JSON text file. Write one, give it to the person, they open it with File > Open…, and they have a real, editable model with every step in History. This is the most reliable way. The format is described below, with complete examples that are tested against the app.
+2. **Drive the app in a browser you control** (only if you can run JavaScript in the page). The page has a scripting handle, `sg`. See "Driving the app" below.
+3. **Guide the person step by step.** See "Guiding a person" below.
+
+Always tell the person what you made and that they should check sizes before printing. You cannot see the result unless you control a browser.
+
+---
+
+## The project file
+
+A project is a JSON object saved as a text file ending in `.super`:
+
+```
+{ "format": "super", "version": 2, "name": "My part", "features": [ ...steps... ] }
+```
+
+`features` is the list of steps, in order, exactly as History shows them. Each step has a unique `id` (any string), a `name` (shown in History) and a `type`. The model is rebuilt from the steps every time, so the person can open any step later and change it.
+
+Optional top-level fields: `"units"` (`"mm"` default, or `"cm"`, `"m"`, `"in"`, `"ft"`; this only changes what is displayed, all numbers in the file are millimetres) and `"variables"` (see Variables).
+
+To give it to the person: put the JSON in a file named like `bracket.super`. In the app: **File > Open…**. Nothing else is needed.
+
+### Rules that matter
+
+- **All lengths are millimetres. All angles are degrees.**
+- **Coordinates:** X to the right, Y away from you, Z up.
+- **A sketch lies on a plane**: `{ "origin": [x,y,z], "xDir": [x,y,z], "normal": [x,y,z] }`, with `xDir` and `normal` unit vectors at right angles. A sketch point `[u, v]` is at `origin + u * xDir + v * (normal x xDir)`.
+  - On the ground (XY): `{ "origin": [0,0,0], "xDir": [1,0,0], "normal": [0,0,1] }` and `[u, v]` is world `[u, v, 0]`. Use another `origin` z to draw higher up.
+  - Upright, seen from the front (XZ): `{ "origin": [0,0,0], "xDir": [1,0,0], "normal": [0,-1,0] }` and `[u, v]` is world `[u, 0, v]`.
+- **A body's id is the id of the step that made it** (an extrude with `"mode": "new"`, a revolve). Later steps name the body by that id.
+- **Steps point at things by where they are, not by number.** A face is `{ "body", "center", "normal", "area" }`; an edge is `{ "body", "mid", "dir", "length" }`. Give the values as they are just before that step. They need to be close, not exact: the app takes the best match. For a round edge, `length` is its circumference and `mid` is any point on the circle.
+- **A sketch shape to extrude is named by the curves round it**: `{ "c": [u, v], "a": area, "k": ["id", ...] }`, where `k` is the ids of every curve on its outline (including the outlines of holes in it), sorted alphabetically, `c` is roughly its middle and `a` roughly its area. The simplest way to stay out of trouble: **one closed shape per sketch**, and its `k` is just that shape's id.
+- Use `"mode": "new"` to make a body, `"join"` to add to a body, `"cut"` to cut from it. With `join` and `cut`, give `"target": "<body id>"`.
+- An extrude goes along the sketch plane's normal for a positive `distance`, the other way for a negative one.
+
+### Steps
+
+**Sketch**
+
+```
+{ "id": "s1", "name": "Sketch 01", "type": "sketch",
+  "plane": { "origin": [0,0,0], "xDir": [1,0,0], "normal": [0,0,1] },
+  "entities": [ ...curves... ] }
+```
+
+Curves (each needs its own `id`):
+
+- `{ "id", "kind": "rect", "center": [u,v], "w", "h", "rotation": 0 }` (rotation in radians)
+- `{ "id", "kind": "circle", "center": [u,v], "radius" }`
+- `{ "id", "kind": "polygon", "center": [u,v], "radius", "sides", "angle": 0 }` (regular; radius to the corners)
+- `{ "id", "kind": "polyline", "points": [[u,v], ...], "closed": true }` (any outline of straight sides)
+- `{ "id", "kind": "line", "a": [u,v], "b": [u,v] }`
+- `{ "id", "kind": "arc", "a": [u,v], "m": [u,v], "b": [u,v] }` (from `a` to `b` through `m`)
+- `{ "id", "kind": "ellipse", "center": [u,v], "rx", "ry", "rotation": 0 }`
+- `{ "id", "kind": "spline", "points": [[u,v], ...], "closed": false, "mode": "fit" }` (smooth curve through the points)
+
+Lines and arcs that meet end to end (the same coordinates) form a closed shape; its `k` is all their ids, sorted.
+
+**Extrude**
+
+```
+{ "id": "plate", "name": "Plate", "type": "extrude",
+  "source": { "kind": "profile", "sketch": "s1", "regions": [ { "c": [0,0], "a": 2400, "k": ["r"] } ] },
+  "distance": 6, "mode": "new" }
+```
+
+Options: `"symmetric": true` (that distance both ways), `"taper": 0.5` (far end half size; near 0 makes a cone or pyramid), `"draft": 3` (sides lean in 3 degrees), `"extent": "through"` (a cut right through; `distance` then only gives the direction by its sign).
+
+**Revolve**
+
+```
+{ "id": "knob", "name": "Knob", "type": "revolve",
+  "source": { "kind": "profile", "sketch": "s1", "regions": [ { "c": [5,12], "a": 200, "k": ["p"] } ] },
+  "axis": { "origin": [0,0,0], "dir": [0,0,1] }, "angle": 360, "mode": "new" }
+```
+
+The shape must lie on one side of the axis (touching it is fine). Draw the half outline on an upright plane and turn it round Z.
+
+**Fillet and Chamfer** (round or bevel edges)
+
+```
+{ "id": "f1", "name": "Fillet 01", "type": "fillet", "radius": 5,
+  "edges": [ { "body": "plate", "mid": [30,20,3], "dir": [0,0,1], "length": 6 } ] }
+```
+
+`"type": "chamfer"` is the same with a bevel of `radius` mm.
+
+**Hole** (a screw's hole in a flat face)
+
+```
+{ "id": "h1", "name": "Hole 01", "type": "hole",
+  "face": { "body": "plate", "center": [0,0,6], "normal": [0,0,1], "area": 2400 },
+  "at": [22,12,6], "size": "M4", "diameter": 4.5,
+  "through": true, "depth": 10,
+  "head": "none", "headDiameter": 8, "headDepth": 4.4 }
+```
+
+`face` is the flat face it goes into and `at` the point on it. `head` is `"none"`, `"counterbore"` (a cap screw's head sunk in: `headDiameter` wide, `headDepth` deep) or `"countersink"` (a 90 degree cone `headDiameter` wide at the mouth). `"through": false` uses `depth`. Sizes for a screw to pass through freely, with its counterbore and countersink:
+
+| Screw | diameter | counterbore (headDiameter x headDepth) | countersink (headDiameter) |
+|---|---|---|---|
+| M2 | 2.4 | 4.4 x 2.3 | 4.4 |
+| M2.5 | 2.9 | 5.5 x 2.9 | 5.5 |
+| M3 | 3.4 | 6.5 x 3.4 | 6.5 |
+| M4 | 4.5 | 8 x 4.4 | 8.6 |
+| M5 | 5.5 | 10 x 5.4 | 10.6 |
+| M6 | 6.6 | 11 x 6.4 | 12.8 |
+| M8 | 9 | 15 x 8.6 | 17 |
+| M10 | 11 | 18 x 10.6 | 21 |
+| M12 | 13.5 | 20 x 12.6 | 25 |
+
+For 3D printing, holes come out a little tight: adding 0.2 to 0.3 mm to `diameter` is common. Say so to the person and let them decide.
+
+**Shell** (hollow a body, leaving walls)
+
+```
+{ "id": "sh1", "name": "Shell 01", "type": "shell", "body": "box", "thickness": 2,
+  "faces": [ { "body": "box", "center": [0,0,30], "normal": [0,0,1], "area": 2400 } ] }
+```
+
+`faces` are the faces left open (an empty list makes a sealed hollow).
+
+**Combine bodies**
+
+```
+{ "id": "u1", "name": "Union 01", "type": "boolean", "op": "union", "target": "a", "tools": ["b"] }
+```
+
+`op` is `"union"`, `"subtract"` (cut `tools` out of `target`; `"clearance": 0.2` leaves that gap all round, for parts that must fit or move) or `"intersect"`. The result keeps the `target` id.
+
+**Move, mirror, pattern**
+
+```
+{ "id": "m1", "name": "Move 01", "type": "transform", "bodies": ["a"], "copy": false,
+  "op": { "kind": "move", "translate": [10,0,0] } }
+```
+
+Other `op`s: `{ "kind": "mirror", "plane": {origin, xDir, normal} }`, `{ "kind": "linear", "dir": [1,0,0], "spacing": 20, "count": 4 }`, `{ "kind": "circular", "axis": { "origin": [0,0,0], "dir": [0,0,1] }, "count": 6, "angle": 360 }`. With `"copy": true` the original stays; the copies of body `a` made by step `m1` have the ids `m1:a:0`, `m1:a:1`, ... (a moved or mirrored copy is `m1:a:0`). `count` counts the original: a row of 4 is the original and three copies.
+
+### Variables
+
+So that the person can change one number and have the model follow:
+
+```
+"variables": [ { "name": "t", "expr": "6" }, { "name": "gap", "expr": "t / 2" } ]
+```
+
+Any step can tie a number to a formula with `exprs`, keyed by the field's name: `"distance": 6, "exprs": { "distance": "t" }`. Always write the number as well; the formula takes over when the file is opened. In the app the person edits variables under More > Variables.
+
+### A complete example: a plate with rounded corners and four M4 holes
+
+<!-- example: plate volume=13889.5 bodies=1 -->
+```json
+{
+  "format": "super",
+  "version": 2,
+  "name": "Mounting plate",
+  "variables": [{ "name": "t", "expr": "6" }],
+  "features": [
+    { "id": "s1", "name": "Sketch 01", "type": "sketch",
+      "plane": { "origin": [0, 0, 0], "xDir": [1, 0, 0], "normal": [0, 0, 1] },
+      "entities": [{ "id": "r", "kind": "rect", "center": [0, 0], "w": 60, "h": 40, "rotation": 0 }] },
+    { "id": "plate", "name": "Plate", "type": "extrude",
+      "source": { "kind": "profile", "sketch": "s1", "regions": [{ "c": [0, 0], "a": 2400, "k": ["r"] }] },
+      "distance": 6, "exprs": { "distance": "t" }, "mode": "new" },
+    { "id": "f1", "name": "Round the corners", "type": "fillet", "radius": 5,
+      "edges": [
+        { "body": "plate", "mid": [30, 20, 3], "dir": [0, 0, 1], "length": 6 },
+        { "body": "plate", "mid": [-30, 20, 3], "dir": [0, 0, 1], "length": 6 },
+        { "body": "plate", "mid": [-30, -20, 3], "dir": [0, 0, 1], "length": 6 },
+        { "body": "plate", "mid": [30, -20, 3], "dir": [0, 0, 1], "length": 6 }
+      ] },
+    { "id": "h1", "name": "Hole 01", "type": "hole",
+      "face": { "body": "plate", "center": [0, 0, 6], "normal": [0, 0, 1], "area": 2380 },
+      "at": [22, 12, 6], "size": "M4", "diameter": 4.5, "through": true, "depth": 10,
+      "head": "none", "headDiameter": 8, "headDepth": 4.4 },
+    { "id": "h2", "name": "Hole 02", "type": "hole",
+      "face": { "body": "plate", "center": [0, 0, 6], "normal": [0, 0, 1], "area": 2380 },
+      "at": [-22, 12, 6], "size": "M4", "diameter": 4.5, "through": true, "depth": 10,
+      "head": "none", "headDiameter": 8, "headDepth": 4.4 },
+    { "id": "h3", "name": "Hole 03", "type": "hole",
+      "face": { "body": "plate", "center": [0, 0, 6], "normal": [0, 0, 1], "area": 2380 },
+      "at": [-22, -12, 6], "size": "M4", "diameter": 4.5, "through": true, "depth": 10,
+      "head": "none", "headDiameter": 8, "headDepth": 4.4 },
+    { "id": "h4", "name": "Hole 04", "type": "hole",
+      "face": { "body": "plate", "center": [0, 0, 6], "normal": [0, 0, 1], "area": 2380 },
+      "at": [22, -12, 6], "size": "M4", "diameter": 4.5, "through": true, "depth": 10,
+      "head": "none", "headDiameter": 8, "headDepth": 4.4 }
+  ]
+}
+```
+
+### A complete example: a turned knob with a bevelled top
+
+<!-- example: knob volume=5335.5 bodies=1 -->
+```json
+{
+  "format": "super",
+  "version": 2,
+  "name": "Knob",
+  "features": [
+    { "id": "s1", "name": "Sketch 01", "type": "sketch",
+      "plane": { "origin": [0, 0, 0], "xDir": [1, 0, 0], "normal": [0, -1, 0] },
+      "entities": [{ "id": "p", "kind": "polyline", "closed": true,
+        "points": [[0, 0], [12, 0], [12, 6], [6, 10], [6, 24], [0, 24]] }] },
+    { "id": "knob", "name": "Knob", "type": "revolve",
+      "source": { "kind": "profile", "sketch": "s1", "regions": [{ "c": [5, 10], "a": 190, "k": ["p"] }] },
+      "axis": { "origin": [0, 0, 0], "dir": [0, 0, 1] }, "angle": 360, "mode": "new" },
+    { "id": "c1", "name": "Bevel the top", "type": "chamfer", "radius": 1,
+      "edges": [{ "body": "knob", "mid": [6, 0, 24], "dir": [0, 1, 0], "length": 37.7 }] }
+  ]
+}
+```
+
+### A complete example: a box with a lid that fits, as two bodies
+
+<!-- example: box bodies=2 -->
+```json
+{
+  "format": "super",
+  "version": 2,
+  "name": "Box and lid",
+  "features": [
+    { "id": "s1", "name": "Sketch 01", "type": "sketch",
+      "plane": { "origin": [0, 0, 0], "xDir": [1, 0, 0], "normal": [0, 0, 1] },
+      "entities": [{ "id": "r", "kind": "rect", "center": [0, 0], "w": 50, "h": 40, "rotation": 0 }] },
+    { "id": "box", "name": "Box", "type": "extrude",
+      "source": { "kind": "profile", "sketch": "s1", "regions": [{ "c": [0, 0], "a": 2000, "k": ["r"] }] },
+      "distance": 30, "mode": "new" },
+    { "id": "sh1", "name": "Hollow it", "type": "shell", "body": "box", "thickness": 2,
+      "faces": [{ "body": "box", "center": [0, 0, 30], "normal": [0, 0, 1], "area": 2000 }] },
+    { "id": "s2", "name": "Sketch 02", "type": "sketch",
+      "plane": { "origin": [0, 0, 30], "xDir": [1, 0, 0], "normal": [0, 0, 1] },
+      "entities": [{ "id": "r", "kind": "rect", "center": [0, 0], "w": 50, "h": 40, "rotation": 0 }] },
+    { "id": "lid", "name": "Lid", "type": "extrude",
+      "source": { "kind": "profile", "sketch": "s2", "regions": [{ "c": [0, 0], "a": 2000, "k": ["r"] }] },
+      "distance": 3, "mode": "new" },
+    { "id": "s3", "name": "Sketch 03", "type": "sketch",
+      "plane": { "origin": [0, 0, 30], "xDir": [1, 0, 0], "normal": [0, 0, 1] },
+      "entities": [{ "id": "r", "kind": "rect", "center": [0, 0], "w": 45.6, "h": 35.6, "rotation": 0 }] },
+    { "id": "lip", "name": "Lip", "type": "extrude",
+      "source": { "kind": "profile", "sketch": "s3", "regions": [{ "c": [0, 0], "a": 1623, "k": ["r"] }] },
+      "distance": -3, "mode": "join", "target": "lid" }
+  ]
+}
+```
+
+The lip is 0.2 mm smaller all round than the box's opening (46 x 36), so the lid drops in. That gap is a typical one for printed parts; ask the person about their printer.
+
+### When something does not work
+
+If a step cannot be built, the app shows that step in History with a red mark and a sentence saying why, and the steps after it wait. The usual causes in a written file:
+
+- a face or edge given in the wrong place (give it as it is just before that step, after the steps above it);
+- a region's `k` not listing all the curves round it, or two shapes overlapping in one sketch;
+- a fillet too big for the faces beside the edge;
+- a hole's `at` off the face.
+
+Ask the person to read you the sentence, fix the file, and have them open it again.
+
+What a file cannot do today: lettering, threads on a picked face, assemblies and drawings are best made in the app after opening the file.
+
+---
+
+## Driving the app
+
+If you control a browser and can run JavaScript in the page, the page has a handle called `sg`:
+
+- `await sg.load(doc, "Name")` opens a project (the object described above, or its JSON text) as a new project. The one that was open is kept in the person's library.
+- `await sg.idle()` waits until the model is rebuilt.
+- `sg.state()` gives the project name, the open tool, the selection, the bodies, and `errors`: a sentence for each step that could not be built. Check this after every load.
+- `sg.steps()` lists History; `sg.step("Plate")` gives one step as stored; `sg.bodies()` lists the bodies with their face and edge counts.
+- `await sg.health()` measures each body: valid, closed, volume, bounding box. Use it to check your work against what was asked.
+- `sg.faces("plate")` and `sg.edges("plate")` list a body's faces (`center`, `normal`, `area`) and edges (`start`, `mid`, `end`, `length`): the exact values to put in a later step. An edge reference's `dir` is the direction from `start` to `end`.
+- `sg.save()` gives the open project as JSON text.
+- `sg.help()` lists everything else (it can also run the app's own tools by name).
+
+The reliable loop is: write the steps, `sg.load`, `sg.idle`, read `sg.state().errors`, read `sg.faces` / `sg.edges` for the next step's references, add steps, load again. Exporting (File > Export STL, 3MF or STEP) saves a file to the person's device; ask them to do that.
+
+Do not load a project over someone's work without telling them: `sg.load` always makes a new project, which is the safe thing.
+
+---
+
+## Guiding a person
+
+The app is pick-first: tap a thing on the model, and the line at the bottom of the screen shows what can be done with it. With nothing picked, the line shows the groups: Sketch, Create (Extrude, Revolve, Sweep, Loft, Hole), Modify (Fillet, Chamfer, Shell, Thread), Combine (Union, Subtract, Intersect, Split), Transform (Move, Mirror, Pattern, Scale), Construct (Plane, Axis), Freeform, and More (Insert, Variables, Measure, Section, Assemblies, Drawings, Settings, Help, Tutorial).
+
+A first part: Sketch, pick a plane, draw a shape, tap the tick; tap the shape, Extrude, type a distance. Sizes can be typed while drawing; in a sketch, click a dimension to change it.
+
+- More > Tutorial builds an M10 bolt and nut with the person, one tap at a time.
+- More > Help describes every tool.
+- The full manual is the README: https://github.com/superGeometry/supergeometry.app#readme
+- File > Export gives STL or 3MF for a slicer, STEP for other CAD programs.
+
+Problems and ideas go to https://github.com/superGeometry/supergeometry.app/issues

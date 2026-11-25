@@ -507,6 +507,11 @@ can't be rebuilt after a change, it's marked and the reason is shown.
 This section describes the app so an assistant can explain it, guide a user
 step by step, or read and write project files.
 
+**Assistants: start at https://supergeometry.app/llms.txt** (`public/llms.txt` here). It is written for you:
+the project file format step by step, complete examples that are tested against the app on every change
+(`tests/llms.test.ts`), and how to drive the page from a browser. Give someone a `.super` file and they open it
+with File → Open… as a model they can go on editing.
+
 **What it is.** A browser-based parametric solid modeler. Geometry is
 OpenCascade (via replicad) running in a Web Worker; the UI is plain DOM over a
 three.js view. Units are millimetres internally; the display unit is a setting.
