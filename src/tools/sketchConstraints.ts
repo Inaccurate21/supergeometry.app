@@ -186,6 +186,8 @@ interface Mark {
 }
 
 const SVG = "http://www.w3.org/2000/svg";
+/** How far the move handle of a picked curve reaches from it on screen (px): its marks and sizes go out past that. */
+const GIMBAL_REACH = 58;
 
 /**
  * The constraints of the sketch being edited, on the drawing:
@@ -516,7 +518,15 @@ export class ConstraintGlyphs {
       const l = Math.hypot(dx, dy);
       // Looking along the sketch (edge-on): no way out on screen - right and below.
       [dx, dy] = l > 1e-9 ? [dx / l, dy / l] : [Math.SQRT1_2, Math.SQRT1_2];
-      let at: number[] = [s[0] + dx * (m.dist + 4), s[1] + dy * (m.dist + 4)];
+      // How far out. A dimension: far enough that its size, which lies level, clears the line it measures whichever
+      // way that line runs (beside an upright line the box was across it: "on vertical lines, the line dimension
+      // box goes over the line"). On a picked curve: out past the handle that comes up there to move it ("the
+      // moving gimbal is over the constraints").
+      let dist = m.dist;
+      if (m.shape?.kind === "span") dist = Math.max(dist + 6, Math.abs(dx) * (m.w / 2) + Math.abs(dy) * 11 + 12 + (m.dist - 22));
+      // (An angle's arc is at the corner, not where the handle is.)
+      if (m.mine && m.shape?.kind !== "angle") dist += GIMBAL_REACH;
+      let at: number[] = [s[0] + dx * (dist + 4), s[1] + dy * (dist + 4)];
       const on = m.c.id === shown;
       // What it measures is too small on screen to carry a dimension (the whole sketch seen at once, on a phone
       // above all: every size piled on the next): left out until it is zoomed to - unless it is the one picked or
@@ -534,8 +544,8 @@ export class ConstraintGlyphs {
         if (a && b) {
           // Thin lines out from the two ends, past the dimension's own line; that line between them, with arrows
           // where it is long enough for them; the size at its middle.
-          const a2 = [a[0] + dx * m.dist, a[1] + dy * m.dist];
-          const b2 = [b[0] + dx * m.dist, b[1] + dy * m.dist];
+          const a2 = [a[0] + dx * dist, a[1] + dy * dist];
+          const b2 = [b[0] + dx * dist, b[1] + dy * dist];
           line = seg([a[0] + dx * 4, a[1] + dy * 4], [a2[0] + dx * 5, a2[1] + dy * 5]) + seg([b[0] + dx * 4, b[1] + dy * 4], [b2[0] + dx * 5, b2[1] + dy * 5]) + seg(a2, b2);
           const len = Math.hypot(b2[0] - a2[0], b2[1] - a2[1]);
           if (len > 34) {
@@ -556,7 +566,7 @@ export class ConstraintGlyphs {
           const uy = (rim[1] - c[1]) / len;
           // From the middle (a radius) or the far rim (a diameter) out through the rim, the size past it.
           const from = sh.across ? [c[0] - ux * len, c[1] - uy * len] : c;
-          const out = [rim[0] + ux * (m.dist - 6), rim[1] + uy * (m.dist - 6)];
+          const out = [rim[0] + ux * (dist - 6), rim[1] + uy * (dist - 6)];
           line = seg(from, out);
           heads = head(rim, ux, uy) + (sh.across ? head(from, -ux, -uy) : "");
           at = [out[0] + ux * (m.w / 2 + 4), out[1] + uy * (m.w / 2 + 4)];
@@ -571,7 +581,7 @@ export class ConstraintGlyphs {
           let sweep = a2 - a1;
           while (sweep > Math.PI) sweep -= 2 * Math.PI;
           while (sweep < -Math.PI) sweep += 2 * Math.PI;
-          const r = 26 + (m.dist - 22);
+          const r = 26 + (dist - 22);
           const q1 = [v[0] + r * Math.cos(a1), v[1] + r * Math.sin(a1)];
           const q2 = [v[0] + r * Math.cos(a2), v[1] + r * Math.sin(a2)];
           // An arc from one way round to the other, the size outside its middle.
