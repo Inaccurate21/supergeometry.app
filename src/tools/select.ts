@@ -37,7 +37,7 @@ import { ImprintOp, ProjectSketchOp, WrapOp } from "./wrapOps";
 import { materialOf } from "../bim/materials";
 import { bodiesOf, edgeRefOf, faceRefOf, hitToSel, oppositeFace, sameSel, sourceFrame, sourcesOf, viewMenu, type AppContext, type Sel, type Tool } from "./tool";
 
-/** How see-through an opacity is, as the Transparency list names it ("40%"). */
+/** How faded an opacity is, as the Fade list names it ("40%"). */
 const seeThrough = (opacity: number) => `${Math.round((1 - opacity) * 100)}%`;
 
 /**
@@ -769,7 +769,7 @@ export class SelectTool implements Tool {
         return [
           ...head,
           { id: "move", label: "Move/Rotate", icon: "move", shortcut: "M", active: true, run: () => this.app.setTool(new ImageOp(this.app, img)) },
-          { id: "scale", label: "Scale / Opacity", icon: "scale", shortcut: "S", run: () => this.app.setTool(new ImageOp(this.app, img)) },
+          { id: "scale", label: "Scale / Fade", icon: "scale", shortcut: "S", run: () => this.app.setTool(new ImageOp(this.app, img)) },
           { id: "delete", label: "Delete", icon: "trash", shortcut: "Del", run: () => (this.app.store.remove(img.id), this.app.setSelection([])) },
         ];
       }
@@ -1095,9 +1095,9 @@ export class SelectTool implements Tool {
       // BIM: what it is made of (its colour, mass and technical data come with it).
       { id: "material", label: "Material", icon: "bim", sub: materialOf(app.store.doc, bodies[0])?.name ?? "None", run: () => app.setTool(new BimTool(app)) },
       {
-        // Next to Color: how see-through the body is.
+        // Next to Color: Fade, how see-through the body is.
         id: "opacity",
-        label: "Transparency",
+        label: "Fade",
         inOrder: true,
         icon: "color",
         sub: BODY_OPACITY.find((o) => o.value === ((app.store.doc.opacity ?? {})[bodies[0]] ?? 1))?.name ?? seeThrough((app.store.doc.opacity ?? {})[bodies[0]] ?? 1),
@@ -1135,7 +1135,7 @@ export class SelectTool implements Tool {
             active: custom,
             value: { now: typed, put, int: true, min: 0, max: 95 },
             run: async () => {
-              const r = await app.ui.dialog("Custom transparency", [{ key: "pct", label: "Transparency (%)", value: typed }]);
+              const r = await app.ui.dialog("Custom fade", [{ key: "pct", label: "Fade (%)", value: typed }]);
               const v = r ? parseFloat(r.pct) : NaN;
               if (Number.isFinite(v)) put(v);
             },

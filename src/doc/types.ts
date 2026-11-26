@@ -1103,10 +1103,10 @@ export function bodyColor(hex: string | undefined): string | undefined {
   return hex && (OLD_COLORS[hex.toLowerCase()] ?? hex);
 }
 
-/** The see-through levels offered next to Color (1 = solid). */
+/** The Fade levels offered next to Color (stored as an opacity: 1 = solid). */
 export const BODY_OPACITY: { name: string; value: number }[] = [
-  // (Named by how see-through, as the Transparency list says: 25% lets a little through.)
-  { name: "Solid", value: 1 },
+  // (Named by how faded, as the Fade list says: 25% lets a little through.)
+  { name: "None", value: 1 },
   { name: "25%", value: 0.75 },
   { name: "50%", value: 0.5 },
   { name: "75%", value: 0.25 },

@@ -81,7 +81,7 @@ export class QuickActions {
     const rest: ToolItem[] = [];
     // (Beside a corner, not Move/Rotate Body: it moves the whole body, which is not what a corner was picked for.
     // It is still under Transform on the line.)
-    // (A body's own Color and Transparency are there too: each a button opening its choices in the same card.)
+    // (A body's own Color and Fade are there too: each a button opening its choices in the same card.)
     const choosers = kind === "body" ? ["color", "opacity"] : [];
     const skip = new Set(["deselect", "reveal", "material", "wholePattern", ...["color", "opacity"].filter((id) => !choosers.includes(id)), ...(kind === "vertex" ? ["move"] : [])]);
     const gather = (its: ToolItem[]) => {
@@ -132,7 +132,7 @@ export class QuickActions {
       });
       return b;
     };
-    // A button with choices (Color, Transparency): the card shows them in place of the rest, a Back first.
+    // A button with choices (Color, Fade): the card shows them in place of the rest, a Back first.
     const choose = (it: ToolItem) => {
       const back = document.createElement("button");
       back.className = "quick-action";

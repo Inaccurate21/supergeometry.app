@@ -62,7 +62,7 @@ const SECTIONS: { title: string; intro?: string; items: Entry[] }[] = [
       { icon: "move", name: "Body", text: "Drag the body itself to slide it over the floor. The gimbal moves (arrows), slides (squares) and turns (rings) it; drag the dot in its middle to move the point it turns about - it snaps to corners, edges and faces. With Copy on, a drag makes a copy; the panel stays when you let go so you can type exact values. A copy is its own body; switch Link on to keep a freeform copy shaped like its original. A body of a pattern: Whole Pattern picks the rest." },
       { icon: "link", name: "Link (copies and patterns)", text: "With Copy on in Move/Rotate, Mirror or Scale - and in both Patterns - switch Link on: the copies and what they were made from then change together. Round an edge or cut a hole in any one of them and all the others get it too, each where it stands. Moving or turning one only moves that one; deleting one leaves the others. Off, each copy is a body of its own." },
       { icon: "copy", name: "Sketch → Copy to Plane", text: "Tap a sketch region, then Copy to Plane: drag the blue arrow to a parallel plane (or red/green to slide it), or type the distance. Turn Copy off to move the sketch instead." },
-      { icon: "color", name: "Colour / Transparency", text: "Pick a colour for the selected bodies (or Custom… for any colour), and how see-through they are (Solid, 75%, 50%, 25%)." },
+      { icon: "color", name: "Colour / Fade", text: "Pick a colour for the selected bodies (or Custom… for any colour), and Fade: how see-through they are (None, 25%, 50%, 75%, or Custom… for any amount)." },
     ],
   },
   {

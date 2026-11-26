@@ -335,7 +335,7 @@ export class Viewport {
     // Select Through shows what's behind (X-ray), since that's what it picks.
     const xray = s.shader === "xray" || this.selectThrough;
     for (const m of this.allBodyMats()) {
-      // A see-through body (Transparency) is seen through in every view; while a
+      // A see-through body (Fade) is seen through in every view; while a
       // new solid is being sized from a sketch, everything is a little see-through.
       const o = ((m.userData.opacity as number | undefined) ?? 1) * (this.ghost ? 0.62 : 1);
       const see = xray || o < 1;

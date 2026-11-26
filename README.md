@@ -346,8 +346,8 @@ sketch. A sketch stays in view until every region of it is used.
   through an edge at an angle, parallel to a face at a point. Each kind has
   its own small mark at the plane's corner (⇡ ⇹ ∴ ∿ ⊥ ∠ ∥) and on its icon.
   Axes from a face or edge, or along X / Y / Z through a point you type.
-- **Colour** - ten soft colours or **Custom…** for any colour; and how
-  see-through a body is.
+- **Colour** - ten soft colours or **Custom…** for any colour; and
+  **Fade**, how see-through a body is.
 - **Section View** - cut the view (not the part) to look inside; the cut
   shows as a solid face with a thick outline. **Place Plane** on the line
   puts a construction plane where the cut is (to sketch on or split with).
