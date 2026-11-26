@@ -1917,6 +1917,9 @@ export class SketchTool implements Tool {
     this.dragging = true;
     this.updatePanel();
     this.setHint();
+    // (Drawn now, its dot with it: a finger that only tapped left nothing on the grid where the centre went. No size
+    // label by the finger: there is no size yet.)
+    this.refreshPreview();
     return true;
   }
 
@@ -3968,6 +3971,13 @@ export class SketchTool implements Tool {
       }
     }
     if (!keepLineDim && !(this.kind === "line" && this.pts.length && c)) this.hideLineDim();
+    // The points a shape has so far, each a yellow dot: on a phone a rectangle's centre was not shown once the finger
+    // came up (the dot went with the finger, and nothing else was drawn till the next tap).
+    if (["arc", "rect", "circle", "polygon", "ellipse", "spline"].includes(this.kind) && this.pts.length) {
+      const m = new Points(new BufferGeometry().setFromPoints(this.pts.map((q) => sketchToWorld(this.plane!, q, 0.015))), dotMaterial({ color: 0xffc23d, size: 10 }));
+      m.renderOrder = 10;
+      this.addOverlay(m);
+    }
     if (this.kind === "text" && this.pts.length) {
       void textEntities(this.text || " ", this.pts[0], memory.textSize, 0, memory.textFont, memory.textAlign).then((es) => {
         if (this.kind !== "text" || !this.pts.length) return;

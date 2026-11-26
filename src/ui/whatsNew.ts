@@ -31,6 +31,7 @@ export const UPDATES: Update[] = [
       "On a phone, a sketch's bottom bar is even: every button the same width, in one or two rows right across it (they were two blocks, the names cut short).",
       "The round buttons beside a pick are all one size, and a long name (Perpendicular, Coincident) is made smaller to fit instead of running over the edge.",
       "Transform lists Move/Rotate, Translate and Rotate Around Axis itself, not under Move.",
+      "On a phone, a shape's first tap (a centre rectangle's centre) shows its yellow dot right away, and every point placed so far stays marked.",
       "In a sketch, More is gone: it held only Normal to Sketch, now a button of its own at the end of the bar called Sketch view. Other plane is gone too: a new empty sketch on the wrong plane is left with Exit (it leaves nothing behind).",
       "Constraints beside picked curves: a Constraints button between Construction and Delete opens the ones that fit (Parallel, Tangent, Equal...).",
       "Tangent between a line and an arc that meet end to end now joins them too: moving a line no longer pulls the arc's end off the other line. And a line ending on the origin: an arc drawn from there is joined to the line, not just held to the origin.",
