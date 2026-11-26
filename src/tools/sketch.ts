@@ -1491,28 +1491,7 @@ export class SketchTool implements Tool {
     };
     const selCount = this.selected.size;
     const apply = (label: string, fn: () => void): PanelItem => ({ type: "button", label, icon: "check", onClick: fn, primary: true });
-    // A finger lands a few pixels off and the grid there can be 5 px a step:
-    // where the first point is, typed (X / Y), right after it's tapped.
-    const firstAt = (): PanelItem[] =>
-      isTouchDevice && this.pts.length === 1
-        ? ([0, 1] as const).map((i) => ({
-            type: "number" as const,
-            label: i ? "Y" : "X",
-            value: Math.round(this.pts[0][i] * 100) / 100,
-            kind: "length" as const,
-            onExpr: (text: string) => (this.firstExprs[i] = text && isExpression(text) ? { v: evaluate(text, "length") ?? NaN, text } : undefined),
-            onInput: (v: number) => {
-              this.pts[0] = i ? [this.pts[0][0], v] : [v, this.pts[0][1]];
-              // Typed: no longer on what it snapped to.
-              this.startRef = this.startSnap = this.firstSnap = null;
-              // Nor does the finger's spot say which way a typed size goes: an
-              // ellipse's Length went up because the tap had snapped 2 below
-              // the centre typed. With no pointer, it goes along X (0°).
-              if (isTouchDevice) this.cursor = null;
-              this.refreshPreview();
-            },
-          }))
-        : [];
+    // (Not where the first point is, typed X and Y: on a phone they crowded the line before the sizes that matter.)
     switch (k) {
       case "line":
         // With the numpad, the length is typed in the box by the line itself.
@@ -1530,24 +1509,24 @@ export class SketchTool implements Tool {
         // - a nacelle's lip round a centre at 257 snapped to 260.
         // (Every device: values can be typed while it's drawn, not only once it's made.)
         if (memory.arc === "center") {
-          if (this.pts.length === 1) items.push(...firstAt(), lock("r", "Radius"), lock("a0", "Start angle", "angle"));
+          if (this.pts.length === 1) items.push(lock("r", "Radius"), lock("a0", "Start angle", "angle"));
           else if (this.pts.length === 2) items.push(lock("a1", "End angle", "angle"));
-        } else if (this.pts.length === 1) items.push(...firstAt(), lock("len", "Length"), lock("ang", "Angle", "angle"));
+        } else if (this.pts.length === 1) items.push(lock("len", "Length"), lock("ang", "Angle", "angle"));
         else if (this.pts.length === 2) items.push(lock("r", "Radius"));
         break;
       case "rect":
-        if (this.pts.length === 1 && memory.rect !== "3pt") items.push(...firstAt(), lock("w", "Width"), lock("h", "Height"));
-        else if (this.pts.length === 1) items.push(...firstAt(), lock("len", "Width"), lock("ang", "Angle", "angle"));
+        if (this.pts.length === 1 && memory.rect !== "3pt") items.push(lock("w", "Width"), lock("h", "Height"));
+        else if (this.pts.length === 1) items.push(lock("len", "Width"), lock("ang", "Angle", "angle"));
         else if (this.pts.length === 2 && memory.rect === "3pt") items.push(lock("h", "Height"));
         break;
       case "circle":
-        if (this.pts.length === 1 && memory.circle !== "3pt") items.push(...firstAt(), lock("r", "Diameter"));
-        else if (this.pts.length === 1) items.push(...firstAt(), lock("len", "Length"), lock("ang", "Angle", "angle"));
+        if (this.pts.length === 1 && memory.circle !== "3pt") items.push(lock("r", "Diameter"));
+        else if (this.pts.length === 1) items.push(lock("len", "Length"), lock("ang", "Angle", "angle"));
         break;
       case "polygon":
         items.push({ type: "number", label: "Sides", value: memory.sides, kind: "int", min: 3, onInput: (v) => ((memory.sides = Math.max(3, Math.min(64, v))), this.refreshPreview(), this.updateMenu()) });
         // (A nut or a spanner's hex is sized across its flats: 10, not 5.7735 to a corner.)
-        if (this.pts.length === 1) items.push(...firstAt(), lock("r", "Radius"), lock("af", "Across flats"));
+        if (this.pts.length === 1) items.push(lock("r", "Radius"), lock("af", "Across flats"));
         break;
       case "spline":
         // The point just placed, typed exactly (no grid gets every point).
@@ -1567,7 +1546,7 @@ export class SketchTool implements Tool {
           );
         break;
       case "ellipse":
-        if (this.pts.length === 1) items.push(...firstAt(), lock("rx", "Length"));
+        if (this.pts.length === 1) items.push(lock("rx", "Length"));
         if (this.pts.length === 2) items.push(lock("ry", "Width"));
         break;
       case "text":
