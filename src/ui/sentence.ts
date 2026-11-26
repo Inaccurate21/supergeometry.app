@@ -538,8 +538,8 @@ export class Sentence {
     const tools = items.filter((it) => it !== exit && it !== select);
     const drawing = tools.some((it) => it.active);
     const at = tools.find((it) => it.active);
-    // A shape being drawn (Line, Rectangle, Circle...): only that shape's own parts and the tick that ends it. Draw,
-    // Modify, Transform and Delete come back once it is done; and no Exit beside the tick, which was the same way out.
+    // A shape being drawn (Line, Rectangle, Circle...): that shape's own parts, Draw for another, and the tick that
+    // ends it. Modify, Transform and Delete come back once it is done; and no Exit beside the tick, the same way out.
     const shaping = !!at && SK_SHAPES.has(at.id);
     const retapped = (it: ToolItem): Word => {
       const w = this.verb(it);
@@ -584,9 +584,14 @@ export class Sentence {
         for (const it of its) placed.add(it);
         const w = its.map(retapped);
         const word = this.group(g.id, g.label, g.icon, w, "Pick a line or a shape of the sketch first.");
-        // (Draw opens its list, and nothing is on till a shape is taken from it: with one on, Draw is off the line,
-        // so Line put on at the first tap closed the list before another could be chosen.)
-        if (shaping) continue;
+        // Draw opened with no tool on: Line is on, its list open as ever - a tap on the grid draws at once, a tap
+        // in the list takes another.
+        if (g.id === "draw" && !drawing && picked === 0) {
+          const line = w.find((x) => x.key.endsWith("line") || x.label === "Line");
+          if (line?.run) word.opens = line.run;
+        }
+        // (A shape being drawn keeps Draw - another shape a tap away - but not Modify or Transform.)
+        if (shaping && g.id !== "draw") continue;
         words.push(word);
         if (w.length) groups.push({ cap: g.label, words: w });
       }
