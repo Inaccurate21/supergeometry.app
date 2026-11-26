@@ -180,6 +180,9 @@ function spreadOut(its: ToolItem[]): ToolItem[] {
   return n > 8 ? its : its.flatMap((c) => (folder(c) ? c.children!.filter(notSep) : [c]));
 }
 
+/** The sketch tools that draw a shape: while one is on, the line is that shape's alone. */
+const SK_SHAPES = new Set(["line", "rect", "circle", "arc", "spline", "polygon", "ellipse"]);
+
 const SK_GROUPS: { id: string; label: string; icon: IconName; tools: string[] }[] = [
   // (Construction last: the switch for the lines drawn next - under More it was not found.)
   { id: "draw", label: "Draw", icon: "line", tools: ["line", "rect", "circle", "arc", "spline", "polygon", "ellipse", "text", "project", "fill", "construction"] },
@@ -535,6 +538,9 @@ export class Sentence {
     const tools = items.filter((it) => it !== exit && it !== select);
     const drawing = tools.some((it) => it.active);
     const at = tools.find((it) => it.active);
+    // A shape being drawn (Line, Rectangle, Circle...): only that shape's own parts and the tick that ends it. Draw,
+    // Modify, Transform and Delete come back once it is done; and no Exit beside the tick, which was the same way out.
+    const shaping = !!at && SK_SHAPES.has(at.id);
     const retapped = (it: ToolItem): Word => {
       const w = this.verb(it);
       // (It acts where the view is tapped. A curve picked: on that piece, where it was picked - and one done at that
@@ -553,7 +559,8 @@ export class Sentence {
     const words: Word[] = [];
     const groups: Built["groups"] = [];
     // A tool is on: Select puts it down (the way back to picking).
-    if (drawing && select && !select.active) words.push({ ...this.verb(select), label: "Stop" });
+    // (Not while a shape is drawn: the tick puts it down.)
+    if (drawing && !shaping && select && !select.active) words.push({ ...this.verb(select), label: "Stop" });
     // The ways the tool that is on can be used (Circle: Center, 2 Points, 3 Points), right on the line: the one in
     // use lit, another a tap away - not back through Draw > Circle. (More than three, or a line too narrow to give
     // each a finger's width - a phone held upright: one word, named for the one in use, that opens them.)
@@ -577,18 +584,15 @@ export class Sentence {
         for (const it of its) placed.add(it);
         const w = its.map(retapped);
         const word = this.group(g.id, g.label, g.icon, w, "Pick a line or a shape of the sketch first.");
-        // Draw opened with no tool on: Line is on, its list open as ever - a tap on the grid draws at once, a tap
-        // in the list takes another.
-        if (g.id === "draw" && !drawing && picked === 0) {
-          const line = w.find((x) => x.key.endsWith("line") || x.label === "Line");
-          if (line?.run) word.opens = line.run;
-        }
+        // (Draw opens its list, and nothing is on till a shape is taken from it: with one on, Draw is off the line,
+        // so Line put on at the first tap closed the list before another could be chosen.)
+        if (shaping) continue;
         words.push(word);
         if (w.length) groups.push({ cap: g.label, words: w });
       }
       // (Delete: a tap - the curves picked, else the tool that deletes what is tapped; unless their window has it already.)
       const del = tools.find((it) => it.id === "delete");
-      if (del && offered(del)) words.push(this.verb(del));
+      if (del && offered(del) && !shaping) words.push(this.verb(del));
       if (del) placed.add(del);
       const rest = [...tools.filter((it) => !placed.has(it) && offered(it)), ...below.filter((it) => !placed.has(it))].map((it) => this.verb(it));
       // (Not a word on the line: the button at its end is where More is.)
@@ -598,9 +602,10 @@ export class Sentence {
       subject: { key: "s-sketch", kind: "subject", label: "Sketch", icon: "sketch", quiet: true },
       words,
       groups,
-      done: panel?.done ? { label: "Done", run: panel.done } : undefined,
+      // (Drawing a shape: the tick is always there - what was typed is put in, else the tool is put down.)
+      done: panel?.done ? { label: "Done", run: panel.done } : shaping && select?.run ? { label: "Done", run: () => select.run!() } : undefined,
       cancel: panel?.cancel ? { label: "Cancel", run: panel.cancel } : undefined,
-      exit: exit?.run ? { label: "Exit Sketch", run: () => exit.run!(), pulse: exit.pulse } : undefined,
+      exit: !shaping && exit?.run ? { label: "Exit Sketch", run: () => exit.run!(), pulse: exit.pulse } : undefined,
       // (What of the sketch is being worked on: the curves picked, else the tool that is on - "Sketch > Line".)
       title: panel && mine.length ? { key: "t-title", kind: "subject", label: panel.title, quiet: true, on: true } : at ? { key: "t-title", kind: "subject", label: at.label, quiet: true, on: true } : undefined,
       grouped: !mine.length,
@@ -776,7 +781,8 @@ export class Sentence {
     // A phone held upright, two rows: as many across as halve them (sn-two in the stylesheet).
     if (this.line.classList.contains("sn-two")) {
       const n = this.row.querySelectorAll(".sn-word").length + this.end.querySelectorAll(".sn-end-btn").length;
-      const cols = String(n <= 6 ? n : Math.max(4, Math.min(6, Math.ceil(n / 2))));
+      // (Never fewer than six across: two buttons were each half the line wide, a drawn shape's tick and Sketch view.)
+      const cols = String(n <= 6 ? 6 : Math.max(4, Math.min(6, Math.ceil(n / 2))));
       if (this.line.style.getPropertyValue("--sn-cols") !== cols) this.line.style.setProperty("--sn-cols", cols);
       // A name wider than its place (Construction, six across): smaller till it fits, not cut off.
       for (const s of Array.from(this.line.querySelectorAll<HTMLElement>(".sn-text, .sn-end-name"))) {

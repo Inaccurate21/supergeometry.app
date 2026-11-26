@@ -25,6 +25,8 @@ export const UPDATES: Update[] = [
       "Learn the app with Claude: ask it to teach you. It has a course of eight lessons, from a first block to holes, round parts, parts that fit and variables. You do the tapping; it tells you what to tap and why, and checks each step.",
     ],
     fixed: [
+      "Drawing a shape in a sketch (Line, Rectangle, Circle, Arc, Spline, Polygon, Ellipse), the bottom line holds only that shape's own choices, Sketch view and the blue tick. Draw, Modify, Transform and Delete come back once the tick is tapped, and Exit is no longer beside the tick.",
+      "Draw in a sketch opens its list of shapes and waits for one to be picked (it used to put Line on at once).",
       "Right-clicking a face or a body on a computer opens only the app's list of tools, not the browser's own menu on top of it.",
       "Sketch constraints in one place: pick a line or a shape and Constraints on the bottom line opens two rows, the ones in use (tap one to take it off, or List all to see every size and join) and the ones you can add (Parallel, Tangent, Equal...). The hint says so too.",
       "Construction (dashed lines) is in the Draw list now, at its end, not only under More.",
