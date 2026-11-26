@@ -1385,7 +1385,9 @@ export function deleteFaces(body: Shape3D, S: Face[]): Shape3D {
   const size = sizeOf(body);
   const L = size * 4;
   const inS = (g: Face) => S.some((f) => f.isSame(g));
-  const N = body.faces.filter((g) => !inS(g) && S.some((f) => neighbours(body, f).some((x) => x.isSame(g))));
+  // (S's neighbours found once: asked again for every face of the body, a body of 400 faces took 7 s here.)
+  const near = S.flatMap((f) => neighbours(body, f));
+  const N = body.faces.filter((g) => !inS(g) && near.some((x) => x.isSame(g)));
   if (!N.length) throw new Error("This face can't be removed - nothing around it to close the gap");
   const kept = body.faces.filter((g) => !inS(g));
   const tol = size * 1e-5;
@@ -1464,8 +1466,11 @@ export function deleteFaces(body: Shape3D, S: Face[]): Shape3D {
   };
   const airOfS = () => (single ? meet([inFront(single, L) ?? nearS, chord()]) : nearS);
   const matOfS = () => (single ? meet([behind(single, L) ?? nearS, chord()]) : nearS);
-  const fill = (e: Shape3D | null, bound: Shape3D | null) => (e && bound ? body.fuse(meet([e, bound])!) : null);
-  const cut = (e: Shape3D | null, bound: Shape3D | null) => (e && bound ? body.cut(meet([e, bound])!) : null);
+  // What each way would add to the body or take from it: a small piece. The body itself is joined or cut only once
+  // per different piece (a body of 400 faces: two seconds and tens of MB, never given back, each time).
+  type Piece = { op: "fuse" | "cut"; piece: Shape3D | null };
+  const fill = (e: Shape3D | null, bound: Shape3D | null): Piece | null => (e && bound ? { op: "fuse", piece: meet([e, bound]) } : null);
+  const cut = (e: Shape3D | null, bound: Shape3D | null): Piece | null => (e && bound ? { op: "cut", piece: meet([e, bound]) } : null);
   // Each neighbour bounded on the side S itself is on: a fillet's walls from
   // behind (or in front, for an inside one), its end faces towards it -
   // whichever way they face (one may be a pocket's wall facing the fillet).
@@ -1485,7 +1490,7 @@ export function deleteFaces(body: Shape3D, S: Face[]): Shape3D {
     }
     return r;
   };
-  const candidates: { name: string; make: () => Shape3D | null }[] = [
+  const candidates: { name: string; make: () => Piece | null }[] = [
     { name: "fill by side", make: () => fill(bySide(), airOfS()) },
     { name: "cut by side", make: () => cut(bySide(), matOfS()) },
     // Fill: behind every neighbour, on the air side of S (a fillet's wedge, a chamfer, a hole).
@@ -1501,15 +1506,26 @@ export function deleteFaces(body: Shape3D, S: Face[]): Shape3D {
       { name: "cut but one", make: () => cut(frontOf(() => true, g), matOfS()) },
     ]),
   ];
-  const v0 = Math.abs(measureVolume(body));
+  // (How small a change is no change: by the body's box, not its volume - measuring a body of hundreds of faces
+  // took over a second, for every way of closing the gap tried.)
+  const v0 = Math.max(1e-30, (hi[0] - lo[0]) * (hi[1] - lo[1]) * (hi[2] - lo[2]));
   const keptInfo = kept.map((f) => ({ f, t: f.geomType, box: f.boundingBox.bounds as number[][], next: N.some((x) => x.isSame(f)), area: measureArea(f) }));
   const boxesMeet = (a: number[][], b: number[][], e: number) => [0, 1, 2].every((k) => a[0][k] <= b[1][k] + e && b[0][k] <= a[1][k] + e);
   let best: { out: Shape3D; change: number } | null = null;
+  const tried = new Set<string>();
   for (const c of candidates) {
     let out: Shape3D | null = null;
     try {
-      out = c.make();
-      if (out) out = unify(out, size);
+      const got = c.make();
+      if (!got?.piece || isEmpty(got.piece)) continue;
+      // The same piece as a way tried already: the same result.
+      const unit = size * 1e-5;
+      const pb = got.piece.boundingBox.bounds;
+      const sig = `${got.op} ${Math.round(Math.abs(measureVolume(got.piece)) / unit ** 3 / 1e3)} ${[...pb[0], ...pb[1]].map((x) => Math.round(x / unit)).join(" ")}`;
+      if (tried.has(sig)) continue;
+      tried.add(sig);
+      out = got.op === "fuse" ? body.fuse(got.piece) : body.cut(got.piece);
+      out = unify(out, size);
     } catch {
       out = null;
     }
@@ -1538,20 +1554,27 @@ export function deleteFaces(body: Shape3D, S: Face[]): Shape3D {
       return on.reduce((a, h) => a + measureArea(h.g), 0) >= k.area * 0.5;
     });
     if (!stays) continue;
-    const change = Math.abs(Math.abs(measureVolume(out)) - v0);
-    if (!(change > v0 * 1e-9)) continue;
-    // Only what was round S changed: what was added or taken away lies within
-    // S's own box (a "delete" that carves off half the part isn't one).
+    // What was added and what was taken away: small pieces, quick to measure (the change in volume is the one
+    // less the other). Only what was round S changed: both lie within S's own box (a "delete" that carves off
+    // half the part isn't one).
+    let change = 0;
     try {
       const reach = room;
-      for (const d of [out.cut(body), body.cut(out)]) {
-        if (isEmpty(d) || Math.abs(measureVolume(d)) < v0 * 1e-9) continue;
+      let added = 0;
+      let taken = 0;
+      for (const [d, k] of [[out.cut(body), 1], [body.cut(out), -1]] as const) {
+        const v = isEmpty(d) ? 0 : Math.abs(measureVolume(d));
+        if (v < v0 * 1e-9) continue;
+        if (k > 0) added = v;
+        else taken = v;
         const db = d.boundingBox.bounds;
         if ([0, 1, 2].some((k) => db[0][k] < sLo[k] - reach || db[1][k] > sHi[k] + reach)) throw new Error("reaches out");
       }
+      change = Math.abs(added - taken);
     } catch {
       continue;
     }
+    if (!(change > v0 * 1e-9)) continue;
     if (!best || change < best.change) best = { out, change };
   }
   if (!best) throw new Error(S.length > 1 ? "This fillet can't be removed - the faces around it don't meet up when carried on" : "This face can't be removed - its neighbours don't close the gap");
