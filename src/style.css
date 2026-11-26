@@ -6436,6 +6436,13 @@ body.sentence-ui #panel:not(:has(.text-input)) {
   width: 18px;
   height: 18px;
 }
+/* A sign in an icon's place (a constraint's ∥ ⟂ =): as big as an icon, in the middle of its square. */
+.sn-glyph {
+  place-items: center;
+  font-size: 15px;
+  line-height: 1;
+  font-weight: 600;
+}
 .sn-swatch {
   width: 16px;
   height: 16px;

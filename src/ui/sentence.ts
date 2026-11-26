@@ -72,6 +72,8 @@ interface Word {
   /** A small name over it (what the option is: "Ends", "Distance"). */
   cap?: string;
   icon?: IconName;
+  /** A sign drawn where its icon goes (a constraint's ∥ ⟂ =): beside its name it took the room the name needed. */
+  glyph?: string;
   swatch?: string;
   /** Lit: the tool in use, a switch that is on, the option chosen. */
   on?: boolean;
@@ -669,7 +671,7 @@ export class Sentence {
       } else if (it.type === "button") out.push({ key, kind: "button", label: it.label, icon: it.icon ?? iconNameFor(it.label), pulse: it.primary, run: () => it.onClick() });
       else if (it.type === "chips") {
         if (!it.chips.length) continue;
-        const kids = it.chips.map((c, i): Word => ({ key: `${key}-${i}`, kind: "toggle", label: c.glyph ? `${c.glyph} ${c.label}` : c.label, on: !!c.on, run: () => c.onClick() }));
+        const kids = it.chips.map((c, i): Word => ({ key: `${key}-${i}`, kind: "toggle", label: c.label, glyph: c.glyph, on: !!c.on, run: () => c.onClick() }));
         // (A sketch's constraints each on the line: folded under "Constraints", Parallel and Tangent were not found.)
         if (kids.length <= 2 || (it.spread && kids.length <= 6)) out.push(...kids);
         else out.push({ key, kind: "choice", label: it.label ?? "Add", kids });
@@ -924,6 +926,8 @@ export class Sentence {
       const sw = el("span", "sn-swatch");
       sw.style.background = w.swatch;
       body.append(sw);
+    } else if (w.glyph && w.kind !== "value" && w.kind !== "choice" && w.kind !== "slot") {
+      body.append(el("span", "sn-icon sn-glyph", w.glyph));
     } else if (w.icon && icons[w.icon] && w.kind !== "value" && w.kind !== "choice" && w.kind !== "slot") {
       const ic = el("span", "sn-icon");
       ic.innerHTML = icons[w.icon];
