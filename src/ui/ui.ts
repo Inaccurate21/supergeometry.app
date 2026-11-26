@@ -108,7 +108,7 @@ export type PanelItem =
   | { type: "slider"; label: string; value: number; min: number; max: number; step?: number; show?(v: number): string; onInput(v: number): void }
   | { type: "button"; label: string; icon?: IconName; onClick(): void; /** Blue: the step to take next (Apply). */ primary?: boolean }
   /** A row of one-tap chips (e.g. the constraints that fit a selection); `on` ones are lit. */
-  | { type: "chips"; label?: string; chips: { label: string; glyph?: string; on?: boolean; title?: string; onClick(): void }[]; empty?: string };
+  | { type: "chips"; label?: string; chips: { label: string; glyph?: string; on?: boolean; title?: string; onClick(): void }[]; empty?: string; /** Each its own word on the line (up to six), not folded under the label. */ spread?: boolean };
 
 /** Kept for older call sites: a numeric field. */
 export interface ValueField {

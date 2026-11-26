@@ -36,6 +36,19 @@ const same = (a: string, b: string) => a.trim().toLowerCase() === b.trim().toLow
  *   a hole by its screw alone ({ face, at, size: "M4", head? }) or its diameter: the other sizes from the table;
  *   without `at`: the middle of the face
  */
+/** What each kind of sketch curve must have: p a point [x, y], n a number, ps a list of points. */
+const CURVE_NEEDS: Record<string, [string, "p" | "n" | "ps"][]> = {
+  line: [["a", "p"], ["b", "p"]],
+  arc: [["a", "p"], ["m", "p"], ["b", "p"]],
+  circle: [["center", "p"], ["radius", "n"]],
+  rect: [["center", "p"], ["w", "n"], ["h", "n"]],
+  polygon: [["center", "p"], ["radius", "n"], ["sides", "n"]],
+  ellipse: [["center", "p"], ["rx", "n"], ["ry", "n"]],
+  polyline: [["points", "ps"]],
+  spline: [["points", "ps"]],
+};
+const point = (v: unknown) => Array.isArray(v) && v.length === 2 && v.every((x) => typeof x === "number" && Number.isFinite(x));
+
 export function fullStep(step: Loose): Loose {
   const s: Loose = { ...step };
   if (typeof s.plane === "string") {
@@ -53,8 +66,17 @@ export function fullStep(step: Loose): Loose {
       regions: src.regions.map((r) => (typeof r === "string" ? { c: [0, 0], a: 0, k: [r] } : Array.isArray(r) ? { c: [0, 0], a: 0, k: [...(r as string[])].sort() } : r)),
     };
   }
-  if (s.type === "sketch" && Array.isArray(s.entities))
+  if (s.type === "sketch" && Array.isArray(s.entities)) {
     s.entities = (s.entities as Loose[]).map((e) => (e.kind === "rect" && e.rotation === undefined ? { ...e, rotation: 0 } : e.kind === "polygon" && e.angle === undefined ? { ...e, angle: 0 } : e));
+    // Each curve has what it needs, or the step is refused with what is missing: an arc given as a centre and
+    // angles was saved, and every sketch of the project failed to draw from then on.
+    for (const e of s.entities as Loose[]) {
+      const need = CURVE_NEEDS[e.kind as string];
+      if (!need) continue;
+      const bad = need.filter(([k, t]) => (t === "p" ? !point(e[k]) : t === "n" ? !(typeof e[k] === "number" && Number.isFinite(e[k])) : !(Array.isArray(e[k]) && (e[k] as unknown[]).length >= 2 && (e[k] as unknown[]).every(point))));
+      if (bad.length) throw new Error(`Sketch "${s.id ?? s.name ?? ""}": the ${e.kind} "${e.id ?? ""}" needs ${need.map(([k, t]) => `${k}${t === "p" ? " [x, y]" : t === "n" ? " (a number)" : " [[x, y], ...]"}`).join(", ")}${e.kind === "arc" ? " (a: start, m: any point on it, b: end)" : ""}.`);
+    }
+  }
   if (s.type === "extrude" && s.mode === undefined) s.mode = "new";
   if (s.type === "hole") {
     const head = (s.head as "none" | "counterbore" | "countersink" | undefined) ?? "none";

@@ -164,7 +164,8 @@ const SK_ONCE = new Set(["trim", "split"]);
 const GROUPS = ["create", "combine", "modify", "construct", "transform", "freeform", "sketch"];
 /** A sketch's groups (as its wheel has them): what each holds, most used first; anything else is under More. */
 const SK_GROUPS: { id: string; label: string; icon: IconName; tools: string[] }[] = [
-  { id: "draw", label: "Draw", icon: "line", tools: ["line", "rect", "circle", "arc", "spline", "polygon", "ellipse", "text", "project", "fill"] },
+  // (Construction last: the switch for the lines drawn next - under More it was not found.)
+  { id: "draw", label: "Draw", icon: "line", tools: ["line", "rect", "circle", "arc", "spline", "polygon", "ellipse", "text", "project", "fill", "construction"] },
   { id: "modify", label: "Modify", icon: "trim", tools: ["trim", "fillet", "offset", "extend", "split", "align"] },
   { id: "transform", label: "Transform", icon: "transform", tools: ["move", "mirror", "rotate", "pattern", "scale"] },
 ];
@@ -553,8 +554,9 @@ export class Sentence {
       // now: with nothing picked it asks for its curve as it starts).
       const offered = (it: ToolItem) => !said.has(it.label);
       const placed = new Set<ToolItem>();
+      const below = usable(bar).filter(notSep);
       for (const g of SK_GROUPS) {
-        const its = g.tools.map((id) => tools.find((it) => it.id === id)).filter((it): it is ToolItem => !!it && offered(it));
+        const its = g.tools.map((id) => tools.find((it) => it.id === id) ?? below.find((it) => it.id === id)).filter((it): it is ToolItem => !!it && offered(it));
         for (const it of its) placed.add(it);
         const w = its.map(retapped);
         const word = this.group(g.id, g.label, g.icon, w, "Pick a line or a shape of the sketch first.");
@@ -571,7 +573,7 @@ export class Sentence {
       const del = tools.find((it) => it.id === "delete");
       if (del && offered(del)) words.push(this.verb(del));
       if (del) placed.add(del);
-      const rest = [...tools.filter((it) => !placed.has(it) && offered(it)), ...usable(bar).filter(notSep)].map((it) => this.verb(it));
+      const rest = [...tools.filter((it) => !placed.has(it) && offered(it)), ...below.filter((it) => !placed.has(it))].map((it) => this.verb(it));
       // (Not a word on the line: the button at its end is where More is.)
       if (rest.length) groups.push({ cap: "More", words: rest });
     }
@@ -668,7 +670,8 @@ export class Sentence {
       else if (it.type === "chips") {
         if (!it.chips.length) continue;
         const kids = it.chips.map((c, i): Word => ({ key: `${key}-${i}`, kind: "toggle", label: c.glyph ? `${c.glyph} ${c.label}` : c.label, on: !!c.on, run: () => c.onClick() }));
-        if (kids.length <= 2) out.push(...kids);
+        // (A sketch's constraints each on the line: folded under "Constraints", Parallel and Tangent were not found.)
+        if (kids.length <= 2 || (it.spread && kids.length <= 6)) out.push(...kids);
         else out.push({ key, kind: "choice", label: it.label ?? "Add", kids });
       }
     }

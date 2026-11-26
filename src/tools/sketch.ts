@@ -105,8 +105,8 @@ const CENTRE_HINT = {
 };
 
 const HINTS: Record<Kind, string> = {
-  select: "Tap a line or curve to change its size. Double-tap to pick a whole shape.",
-  line: "Tap to place points. Closing a shape ends the line (double-tap ends it sooner).",
+  select: "Tap a line or curve to change its size. Tap a second one to make them parallel, tangent, equal... Double-tap to pick a whole shape.",
+  line: "Tap to place points. Closing a shape ends the line (double-tap ends it sooner). Dashed construction lines: Draw > Construction.",
   arc: isCoarse ? "Drag from one end of the arc to the other, then drag to bend it." : "Click where the arc starts and ends, then a third point to bend it.",
   spline: "Tap points for the curve to pass through. Tap the first point to close it, or double-tap to stop.",
   rect: "Tap one corner, then the opposite corner.",
@@ -852,7 +852,7 @@ export class SketchTool implements Tool {
         onClick: () => (have.length ? this.removeConstraints(have) : this.addConstraint(b.type)),
       });
     }
-    return chips.length ? [{ type: "chips", label: "Constraints", chips }] : [];
+    return chips.length ? [{ type: "chips", label: "Constraints", chips, spread: true }] : [];
   }
 
   /**
