@@ -7331,6 +7331,13 @@ html[data-screen="phone"] body.sentence-ui #toast {
 .quick-action.danger svg {
   color: #ff8d82;
 }
+.quick-swatch {
+  width: 18px;
+  height: 18px;
+  flex: none;
+  border-radius: 50%;
+  border: 1px solid rgba(255, 255, 255, 0.35);
+}
 .quick-action.quick-more {
   border-style: dashed;
 }

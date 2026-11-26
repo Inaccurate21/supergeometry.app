@@ -55,6 +55,11 @@ const MOST_OF: Partial<Record<QuickKind, number>> = { edge: 3 };
 export class QuickActions {
   private readonly box = document.createElement("div");
   private readonly hook = () => this.layout();
+  /**
+   * A colour just tapped: the pick's buttons are made again (the one in use lit), and they come back with the
+   * same choices open, so another colour is one tap more.
+   */
+  private static reopen: { id: string; until: number } | null = null;
 
   /** `items`: what the pick offers (the wheel's own list, its kinds' items too); `at`: the point it is shown beside. */
   static show(view: Viewport, kind: QuickKind, items: ToolItem[], at: Vec3, place: QuickPlace = {}, all = false): QuickActions | null {
@@ -76,19 +81,21 @@ export class QuickActions {
     const rest: ToolItem[] = [];
     // (Beside a corner, not Move/Rotate Body: it moves the whole body, which is not what a corner was picked for.
     // It is still under Transform on the line.)
-    const skip = new Set(["deselect", "reveal", "color", "opacity", "material", "wholePattern", ...(kind === "vertex" ? ["move"] : [])]);
+    // (A body's own Color and Transparency are there too: each a button opening its choices in the same card.)
+    const choosers = kind === "body" ? ["color", "opacity"] : [];
+    const skip = new Set(["deselect", "reveal", "material", "wholePattern", ...["color", "opacity"].filter((id) => !choosers.includes(id)), ...(kind === "vertex" ? ["move"] : [])]);
     const gather = (its: ToolItem[]) => {
       for (const it of its) {
         if (!it.label || it.id.startsWith("---") || skip.has(it.id) || it.disabled) continue;
         // (A tool that starts by itself is one button, its kinds a tap further inside it; a bare group is its tools.)
-        if (it.run) {
+        if (it.run || (choosers.includes(it.id) && it.children?.length)) {
           if (!row.includes(it) && !rest.some((r) => r.label === it.label) && !row.some((r) => r.label === it.label)) rest.push(it);
         } else if (it.children?.length) gather(it.children);
       }
     };
     gather(items);
     // (Just one more: it is a button of the row, before Delete - a More that opens a single button is a tap wasted.)
-    if (rest.length === 1) {
+    if (rest.length === 1 && rest[0].run) {
       const one = rest.pop()!;
       row.splice(del && row.includes(del) ? row.indexOf(del) : row.length, 0, one);
     }
@@ -117,13 +124,37 @@ export class QuickActions {
       b.title = it.shortcut ? `${it.label} (${it.shortcut})` : it.label;
       b.setAttribute("aria-label", it.label);
       const icon = icons[it.icon as keyof typeof icons];
-      b.innerHTML = `${icon ?? ""}<span>${shortName(it.label)}</span>`;
+      b.innerHTML = `${it.swatch ? `<i class="quick-swatch" style="background:${it.swatch}"></i>` : (icon ?? "")}<span>${shortName(it.label)}</span>`;
       b.addEventListener("click", (e) => {
         e.stopPropagation();
-        it.run?.();
+        if (!it.run && it.children?.length) choose(it);
+        else it.run?.();
       });
       return b;
     };
+    // A button with choices (Color, Transparency): the card shows them in place of the rest, a Back first.
+    const choose = (it: ToolItem) => {
+      const back = document.createElement("button");
+      back.className = "quick-action";
+      back.title = "Back to the other tools";
+      back.setAttribute("aria-label", "Back");
+      back.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 5l-7 7 7 7"/></svg><span>Back</span>`;
+      back.addEventListener("click", (e) => {
+        e.stopPropagation();
+        grid.replaceChildren(...rest.map(button));
+        this.layout();
+      });
+      const kids = (it.children ?? []).filter((k) => k.label && !k.id.startsWith("---")).map((k): ToolItem => ({
+        ...k,
+        run: k.run && (() => {
+          QuickActions.reopen = { id: it.id, until: performance.now() + 1500 };
+          k.run!();
+        }),
+      }));
+      grid.replaceChildren(back, ...kids.map(button));
+      this.layout();
+    };
+    const grid = document.createElement("div");
     const row = document.createElement("div");
     row.className = "quick-row";
     for (const it of items) row.append(button(it));
@@ -135,7 +166,6 @@ export class QuickActions {
       more.title = "Every other tool for this";
       more.setAttribute("aria-label", "More tools for this");
       more.innerHTML = `${icons.more ?? ""}<span>More</span>`;
-      const grid = document.createElement("div");
       grid.className = "quick-rest";
       grid.hidden = true;
       for (const it of rest) grid.append(button(it));
@@ -147,6 +177,14 @@ export class QuickActions {
       });
       row.append(more);
       this.box.append(grid);
+      const again = QuickActions.reopen;
+      QuickActions.reopen = null;
+      const was = again && performance.now() < again.until ? rest.find((r) => r.id === again.id) : undefined;
+      if (was) {
+        grid.hidden = false;
+        more.classList.add("on");
+        choose(was);
+      }
     }
     // A press on them is theirs: never a pick on the model behind, nor the view turning.
     this.box.addEventListener("pointerdown", (e) => e.stopPropagation());
