@@ -1144,16 +1144,6 @@ export class Sentence {
     });
     this.sheet.querySelector(".sn-others")?.remove();
     this.fit();
-    // A phone held upright (the list is as wide as the screen): no taller than leaves the buttons at the right edge
-    // clear above it - it scrolls instead.
-    this.sheet.style.maxHeight = "";
-    const col = document.getElementById("right-col");
-    if (col && document.documentElement.dataset.screen === "phone" && matchMedia("(max-width: 720px) and (orientation: portrait)").matches) {
-      const room = this.line.getBoundingClientRect().top - col.getBoundingClientRect().bottom - 16;
-      if (col.offsetHeight && room < this.sheet.offsetHeight) this.sheet.style.maxHeight = `${Math.max(150, Math.round(room))}px`;
-      // (A screen too short for both - a small phone with a tool's two lines: those buttons step aside while the list is up.)
-      document.body.classList.toggle("sn-crowd", !!col.offsetHeight && room < Math.min(150, this.sheet.offsetHeight));
-    } else document.body.classList.remove("sn-crowd");
     if (rise && !calm()) this.sheet.animate([{ opacity: 0, transform: "translateY(10px)" }, { opacity: 1, transform: "none" }], { duration: 140, easing: "ease-out" });
     // (One word's kinds: over that word.)
     this.sheet.style.setProperty("--sn-at", "50%");
@@ -1178,6 +1168,19 @@ export class Sentence {
         this.sheet.style.marginLeft = `${Math.round(Math.max(0, Math.min(room - w, was)))}px`;
       }
     }
+    // A phone held upright (the list is as wide as the screen): no taller than leaves the buttons at the right edge
+    // clear above it - it scrolls instead.
+    this.sheet.style.maxHeight = "";
+    const col = document.getElementById("right-col");
+    // (Only a list that reaches under them: a narrow one beside them - a sketch's Constraints - was cut to half its
+    // height for nothing, its second row behind a scroll.)
+    const under = !!col && this.sheet.getBoundingClientRect().right > col.getBoundingClientRect().left;
+    if (col && under && document.documentElement.dataset.screen === "phone" && matchMedia("(max-width: 720px) and (orientation: portrait)").matches) {
+      const room = this.line.getBoundingClientRect().top - col.getBoundingClientRect().bottom - 16;
+      if (col.offsetHeight && room < this.sheet.offsetHeight) this.sheet.style.maxHeight = `${Math.max(150, Math.round(room))}px`;
+      // (A screen too short for both - a small phone with a tool's two lines: those buttons step aside while the list is up.)
+      document.body.classList.toggle("sn-crowd", !!col.offsetHeight && room < Math.min(150, this.sheet.offsetHeight));
+    } else document.body.classList.remove("sn-crowd");
     this.lift();
   }
 

@@ -830,6 +830,7 @@ export class SketchTool implements Tool {
     const curves = this.pickedCurves();
     const chips: Extract<PanelItem, { type: "chips" }>["chips"] = [];
     const shown = new Set<string>();
+    const lit = new Set<string>();
     for (const b of CONSTRAINT_BUTTONS) {
       // Curves whose ends touch but aren't joined (their constraints deleted):
       // Coincident joins them all again, in one tap.
@@ -839,7 +840,7 @@ export class SketchTool implements Tool {
         continue;
       }
       const have = existingConstraints(b.type, this.constraints, this.selPts, curves);
-      for (const c of have) shown.add(c.id);
+      for (const c of have) shown.add(c.id), lit.add(c.type);
       const built = have.length ? [] : buildConstraints(b.type, this.selPts, curves, this.entities);
       if (!have.length && !built.length) continue;
       // H/V says which one it is (the line's nearer to one or the other).
@@ -857,7 +858,8 @@ export class SketchTool implements Tool {
     // In use on the pick, with something not picked: a line's Tangent to an arc, with the line alone picked. (Only
     // those between what is picked were lit: the list of those in use had none of them.) Sizes are in List all.
     const other = new Map<string, SketchConstraint[]>();
-    for (const c of this.selectionConstraints()) if (c.type !== "dim" && !shown.has(c.id)) other.set(c.type, [...(other.get(c.type) ?? []), c]);
+    // (Not a second Tangent beside the one lit for the picked pair: the arc's Tangent to a line not picked is in List all.)
+    for (const c of this.selectionConstraints()) if (c.type !== "dim" && !shown.has(c.id) && !lit.has(c.type)) other.set(c.type, [...(other.get(c.type) ?? []), c]);
     for (const [type, list] of other) {
       const b = CONSTRAINT_BUTTONS.find((x) => x.type === type || (x.type === "hv" && (type === "horizontal" || type === "vertical")));
       const name = type === "horizontal" ? "Horizontal" : type === "vertical" ? "Vertical" : type === "fix" ? "Lock" : (b?.label ?? type);
