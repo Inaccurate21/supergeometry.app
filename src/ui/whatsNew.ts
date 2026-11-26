@@ -24,6 +24,11 @@ export const UPDATES: Update[] = [
       "Transparency is now called Fade, and an image's Opacity too: one word for how see-through something is, 0% solid, 75% very faint. Your bodies and images look the same as before.",
       "Learn the app with Claude: ask it to teach you. It has a course of eight lessons, from a first block to holes, round parts, parts that fit and variables. You do the tapping; it tells you what to tap and why, and checks each step.",
     ],
+    fixed: [
+      "Stop now stops. It ends the work before the next step and keeps everything already built, instead of throwing it all away and building the whole project again. A change is taken back; while a project is opening, the steps it had not reached are rolled back in History, so you can look at the part and remove the breakpoint when you are ready.",
+      "Deleting a face of a big body (hundreds of faces) is about four times faster and takes far less memory: a 128-step part with one now opens in about half the time.",
+      "A big project no longer gets built over again in the background after every change, which could keep a slower computer or a Chromebook busy for minutes.",
+    ],
   },
   {
     date: "2026-11-25",

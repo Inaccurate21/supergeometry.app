@@ -93,6 +93,8 @@ export interface RegenResult {
   /** Steps that worked but had to give something up (a fillet that no longer fits…). */
   notes?: FeatureError[];
   ms: number;
+  /** Every step built from nothing (none kept from before): the engine's memory then is about what the project itself takes. */
+  fromNothing?: boolean;
   /** The engine's memory after it (MB): it never gives any back, so the page starts a fresh engine when it's big. */
   memoryMB?: number;
 }
@@ -180,7 +182,9 @@ export type Request =
   | { type: "export"; features: Feature[]; format: ExportFormat; bodies?: string[] }
   | { type: "properties"; features: Feature[] }
   | { type: "health"; features: Feature[] }
-  | { type: "drawing"; features: Feature[]; views: ViewSpec[]; bodies?: string[] };
+  | { type: "drawing"; features: Feature[]; views: ViewSpec[]; bodies?: string[] }
+  // Taken at once, not in turn: the rebuild under way ends before its next step.
+  | { type: "stop" };
 
 export type Response =
   | { type: "ready" }
@@ -189,7 +193,9 @@ export type Response =
   | { type: "properties"; bodies: BodyProps[] }
   | { type: "health"; bodies: BodyHealth[] }
   | { type: "drawing"; views: ProjectedView[] }
-  | { type: "error"; message: string };
+  | { type: "error"; message: string }
+  // Not an answer (id 0): the step a long rebuild is at.
+  | { type: "step"; featureId: string };
 
 export interface Envelope<T> {
   id: number;

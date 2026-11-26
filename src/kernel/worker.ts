@@ -4,7 +4,7 @@
 import opencascade from "replicad-opencascadejs";
 import wasmUrl from "replicad-opencascadejs/wasm?url";
 import { setOC } from "replicad";
-import { bodyHealth, bodyProperties, projectViews, errorText, exportBodies, regenerate, resetKernel, withFreshKernel } from "./engine";
+import { askStop, bodyHealth, bodyProperties, projectViews, errorText, exportBodies, regenerate, resetKernel, setOnStep, Stopped, withFreshKernel } from "./engine";
 import type { BodyMesh, Envelope, Request, Response } from "./protocol";
 
 /**
@@ -32,8 +32,11 @@ async function load(): Promise<void> {
  */
 let queue: Promise<void> = Promise.resolve();
 self.onmessage = (e: MessageEvent<Envelope<Request>>) => {
+  // (Stop is taken at once: the rebuild sees it between two steps.)
+  if (e.data.msg.type === "stop") return askStop();
   queue = queue.then(() => handle(e));
 };
+setOnStep((featureId) => (self as DedicatedWorkerGlobalScope).postMessage({ id: 0, msg: { type: "step", featureId } } satisfies Envelope<Response>));
 
 async function handle(e: MessageEvent<Envelope<Request>>): Promise<void> {
   const { id, msg } = e.data;
@@ -73,6 +76,7 @@ async function handle(e: MessageEvent<Envelope<Request>>): Promise<void> {
         break;
     }
   } catch (err) {
+    if (err instanceof Stopped) return reply({ type: "error", message: err.message });
     console.error(err);
     reply({ type: "error", message: errorText(err) });
   }

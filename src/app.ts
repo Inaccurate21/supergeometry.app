@@ -156,7 +156,7 @@ export class App implements AppContext {
     busy.hidden = true;
     busy.innerHTML = `<span class="spinner"></span><span>Working…</span><button type="button" class="busy-stop" title="Stop - takes back the last change">Stop</button>`;
     document.body.append(busy);
-    busy.querySelector(".busy-stop")!.addEventListener("click", () => this.stopWork());
+    busy.querySelector(".busy-stop")!.addEventListener("click", () => void this.stopWork());
     let busyTimer = 0;
     let busyWatch = 0;
     this.kernel.onBusy = (on) => {
@@ -674,19 +674,63 @@ export class App implements AppContext {
   }
 
   /**
-   * The Stop button by the spinner: the engine drops what it's doing and the
-   * change that started it is taken back (a live preview is cancelled; a
-   * committed change is undone).
+   * The Stop button by the spinner: the engine stops (between two steps, keeping what it built - or, stuck in one
+   * long step, thrown away) and the change that started it is taken back: a live preview is cancelled, a committed
+   * change undone. With nothing to take back - a project just opened, or the rebuild after an earlier Stop - the
+   * steps from the one it stopped at are rolled back (the History's breakpoint), so it is not all built again:
+   * Stop stops.
    */
-  private stopWork(): void {
-    const running = this.kernel.running;
-    const committed = !running || running === this.store.doc.features;
-    this.kernel.stop();
-    if (this.tool !== this.selectTool && !(this.tool instanceof SketchTool)) this.setTool(null);
-    if (committed && this.store.canUndo) this.store.undo();
-    else void this.regenerate();
-    this.ui.toast("Stopped - the last change was taken back");
+  private async stopWork(): Promise<void> {
+    if (this.stopping) return;
+    this.stopping = true;
+    const button = document.querySelector<HTMLButtonElement>(".busy-stop");
+    if (button) {
+      button.disabled = true;
+      button.textContent = "Stopping…";
+    }
+    try {
+      const running = this.kernel.running;
+      const committed = !running || running === this.store.doc.features;
+      // (The rebuild a Stop itself started: taking back yet another change is not what this Stop is for.)
+      const again = !!running && running === this.afterStop;
+      const { at, fresh } = await this.kernel.stop();
+      if (this.tool !== this.selectTool && !(this.tool instanceof SketchTool)) this.setTool(null);
+      if (!running) {
+        // Other work (an export, a drawing): its engine is a fresh one - the model is built again.
+        void this.regenerate();
+        return void this.ui.toast("Stopped");
+      }
+      if (!committed) {
+        void this.regenerate();
+        return void this.ui.toast("Stopped - the change was cancelled");
+      }
+      if (!at && !fresh) return; // (It had finished.)
+      if (this.store.canUndo && !again) {
+        this.store.undo();
+        this.afterStop = this.store.doc.features;
+        return void this.ui.toast("Stopped - the last change was taken back");
+      }
+      const i = at ? this.store.features.findIndex((f) => f.id === at) : -1;
+      if (i < 0) {
+        void this.regenerate();
+        return void this.ui.toast("Stopped");
+      }
+      const off = this.store.features.length - i;
+      const name = this.store.features[i].name;
+      this.store.commit((d) => d.features.forEach((f, k) => (k >= i ? (f.rolledBack = true) : delete f.rolledBack)));
+      this.afterStop = this.store.doc.features;
+      this.ui.toast(`Stopped at ${name}: it and the steps after it (${off} in all) are rolled back. Remove the breakpoint in History to build them again.`);
+    } finally {
+      this.stopping = false;
+      if (button) {
+        button.disabled = false;
+        button.textContent = "Stop";
+      }
+    }
   }
+  private stopping = false;
+  /** The steps a Stop went back to: stopped again while they are rebuilt, nothing more is taken back. */
+  private afterStop: Feature[] | null = null;
 
   async preview(features: Feature[]): Promise<RegenResult | null> {
     const r = await this.kernel.regenerate(features);

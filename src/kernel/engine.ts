@@ -243,6 +243,27 @@ let savedCache: CacheEntry[] = [];
 let drawingCache: CacheEntry[] = [];
 /** While drawings rebuild into `drawingCache`: the model's own steps, for the ones before its first thread. */
 let alsoCache: CacheEntry[] = [];
+/** A rebuild ended by Stop part way: the steps it had built, kept for when it is asked again. */
+let partCache: CacheEntry[] = [];
+
+/** Stop asked for (the page's Stop): the rebuild under way ends before its next step, keeping what it built. */
+let stopAsked = false;
+export function askStop(): void {
+  stopAsked = true;
+}
+/** Told the step the rebuild is at, now and then (the page's Stop says where it stopped). */
+export let onStep: ((featureId: string) => void) | null = null;
+export function setOnStep(f: ((featureId: string) => void) | null): void {
+  onStep = f;
+}
+/** A rebuild ended by Stop before step `featureId` (every step before it built, and kept). */
+export class Stopped extends Error {
+  constructor(readonly featureId: string) {
+    super(`Stopped:${featureId}`);
+  }
+}
+/** When the rebuild last let other work in (a Stop asked for meanwhile). */
+let lastYield = 0;
 
 /**
  * The engine itself broke down on a step (out of memory, a fault inside
@@ -284,6 +305,7 @@ export function resetKernel(): void {
   cache = [];
   savedCache = [];
   drawingCache = [];
+  partCache = [];
   lastBodies = new Map();
   importCache.clear();
   sketchWas.clear();
@@ -799,7 +821,7 @@ export async function regenerate(features: Feature[], saved = false): Promise<Re
     const f = asGiven.get(id);
     if (f?.type === "sketch" && f.links?.length && s.entities !== f.entities && JSON.stringify(s.entities) !== JSON.stringify(f.entities)) (sketchEntities ??= {})[id] = s.entities;
   }
-  return { bodies: meshes, errors, notes, sketchPlanes, sketchBoundaries, ...(sketchEntities ? { sketchEntities } : {}), ...(whole ? { whole } : {}), planes: [...ctx.planes.values()], axes: [...ctx.axes.values()], ms: performance.now() - t0 };
+  return { bodies: meshes, errors, notes, sketchPlanes, sketchBoundaries, ...(sketchEntities ? { sketchEntities } : {}), ...(whole ? { whole } : {}), planes: [...ctx.planes.values()], axes: [...ctx.axes.values()], ms: performance.now() - t0, ...(features.length && !rebuildStats.kept && !rebuildStats.reused ? { fromNothing: true } : {}) };
 }
 
 /**
@@ -828,7 +850,10 @@ async function run(features: Feature[], saved = false) {
   const off = [...switchedOff].sort().join();
   // The steps as last rebuilt (by step, wherever in the list they are now).
   const before = new Map<string, CacheEntry>();
-  for (const e of [...cache, ...savedCache, ...alsoCache]) if (e.id && !before.has(e.id)) before.set(e.id, e);
+  for (const e of [...cache, ...savedCache, ...alsoCache, ...partCache]) if (e.id && !before.has(e.id)) before.set(e.id, e);
+  // (A Stop asked for before this rebuild began was for the one before.)
+  stopAsked = false;
+  lastYield = performance.now();
   rebuildStats.ran = rebuildStats.kept = rebuildStats.reused = 0;
   smoothSteps = new Set(features.filter((f) => f.type === "faceFreeform").map((f) => f.id));
   let key = "";
@@ -848,7 +873,7 @@ async function run(features: Feature[], saved = false) {
     const text = JSON.stringify((f.type === "boolean" || f.type === "delete") && f.whole ? { ...f, whole: undefined } : f, shortBig);
     const json = `${hash53(text, 3)}.${text.length}`;
     key = chainKey(key, text);
-    const cached: CacheEntry | undefined = !hit ? undefined : cache[i]?.key === key ? cache[i] : savedCache[i]?.key === key ? savedCache[i] : alsoCache[i]?.key === key ? alsoCache[i] : undefined;
+    const cached: CacheEntry | undefined = !hit ? undefined : cache[i]?.key === key ? cache[i] : savedCache[i]?.key === key ? savedCache[i] : alsoCache[i]?.key === key ? alsoCache[i] : partCache[i]?.key === key ? partCache[i] : undefined;
     hit = !!cached;
     let entry: CacheEntry;
     const was = before.get(f.id);
@@ -865,6 +890,18 @@ async function run(features: Feature[], saved = false) {
       entry = { ...was, key, ctx: out, input: ctx };
       rebuildStats.reused++;
     } else {
+      // Now and then in a long rebuild: other work let in - a Stop asked for, between two steps (a step itself
+      // can't be broken off). What is built so far is kept: asked again, it carries on from here.
+      if (performance.now() - lastYield > 40) {
+        onStep?.(f.id);
+        await new Promise((done) => setTimeout(done, 0));
+        lastYield = performance.now();
+      }
+      if (stopAsked) {
+        stopAsked = false;
+        partCache = next;
+        throw new Stopped(f.id);
+      }
       const out = fork(ctx);
       entry = { key, ctx: out, id: f.id, json, off, input: ctx };
       rebuildStats.ran++;
@@ -995,6 +1032,7 @@ async function run(features: Feature[], saved = false) {
   }
   cache = next;
   if (saved) savedCache = next;
+  partCache = [];
   lastBodies = ctx.bodies;
   // Steps that don't say yet which patterns they used whole: as they were made.
   let whole: Record<string, string[]> | undefined;
