@@ -70,6 +70,8 @@ interface Word {
   /** What its list's two rows are called, if not where it is and "Other ... tools". */
   kidsCap?: string;
   restCap?: string;
+  /** Its list in small buttons, several across, all in view (a sketch's constraints: big ones ran to a scroll). */
+  compact?: boolean;
   kind: "subject" | "verb" | "slot" | "choice" | "toggle" | "value" | "button";
   label: string;
   /** A small name over it (what the option is: "Ends", "Distance"). */
@@ -681,7 +683,7 @@ export class Sentence {
           const used = kids.filter((w, i) => w.on || it.chips[i].used);
           const free = kids.filter((w) => !used.includes(w));
           const [a, b] = it.split;
-          out.push({ key, kind: "verb", label: it.label ?? "Add", icon: "constraints", kids: used.length ? used : free, kidsCap: used.length ? a : b, rest: used.length && free.length ? free : undefined, restCap: b });
+          out.push({ key, kind: "verb", label: it.label ?? "Add", icon: "constraints", kids: used.length ? used : free, kidsCap: used.length ? a : b, rest: used.length && free.length ? free : undefined, restCap: b, compact: true });
         } else if (kids.length <= 2) out.push(...kids);
         else out.push({ key, kind: "choice", label: it.label ?? "Add", kids });
       }
@@ -1127,7 +1129,8 @@ export class Sentence {
     this.sheet.hidden = false;
     // (More is a list like any other on the line: a card over its button, as big as what is in it. It was the whole
     // line's width, for a handful of buttons.)
-    this.sheet.className = "sn-sheet sn-kids";
+    const compact = o.kind === "kids" && !!this.find(o.key)?.compact;
+    this.sheet.className = `sn-sheet sn-kids${compact ? " sn-compact" : ""}`;
     const old = Array.from(this.sheet.children) as HTMLElement[];
     const had = old.filter((c) => c.classList.contains("sn-group"));
     const same = !rise && had.length === blocks.length && had.every((c, i) => c.dataset.cap === blocks[i].cap);
@@ -1177,9 +1180,11 @@ export class Sentence {
     const under = !!col && this.sheet.getBoundingClientRect().right > col.getBoundingClientRect().left;
     if (col && under && document.documentElement.dataset.screen === "phone" && matchMedia("(max-width: 720px) and (orientation: portrait)").matches) {
       const room = this.line.getBoundingClientRect().top - col.getBoundingClientRect().bottom - 16;
-      if (col.offsetHeight && room < this.sheet.offsetHeight) this.sheet.style.maxHeight = `${Math.max(150, Math.round(room))}px`;
+      // (Small buttons, all of them in view: the buttons at the edge step aside instead.)
+      const whole = this.sheet.classList.contains("sn-compact");
+      if (col.offsetHeight && room < this.sheet.offsetHeight && !whole) this.sheet.style.maxHeight = `${Math.max(150, Math.round(room))}px`;
       // (A screen too short for both - a small phone with a tool's two lines: those buttons step aside while the list is up.)
-      document.body.classList.toggle("sn-crowd", !!col.offsetHeight && room < Math.min(150, this.sheet.offsetHeight));
+      document.body.classList.toggle("sn-crowd", !!col.offsetHeight && room < (whole ? this.sheet.offsetHeight : Math.min(150, this.sheet.offsetHeight)));
     } else document.body.classList.remove("sn-crowd");
     this.lift();
   }
@@ -1227,9 +1232,10 @@ export class Sentence {
     const cs = getComputedStyle(sheet);
     const frame = parseFloat(cs.paddingLeft) + parseFloat(cs.paddingRight) + parseFloat(cs.borderLeftWidth) + parseFloat(cs.borderRightWidth);
     const room = lineWidth - frame;
-    const cell = Math.min(room, Math.max(widest, phone ? 92 : 84));
-    // (Up to five in one row; more than that, four across - a card, not a strip.)
-    const fits = Math.max(1, Math.min(most <= 5 ? 5 : 4, Math.floor((room + gap) / (cell + gap))));
+    const compact = sheet.classList.contains("sn-compact");
+    const cell = Math.min(room, Math.max(widest, compact ? 56 : phone ? 92 : 84));
+    // (Up to five in one row; more than that, four across - a card, not a strip. Small buttons: five across.)
+    const fits = Math.max(1, Math.min(most <= 5 || compact ? 5 : 4, Math.floor((room + gap) / (cell + gap))));
     const rows = Math.ceil(most / fits);
     const cols = Math.max(1, Math.ceil(most / rows));
     const gcd = (a: number, b: number): number => (b ? gcd(b, a % b) : a);

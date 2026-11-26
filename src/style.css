@@ -7254,6 +7254,36 @@ html[data-screen="phone"] .sn-sheet:not(.sn-typing) .sn-group-words .sn-word:not
 html[data-screen="phone"] .sn-sheet .sn-group-cap {
   font-size: 11.5px;
 }
+/* A sketch's constraints: small buttons, five across, both rows (in use, to add) in view at once - the big ones ran
+   to a scroll before what could be added. */
+html[data-screen="phone"] .sn-sheet.sn-compact .sn-group-words {
+  gap: 5px;
+}
+html[data-screen="phone"] .sn-sheet.sn-compact .sn-group-words .sn-word {
+  min-height: 44px;
+  min-width: 0;
+  padding: 4px 2px 3px;
+  font-size: 10.5px;
+  border-radius: 9px;
+}
+html[data-screen="phone"] .sn-sheet.sn-compact .sn-group-words .sn-word .sn-body {
+  gap: 2px;
+}
+html[data-screen="phone"] .sn-sheet.sn-compact .sn-group-words .sn-word .sn-icon,
+html[data-screen="phone"] .sn-sheet.sn-compact .sn-group-words .sn-word .sn-icon svg {
+  width: 17px;
+  height: 17px;
+}
+html[data-screen="phone"] .sn-sheet.sn-compact .sn-group-words .sn-word .sn-text {
+  overflow-wrap: normal;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+html[data-screen="phone"] .sn-sheet.sn-kids.sn-compact .sn-group + .sn-group {
+  margin-top: 8px;
+  padding-top: 6px;
+}
 /* (A phone on its side: the list is a card over its word - its cells as wide as a finger.) */
 @media (orientation: landscape) {
   html[data-screen="phone"] .sn-sheet:not(.sn-typing) .sn-group-words .sn-word {
