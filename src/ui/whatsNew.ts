@@ -17,6 +17,12 @@ interface Update {
 
 export const UPDATES: Update[] = [
   {
+    date: "2026-11-26",
+    added: [
+      "More → GitHub opens the project's page: the code, the open issues and where to report one.",
+    ],
+  },
+  {
     date: "2026-11-25",
     added: [
       "Hole catches on more: tap near the point where an axis passes through the face, or near a sketch drawn on the face (the end of a line, where lines meet or cross, the centre of a circle), and the hole sits exactly there.",
