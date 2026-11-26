@@ -67,6 +67,9 @@ interface Word {
   peek?: () => number[];
   /** A group with something picked: its other tools - not for this pick as it is, each asks for its own as it starts - under the pick's own in its list. */
   rest?: Word[];
+  /** What its list's two rows are called, if not where it is and "Other ... tools". */
+  kidsCap?: string;
+  restCap?: string;
   kind: "subject" | "verb" | "slot" | "choice" | "toggle" | "value" | "button";
   label: string;
   /** A small name over it (what the option is: "Ends", "Distance"). */
@@ -671,9 +674,15 @@ export class Sentence {
       } else if (it.type === "button") out.push({ key, kind: "button", label: it.label, icon: it.icon ?? iconNameFor(it.label), pulse: it.primary, run: () => it.onClick() });
       else if (it.type === "chips") {
         if (!it.chips.length) continue;
-        const kids = it.chips.map((c, i): Word => ({ key: `${key}-${i}`, kind: "toggle", label: c.label, glyph: c.glyph, on: !!c.on, run: () => c.onClick() }));
-        // (A sketch's constraints each on the line: folded under "Constraints", Parallel and Tangent were not found.)
-        if (kids.length <= 2 || (it.spread && kids.length <= 6)) out.push(...kids);
+        const kids = it.chips.map((c, i): Word => ({ key: `${key}-${i}`, kind: c.used && !c.on ? "button" : "toggle", label: c.label, glyph: c.glyph, icon: c.used && !c.on ? "constraints" : undefined, on: !!c.on, run: () => c.onClick() }));
+        // A sketch's constraints: one word, and in its list those on the pick first, then those that could be put on.
+        // (They were each a word on the line, beside a second word with the ones in use.)
+        if (it.split) {
+          const used = kids.filter((w, i) => w.on || it.chips[i].used);
+          const free = kids.filter((w) => !used.includes(w));
+          const [a, b] = it.split;
+          out.push({ key, kind: "verb", label: it.label ?? "Add", icon: "constraints", kids: used.length ? used : free, kidsCap: used.length ? a : b, rest: used.length && free.length ? free : undefined, restCap: b });
+        } else if (kids.length <= 2) out.push(...kids);
         else out.push({ key, kind: "choice", label: it.label ?? "Add", kids });
       }
     }
@@ -1112,8 +1121,8 @@ export class Sentence {
       if (!w?.kids?.length) return void this.close();
       // (Under another: where it is - "Transform › Pattern".)
       // (From inside More: "More › BIM" - where it is, as a list under a word of the line says.)
-      blocks.push({ cap: path.length > 1 ? path.map((x) => x.cap ?? x.label).join(" › ") : `${path.length ? "" : "More › "}${w.cap ?? w.label}`, words: w.kids });
-      if (w.rest?.length) blocks.push({ cap: `Other ${(w.cap ?? w.label).toLowerCase()} tools (each asks for its own pick)`, words: w.rest });
+      blocks.push({ cap: w.kidsCap ?? (path.length > 1 ? path.map((x) => x.cap ?? x.label).join(" › ") : `${path.length ? "" : "More › "}${w.cap ?? w.label}`), words: w.kids });
+      if (w.rest?.length) blocks.push({ cap: w.restCap ?? `Other ${(w.cap ?? w.label).toLowerCase()} tools (each asks for its own pick)`, words: w.rest });
     }
     this.sheet.hidden = false;
     // (More is a list like any other on the line: a card over its button, as big as what is in it. It was the whole

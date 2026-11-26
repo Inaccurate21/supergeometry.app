@@ -110,7 +110,7 @@ export type PanelItem =
   | { type: "slider"; label: string; value: number; min: number; max: number; step?: number; show?(v: number): string; onInput(v: number): void }
   | { type: "button"; label: string; icon?: IconName; onClick(): void; /** Blue: the step to take next (Apply). */ primary?: boolean }
   /** A row of one-tap chips (e.g. the constraints that fit a selection); `on` ones are lit. */
-  | { type: "chips"; label?: string; chips: { label: string; glyph?: string; on?: boolean; title?: string; onClick(): void }[]; empty?: string; /** Each its own word on the line (up to six), not folded under the label. */ spread?: boolean };
+  | { type: "chips"; label?: string; chips: { label: string; glyph?: string; on?: boolean; title?: string; /** In the first row with those that are on, though not lit itself (Constraints' list of them all). */ used?: boolean; onClick(): void }[]; empty?: string; /** One word on the line, its list in two rows: those on (and `used`) first, under `split[0]`; the rest under `split[1]`. */ split?: [string, string] };
 
 /** Kept for older call sites: a numeric field. */
 export interface ValueField {

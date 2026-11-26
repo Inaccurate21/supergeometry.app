@@ -25,7 +25,7 @@ export const UPDATES: Update[] = [
       "Learn the app with Claude: ask it to teach you. It has a course of eight lessons, from a first block to holes, round parts, parts that fit and variables. You do the tapping; it tells you what to tap and why, and checks each step.",
     ],
     fixed: [
-      "Sketch constraints are easier to find: pick two curves and Parallel, Perpendicular, Tangent, Equal and the rest are each a button on the bottom line, not folded under Constraints. The hint says so too.",
+      "Sketch constraints in one place: pick a line or a shape and Constraints on the bottom line opens two rows, the ones in use (tap one to take it off, or List all to see every size and join) and the ones you can add (Parallel, Tangent, Equal...). The hint says so too.",
       "Construction (dashed lines) is in the Draw list now, at its end, not only under More.",
       "Constraints beside picked curves: a Constraints button between Construction and Delete opens the ones that fit (Parallel, Tangent, Equal...).",
       "Tangent between a line and an arc that meet end to end now joins them too: moving a line no longer pulls the arc's end off the other line. And a line ending on the origin: an arc drawn from there is joined to the line, not just held to the origin.",

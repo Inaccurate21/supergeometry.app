@@ -810,7 +810,7 @@ export class SketchTool implements Tool {
     // Typing a value digit by digit: say it once, not on every key.
     if (performance.now() - this.refusedAt < 2000) return;
     this.refusedAt = performance.now();
-    this.app.ui.toast("That contradicts constraints already on the sketch - remove one first (Constraints → tap it → Delete)", "error");
+    this.app.ui.toast("That contradicts constraints already on the sketch - remove one first (Constraints → tap the one in use)", "error");
   }
 
   /** Constraints on the selected curves (any that names one of them): sizes, angles, joins, locks. */
@@ -829,6 +829,7 @@ export class SketchTool implements Tool {
     if (this.kind !== "select" || (!this.selected.size && !this.selPts.length)) return [];
     const curves = this.pickedCurves();
     const chips: Extract<PanelItem, { type: "chips" }>["chips"] = [];
+    const shown = new Set<string>();
     for (const b of CONSTRAINT_BUTTONS) {
       // Curves whose ends touch but aren't joined (their constraints deleted):
       // Coincident joins them all again, in one tap.
@@ -838,6 +839,7 @@ export class SketchTool implements Tool {
         continue;
       }
       const have = existingConstraints(b.type, this.constraints, this.selPts, curves);
+      for (const c of have) shown.add(c.id);
       const built = have.length ? [] : buildConstraints(b.type, this.selPts, curves, this.entities);
       if (!have.length && !built.length) continue;
       // H/V says which one it is (the line's nearer to one or the other).
@@ -852,7 +854,20 @@ export class SketchTool implements Tool {
         onClick: () => (have.length ? this.removeConstraints(have) : this.addConstraint(b.type)),
       });
     }
-    return chips.length ? [{ type: "chips", label: "Constraints", chips, spread: true }] : [];
+    // In use on the pick, with something not picked: a line's Tangent to an arc, with the line alone picked. (Only
+    // those between what is picked were lit: the list of those in use had none of them.) Sizes are in List all.
+    const other = new Map<string, SketchConstraint[]>();
+    for (const c of this.selectionConstraints()) if (c.type !== "dim" && !shown.has(c.id)) other.set(c.type, [...(other.get(c.type) ?? []), c]);
+    for (const [type, list] of other) {
+      const b = CONSTRAINT_BUTTONS.find((x) => x.type === type || (x.type === "hv" && (type === "horizontal" || type === "vertical")));
+      const name = type === "horizontal" ? "Horizontal" : type === "vertical" ? "Vertical" : type === "fix" ? "Lock" : (b?.label ?? type);
+      const glyph = type === "horizontal" ? "H" : type === "vertical" ? "V" : b?.glyph;
+      chips.push({ label: list.length > 1 ? `${name} (${list.length})` : name, glyph, on: true, title: `Remove ${name.toLowerCase()}`, onClick: () => this.removeConstraints(list) });
+    }
+    // The whole list of those on the pick (each with its bin, sizes to type over), with the ones in use.
+    const n = this.selectionConstraints().length;
+    if (n) chips.push({ label: `List all (${n})`, used: true, title: "Every constraint on the pick, each to delete", onClick: () => this.openConstraintList() });
+    return chips.length ? [{ type: "chips", label: "Constraints", chips, split: ["In use (tap to take off)", "Add"] }] : [];
   }
 
   /**
@@ -878,16 +893,6 @@ export class SketchTool implements Tool {
     return this.selected.size ? touchingEnds(this.entities, this.constraints, this.selected) : [];
   }
 
-  /**
-   * "Constraints (n)" for the selection's card, when it has any: the list of them, each with its own bin and its
-   * size to type over, and all of them deleted at once from there. (It was "Delete constraints (n)", which took
-   * them all.)
-   */
-  private deleteConstraintsItem(): PanelItem[] {
-    const n = this.selectionConstraints().length;
-    if (!n) return [];
-    return [{ type: "button", label: `Constraints (${n})`, icon: "constraints", onClick: () => this.openConstraintList() }];
-  }
 
   private openConstraintList(): void {
     showConstraintList({
@@ -1737,7 +1742,7 @@ export class SketchTool implements Tool {
                 : [];
           return ui.showPanel({
             title: this.selPts.length === 1 ? (lift ? "Spline point" : "Point") : `${this.selPts.length} points`,
-            items: [...xy, ...height, ...this.constraintChips(), ...this.deleteConstraintsItem()],
+            items: [...xy, ...height, ...this.constraintChips()],
             onDone: () => this.clearSelection(),
           });
         }
@@ -1757,7 +1762,6 @@ export class SketchTool implements Tool {
               ...angle,
               ...this.constraintChips(),
               { type: "button", label: "Construction", icon: "construction", onClick: () => this.toggleConstruction() },
-              ...this.deleteConstraintsItem(),
               { type: "button", label: "Delete", icon: "trash", onClick: () => this.deleteSelected() },
             ],
           });
@@ -5990,7 +5994,6 @@ export class SketchTool implements Tool {
       ...this.constraintChips(),
       { type: "toggle", label: "Construction", value: !!e.construction, onChange: () => this.toggleConstruction() },
       ...(e.kind === "rect" || e.kind === "polygon" ? [{ type: "button", label: "Explode", icon: "line", onClick: () => this.explodeShape(id) } as PanelItem] : []),
-      ...this.deleteConstraintsItem(),
       { type: "button", label: "Delete", icon: "trash", onClick: () => this.deleteSelected() },
     );
     this.app.ui.showPanel({ title: titleOf(e.kind as Kind), items, onDone: () => this.clearSelection() });
