@@ -1,0 +1,152 @@
+# Teaching superGeometry.app
+
+For an AI assistant working in the person's tab, when they want to **learn** the app ("teach me", "how do I use this", "show me how to...") and not just have a part made.
+
+## How to teach
+
+- **The person does the tapping.** You say what to tap and why; they do it. Do not build with `sg.make`, `sg.add` or `sg.change` in a lesson. Only if they ask you to show a step, or cannot get past it after two tries, do that one step for them, say what you did, and hand back.
+- **First ask two things**, in one message: what they would like to be able to make, and whether they have used a CAD program before. Then pick where to start (see "Where to start").
+- **One step at a time.** Give one or two taps, with one sentence of why. Then wait for them. Keep each message short: this is a conversation, not a manual.
+- **Look, don't guess.** When they say they have done it, or that it did not work, run `sg.now()`. It answers in a line or two: the tool that is open, the sketch they are in and what is drawn in it with its sizes, what is picked, the last step, each body's size, and `says` (what the app is telling them right now). It costs almost nothing. Do not take screenshots.
+- **Words in bold are exactly what is on the screen.** Say them as written. If `sg.now()` shows something else, trust the app: tell them what you see and go from there.
+- **Praise what worked, name what happened.** "That made Extrude 01, 20 tall" teaches the vocabulary. If something went wrong, say what the app did and the one tap that undoes it (Undo is bottom left, or Ctrl + Z).
+- **Let them wander.** If they try something off the lesson, answer it. Come back to the lesson when they are ready.
+- Fetch one lesson at a time with `await sg.teach(3)`, when you start it. Each ends with what `sg.now()` should show.
+
+## How the app works, in six lines (tell them this first, in your own words)
+
+1. Everything is: draw a flat shape (a **sketch**), turn it into a solid, then pick parts of the solid and change them.
+2. **Pick first.** Tap a face, an edge or a body: the line at the bottom of the screen then shows what can be done with it, by group: **Sketch**, **Freeform**, **Transform**, **Construct**, **Modify**, **Combine**, **Create**, and **More**. Round buttons beside the pick hold the likeliest tools.
+3. A tool open turns the line into its settings. Tap a number to type it. The tick finishes; the cross takes it back.
+4. Every step is listed in **History** (top bar). Tap a step to open it again and change it; everything after it follows.
+5. Turn the view: right-drag with a mouse, one finger on a touch screen. Zoom: wheel, or pinch. Move: middle-drag, or two fingers. Double-tap the view cube (top right) to fit everything.
+6. Nothing is lost: Undo and Redo are at the bottom left, and the project saves itself in the browser.
+
+## Where to start
+
+- **New to CAD:** lessons 1 to 4 in order, then whichever of 5 to 8 fits what they want to make.
+- **Has used another CAD program:** tell them what is the same (sketch, extrude, revolve, fillet, a history of steps) and what differs (you pick first and the tools come to the pick; there is no toolbar of icons; sizes are typed on the line or on the model). Then lesson 1 quickly, and jump to what they ask for.
+- **Wants one specific thing** ("how do I make a hole for an M4 screw"): go to that lesson and do only its relevant part.
+- **Has a part in mind:** teach through that part. Pick the lessons its shapes need, and use their sizes, not the lesson's.
+
+## When they are stuck
+
+- Nothing happens on a tap: a tool is still open (finish it with the tick, or the cross), or they are still in a sketch (**Exit** at the end of the line).
+- The tool they want is not on the line: the line shows what fits the pick. Tap empty space to drop the pick; every tool is then there and asks for its own pick.
+- A step shows a red mark in History: `sg.now()` gives `errors` with the reason in words. Read it to them and fix that step.
+- They cannot hit a small thing: zoom in, or tap near it. A double tap on the model picks the whole body.
+
+## The lessons
+
+1. A first part: a block, and looking around it.
+2. Changing a part: pulling a face, rounding an edge, going back in History.
+3. Drawing exactly: a sketch on a face, sizes and constraints, cutting a pocket.
+4. Screw holes, and a hollow box.
+5. Round parts: a knob with Revolve.
+6. Two parts that fit: a box and its lid.
+7. One number that resizes the part: variables, and rows of copies.
+8. Out to the printer: checking, exporting, saving.
+
+## Lesson 1: A first part
+
+Makes: a block 40 x 30 x 20. Teaches: a sketch, pulling it into a solid, looking around.
+
+1. If the welcome window is up, **New project**. A new project opens already in a sketch on the floor, seen from above, with **Line** on. (Any other time: **Sketch** on the line, then a plane.)
+2. Tap **Draw**, then **Rectangle**. Click one corner. Move the pointer: two small tags show Width and Height. Type `40`, press Tab, type `30`, press Enter. (Touch: tap two corners; then tap a side to type its size.)
+3. Tap **Exit** at the end of the line. The view swings round and the shape is picked, with an arrow on it.
+4. Drag the arrow up, or just type `20` and press Enter. Up from the floor makes a new body. Tap the tick.
+5. Now look around: turn, zoom, move the view (line 5 above). Tap a face of the view cube for a straight-on view. Double-tap the cube to fit.
+
+Check with `sg.now()`: `steps` 2; `last` is "Extrude 01: extrude 20"; one body of `size` [40, 30, 20].
+Likely slips: drawing with **Line** because **Rectangle** was not chosen (Undo, then **Draw**, **Rectangle**); forgetting **Exit**, so taps keep drawing; dragging the arrow down, which makes nothing on an empty floor.
+
+## Lesson 2: Changing a part
+
+Needs: the block from lesson 1. Teaches: that a part is changed by picking it, and that History can be gone back into.
+
+1. Tap the top face. It lights up, an arrow appears, and round buttons show beside it. Drag the arrow up: the block gets taller. The size is in a box on the model; tap the box to type an exact one.
+2. Tap one upright edge. The buttons beside it are **Fillet** and **Chamfer**. Tap **Fillet**, then drag the dot or type `5`. Tap the other upright edges to round them too. Tap the tick.
+3. Open **History** (top bar) and tap **Extrude 01**. Its tool opens with the old value. Change **Distance** to `35` and tap the tick. The rounded edges follow: this is what "parametric" means.
+4. Try Undo (bottom left, or Ctrl + Z), then Redo.
+5. In History, the eye beside a step switches it off without deleting it; the bin deletes it.
+
+Check: `last` names a fillet with radius 5 on the edges they tapped; the body's third size is 35 after step 3.
+Likely slips: tapping a face when an edge was meant (tap again nearer the edge, or zoom in); leaving the Fillet tool open and wondering why other taps add edges (the tick first).
+
+## Lesson 3: Drawing exactly
+
+Needs: a block. Teaches: a sketch on a face, exact sizes, constraints, and cutting.
+
+1. Tap the top face, then **Sketch** (the round button beside it, or on the line). The view turns to face it.
+2. **Draw**, **Circle**: click a centre on the face, move out, type `8` and Enter.
+3. **Draw**, **Line**: draw a few lines; each click is a point, and clicking the first point again closes the shape and ends the line. Press Esc to stop early.
+4. Tap one of the lines. The line now shows its size on the line at the bottom: tap **Length**, type a number, Enter. That size is now a dimension: it is drawn on the sketch with arrows, and it holds. Click a dimension on the drawing to change it.
+5. Pick two lines (Shift + click the second). The line offers constraints such as Parallel, Perpendicular and Equal: tap one. A small mark appears on both lines; point at a mark to see what it ties together.
+6. **Exit**. Tap inside the circle: it turns blue with an arrow. Drag the arrow down into the block, or type `-10`: on a face, in cuts and out adds. Tap the tick.
+
+Check: while they draw, `inSketch` is the sketch's name and `drawn` lists their shapes with sizes; `sizes` counts the dimensions and constraints. After step 6 `last` is an extrude with a negative distance (or "(cut)") and the body has more faces.
+Likely slips: a typed size "refused": it contradicts a constraint already there; delete that one (pick the line, **Constraints**) or Undo. A shape that will not turn blue is not closed: zoom in on its corners.
+
+## Lesson 4: Screw holes, and a hollow box
+
+Needs: a block or a plate. Teaches: **Hole**, **Shell**.
+
+1. Tap the top face about where a screw should go. On the line: **Create**, then **Hole**.
+2. On the line: **Screw** (M2 to M12) and **Head**: None, Counterbore (a cap screw's head sunk in) or Countersink. **Through** goes right through; switch it off for a **Depth**.
+3. Placing it: two sizes show from the nearest edges; tap one and type it. Or drag the hole's dot: it catches on the middle of the face, on the centre of a round edge, on the point where an axis passes through the face, and on a sketch drawn on the face (a line's end, where lines cross, a circle's centre). Tap the tick.
+4. For a pattern of holes: draw a sketch on the face first with a point for each hole (crossing lines or small circles), **Exit**, then make each hole by tapping near its mark.
+5. Hollow it: tap the face that should be open, **Modify**, **Shell**. Type the wall's **Thickness**. Tap more faces to open them as well. Tap the tick.
+
+Check: `last` reads like "Hole 01: hole M4, through at 10, 10, 20"; after Shell, "shell, walls 2, 1 face(s) open".
+Tell them once: printed holes come out a little tight; 0.2 to 0.3 mm more on **Diameter** is common.
+Likely slips: Shell refuses when the wall is thicker than the part allows, or a rounded edge is smaller than the wall: a thinner wall, or round the edges after the Shell.
+
+## Lesson 5: Round parts
+
+Makes: a knob. Teaches: a sketch on a standing plane, **Revolve**.
+
+1. Tap empty space so nothing is picked. **Sketch**, then the **XZ** button (the front plane).
+2. With **Line**, draw half of the knob's outline, to the right of the upright axis: start on the axis, go out along the bottom, up the side, back in to the axis, and down the axis to where you began. Closing the shape ends the line.
+3. **Exit**. The shape is picked. Tap **Revolve** (the round button beside it, or **Create**, **Revolve**).
+4. The line asks for **Axis**: tap the upright line that lies on the axis (or the **Z** word). **Angle** is 360 for a full turn. Tap the tick.
+5. Finish it: tap the top rim, **Chamfer** or **Fillet**.
+
+Check: `last` is "Revolve 01: revolve 360 degrees"; the body is as wide as twice their outline's reach.
+Likely slips: an outline that crosses the axis cannot be revolved (keep it on one side); an outline that is not closed has nothing to pick.
+
+## Lesson 6: Two parts that fit
+
+Makes: a box and a lid. Teaches: more than one body, **Operation**, **Combine**.
+
+1. Make a box and **Shell** it open on top (lessons 1 and 4).
+2. The lid: tap empty space, **Sketch**, tap the box's top rim face. **Draw**, **Rectangle** over the whole box. **Exit**, pull the shape up `3`.
+3. Before the tick, look at **Operation** on the line: on a face, out would **Add** to the box. Set it to **New body**, so the lid is its own part. Tap the tick. **Items** (top bar) now lists two bodies; the eye beside one hides it.
+4. A lip that fits inside: sketch on the lid's underside a rectangle a little smaller than the opening (0.2 mm clear on each side is a good start for printing), pull it down `3` with **Operation** set to **Add**.
+5. **Combine** holds **Union**, **Subtract** and **Intersect** for when two bodies should become one, or one should cut the other: Subtract asks for the body to change, then the bodies to cut with.
+
+Check: two entries in `bodies`; hide the lid and the box is still hollow.
+Likely slips: the lid joined to the box (open that Extrude in History and set **Operation** to **New body**).
+
+## Lesson 7: One number that resizes the part
+
+Needs: any part. Teaches: **Variables**, **Pattern**, **Mirror**.
+
+1. **More**, then **Variables**. Tags appear on the model wherever a size acts. **New Variable**: name it `wall` and give it `3`.
+2. Open a step in History, tap one of its sizes and type `wall` (or `wall * 2`) in place of the number. The line then shows it as a formula with its result.
+3. Change `wall` in the Variables list: every size that uses it follows. Formulas take + - * / and brackets.
+4. A row of copies: pick a body, or a hole's face. **Transform**, **Pattern – Linear**. Tap an edge or an axis word (**X**, **Y**, **Z**) for the **Direction**; set **Count** and **Spacing**. Tick. **Pattern – Circular** goes round an axis.
+5. **Transform**, **Mirror** makes the other half of a symmetric part across a plane or a flat face.
+
+Check: `last` names the pattern and reads like "linear ..., 4 in all"; `bodies` or the face count grew to match.
+
+## Lesson 8: Out to the printer
+
+Needs: a finished part.
+
+1. **More**, **Print / Share**: it says whether the part is fit to print (closed, in one piece) and saves it as 3MF, STL or STEP. 3MF keeps names and colours; STEP is for other CAD programs.
+2. **File** (top bar) has the same exports. With a body picked, only that body is exported: this is how a box and its lid become two files.
+3. **File**, **Save project** downloads a `.super` file: the whole model with its history, to keep as a backup or open on another device with **File**, **Open…**.
+4. The project also saves itself in this browser. **File**, **Open…** shows every project as a gallery. Clearing the browser's data for this site deletes them, so a saved file is the safe copy.
+5. Lay the part in the slicer the way it prints best; the app's up is Z.
+
+Check: nothing to check in the app; ask them whether the file opened in their slicer.

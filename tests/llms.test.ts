@@ -209,4 +209,37 @@ const build = async (features: unknown[], body: string) => after(features as Fea
   check("a screw size there is not: says which there are", /M2, M2\.5, M3/.test(said), said);
 }
 
+// ---------------------------------------------------------------- the course for teaching the app
+{
+  // public/llms-teach.txt: read a lesson at a time by an assistant that guides while the person taps. Every word
+  // it prints in bold as "on the screen" must be a word the app has - a tool renamed must be renamed here too.
+  const { readdirSync, statSync } = await import("node:fs");
+  const teach = readFileSync(new URL("../public/llms-teach.txt", import.meta.url), "utf8");
+  const parts = teach.split(/\n(?=## Lesson \d+)/);
+  const lessons = parts.slice(1);
+  check("the course: an opening and eight lessons, numbered in order", lessons.length === 8 && lessons.every((l, i) => l.startsWith(`## Lesson ${i + 1}:`)), lessons.map((l) => l.split("\n")[0]));
+  check("the opening is short enough to read at the start of a chat (under 5500 characters)", parts[0].length < 5500, parts[0].length);
+  check("each lesson is short (under 2200 characters) and says what to check", lessons.every((l) => l.length < 2200 && /\nCheck/.test(l)), lessons.map((l) => l.length));
+  check("the opening lists each lesson, and says how to look without a screenshot", lessons.every((_, i) => new RegExp(`\\n${i + 1}\\. `).test(parts[0])) && parts[0].includes("sg.now()") && parts[0].includes("sg.teach("), "");
+  // The app's own words: everything in its source and its page.
+  let words = readFileSync(new URL("../index.html", import.meta.url), "utf8");
+  const walk = (dir: URL) => {
+    for (const n of readdirSync(dir)) {
+      const u = new URL(n + (statSync(new URL(n, dir)).isDirectory() ? "/" : ""), dir);
+      if (u.pathname.endsWith("/")) walk(u);
+      else if (n.endsWith(".ts")) words += readFileSync(u, "utf8");
+    }
+  };
+  walk(new URL("../src/", import.meta.url));
+  const shown = teach.slice(teach.indexOf("## How the app works"));
+  const bold = [...new Set([...shown.matchAll(/\*\*([^*]+)\*\*/g)].map((m) => m[1]))];
+  // (Not words of the app: the course's own headings, and a step's name as History shows it - "Extrude 01".)
+  const own = (w: string) => /[.:]$/.test(w) || /^(New to CAD|Has used|Wants one|Has a part)/.test(w) || /^[A-Z][a-z]+ \d\d$/.test(w);
+  const missing = bold.filter((w) => !own(w) && ![`"${w}"`, `>${w}<`, `'${w}'`, `\`${w}\``, `"${w} `, `>${w} `, `"${w}…`].some((x) => words.includes(x)));
+  check(`every word the course shows as on the screen is a word of the app (${bold.length} of them)`, bold.length > 40 && !missing.length, missing);
+  // The start page sends an assistant here, and stays short itself.
+  const start = readFileSync(new URL("../public/llms.txt", import.meta.url), "utf8");
+  check("the start page says: to teach, sg.teach() - and is still short", start.includes("sg.teach()") && start.length < 6000, start.length);
+}
+
 done();

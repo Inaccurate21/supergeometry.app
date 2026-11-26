@@ -103,6 +103,7 @@ function showAssistant(): void {
   where.innerHTML = `<div class="ai-bar"><span class="ai-url">${LOCK}<span>supergeometry.app</span></span><span class="ai-dim">${STAR}</span><span class="ai-ring">${CLAUDE_MARK}</span>${PUZZLE}<span class="ai-dim">${DOTS}</span></div><div class="ai-arrow">${UP}</div><div class="ai-here">Claude is here, at the top right of your browser</div>`;
   body.append(where);
   body.append(el("p", "dialog-note", "Not there? Click the puzzle piece next to it and pin Claude."));
+  body.append(el("p", "", "New to the app? Ask Claude to teach you: it will guide you through it step by step while you do the tapping."));
   body.append(el("p", "", "The app is built so Claude needs only a few steps for each change, to keep your Claude usage low."));
   if (!supported) body.append(el("p", "ai-warn", "Claude's extension is made for Chrome and Edge. It is not made for this browser: open the app in one of those to use it."));
   const get = el("a", "text-btn primary ai-get", "Get Claude for Chrome");

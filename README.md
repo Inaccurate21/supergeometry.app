@@ -516,6 +516,10 @@ you: how to build a model in the person's open tab with the page's `sg` handle, 
 complete examples, is https://supergeometry.app/llms-full.txt; everything both pages say is tested against the
 app on every change (`tests/llms.test.ts`).
 
+**Learning the app with an assistant:** ask it to teach you. It has a course of eight lessons
+(`public/llms-teach.txt`): you do the tapping, it says what to tap and why, and checks what you did
+(`sg.now()`) before going on. It starts from what you want to make and what you already know.
+
 **People:** on a computer, the **Claude** button at the bottom right shows how to model by asking. It needs
 Claude's extension for Chrome: open it beside the app, say what you want, and Claude builds the model in your
 tab. The app sends nothing anywhere; the extension works in your own browser.

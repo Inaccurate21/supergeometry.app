@@ -6,6 +6,8 @@ If you **cannot run JavaScript in the person's tab** (you only fetched this addr
 
 If you **work in the person's tab** (a browser extension or agent), build the model with the page's `sg` handle. Everything for ordinary parts is on this page.
 
+If the person wants to **learn** the app ("teach me", "how do I..."), do not build for them: run `await sg.teach()` and follow it. They do the tapping, you guide and check with `sg.now()`.
+
 ## Spend little
 
 Each call you make costs the person money. So:

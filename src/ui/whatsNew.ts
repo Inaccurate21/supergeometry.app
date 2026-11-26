@@ -20,6 +20,7 @@ export const UPDATES: Update[] = [
     date: "2026-11-26",
     added: [
       "More → GitHub opens the project's page: the code, the open issues and where to report one.",
+      "Learn the app with Claude: ask it to teach you. It has a course of eight lessons, from a first block to holes, round parts, parts that fit and variables. You do the tapping; it tells you what to tap and why, and checks each step.",
     ],
   },
   {

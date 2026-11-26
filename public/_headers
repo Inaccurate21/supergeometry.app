@@ -28,6 +28,10 @@
   Cache-Control: no-cache
   Content-Type: text/plain; charset=utf-8
 
+/llms-teach.txt
+  Cache-Control: no-cache
+  Content-Type: text/plain; charset=utf-8
+
 /offline-files.json
   Cache-Control: no-cache
 

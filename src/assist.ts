@@ -277,6 +277,100 @@ export function assistMethods(app: App, idle: () => Promise<boolean>) {
     },
 
     /**
+     * What the person has just done, in a line or two - for teaching, where the person does the tapping and the
+     * assistant only looks: the tool that is open, the sketch being drawn in (its shapes and their sizes), what is
+     * picked, how many steps there are and what the last one is, each body's size, what the app is saying.
+     * Read off what is on screen: nothing is built or measured for it, so it costs next to nothing to ask.
+     */
+    now() {
+      const fs = features();
+      const names = app.store.doc.names ?? {};
+      const tool = app as unknown as { tool: { id: string; editingId?: string; activeSketch?: string; sketchId?: string; entities?: Feature[] } };
+      const ui = app.ui as unknown as { hintText: string | null; panelSpec: { title: string } | null };
+      const n = (x: number) => r3(x);
+      const about = (f: Feature): string => {
+        const g = f as unknown as Loose;
+        switch (f.type) {
+          case "sketch": {
+            const kinds = new Map<string, number>();
+            for (const e of f.entities) kinds.set(e.kind, (kinds.get(e.kind) ?? 0) + 1);
+            const pl = f.plane.normal;
+            const on = Math.abs(pl[2]) > 0.999 ? "flat" : Math.abs(pl[1]) > 0.999 ? "front (XZ)" : Math.abs(pl[0]) > 0.999 ? "side (YZ)" : "tilted";
+            return `sketch, ${on}${Math.abs(f.plane.origin[2]) > 1e-9 && on === "flat" ? ` at height ${n(f.plane.origin[2])}` : ""}: ${[...kinds].map(([k, c]) => `${c} ${k}`).join(", ") || "empty"}`;
+          }
+          case "extrude":
+            return `extrude ${n(g.distance as number)}${g.mode && g.mode !== "new" && g.mode !== "auto" ? ` (${g.mode})` : ""}${g.symmetric ? ", both ways" : ""}`;
+          case "revolve":
+            return `revolve ${n((g.angle as number) ?? 360)} degrees`;
+          case "fillet":
+          case "chamfer":
+            return `${f.type} ${n(g.radius as number)} on ${(g.edges as unknown[] | undefined)?.length ?? 0} edge(s)`;
+          case "shell":
+            return `shell, walls ${n(g.thickness as number)}, ${(g.faces as unknown[] | undefined)?.length ?? 0} face(s) open`;
+          case "hole":
+            return `hole ${g.size ?? n(g.diameter as number)}${g.head && g.head !== "none" ? `, ${g.head}` : ""}${g.through ? ", through" : `, ${n(g.depth as number)} deep`} at ${(g.at as number[]).map(n).join(", ")}${g.centered ? " (middle of the face)" : ""}`;
+          case "boolean":
+            return `${g.op} of ${g.target} with ${(g.tools as string[]).join(", ")}`;
+          case "transform": {
+            const op = g.op as Loose;
+            return `${op.kind}${g.copy ? " (copy)" : ""}${op.count ? `, ${op.count} in all` : ""}`;
+          }
+          default:
+            return f.type;
+        }
+      };
+      const open = tool.tool.editingId ?? tool.tool.activeSketch ?? tool.tool.sketchId ?? null;
+      const sk = open ? fs.find((f) => f.id === open) : undefined;
+      // (A sketch being drawn is the sketch tool's own until it is left: its shapes are read off the tool.)
+      const sketching = tool.tool.id === "sketch";
+      const shapes = sketching && Array.isArray(tool.tool.entities) ? (tool.tool.entities as unknown[]) : sk?.type === "sketch" ? (sk.entities as unknown[]) : null;
+      const drawn =
+        shapes
+          ? shapes.slice(-8).map((e) => {
+              const x = e as unknown as Loose & { kind: string };
+              const v = (q: unknown) => (q as number[]).map(n).join(", ");
+              if (x.kind === "rect") return `rectangle ${n(x.w as number)} x ${n(x.h as number)} at ${v(x.center)}`;
+              if (x.kind === "circle") return `circle radius ${n(x.radius as number)} at ${v(x.center)}`;
+              if (x.kind === "line") return `line ${v(x.a)} to ${v(x.b)} (${n(Math.hypot((x.b as number[])[0] - (x.a as number[])[0], (x.b as number[])[1] - (x.a as number[])[1]))} long)`;
+              if (x.kind === "polygon") return `polygon, ${x.sides} sides, radius ${n(x.radius as number)}`;
+              if (x.kind === "arc") return `arc ${v(x.a)} to ${v(x.b)}`;
+              return x.kind;
+            })
+          : undefined;
+      const errs = (app.result?.errors ?? []).map((e) => `${fs.find((f) => f.id === e.featureId)?.name ?? e.featureId}: ${e.message}`);
+      const last = fs[fs.length - 1];
+      return {
+        tool: tool.tool.id === "select" ? "none" : (ui.panelSpec?.title ?? tool.tool.id),
+        ...(shapes ? { inSketch: sk?.name ?? "a new sketch", drawn, sizes: ((tool.tool as unknown as { constraints?: unknown[] }).constraints ?? (sk as unknown as { constraints?: unknown[] } | undefined)?.constraints ?? []).length } : {}),
+        picked: app.selection.map((s) => {
+          const x = s as unknown as Loose & { kind: string };
+          return x.body ? `${x.kind === "body" ? "body" : `a ${x.kind} of`} ${names[x.body as string] ?? x.body}`.replace("body ", "body ") : x.kind === "profile" ? "a sketch shape" : x.kind;
+        }),
+        steps: fs.length,
+        ...(last ? { last: `${last.name}: ${about(last)}` } : {}),
+        bodies: app.view.bodyList.map((b) => {
+          const pts = b.edges.flatMap((e) => [e.start, e.end, e.mid]);
+          const size = pts.length ? [0, 1, 2].map((i) => n(Math.max(...pts.map((q) => q[i])) - Math.min(...pts.map((q) => q[i])))) : [];
+          return { id: b.id, size, faces: b.faces.length };
+        }),
+        ...(ui.hintText ? { says: ui.hintText } : {}),
+        ...(errs.length ? { errors: errs } : {}),
+      };
+    },
+
+    /**
+     * For teaching the app: no number - how to teach, and the list of lessons; a number - that lesson
+     * (public/llms-teach.txt, a lesson at a time so that only what is being taught is read).
+     */
+    async teach(lesson?: number): Promise<string> {
+      const text = await (await fetch("./llms-teach.txt")).text();
+      const parts = text.split(/\n(?=## Lesson \d+)/);
+      if (lesson === undefined) return parts[0].trim();
+      const hit = parts.find((p) => new RegExp(`^## Lesson ${lesson}\\b`).test(p));
+      return hit ? hit.trim() : `No lesson ${lesson}. There are ${parts.length - 1}: await sg.teach() lists them.`;
+    },
+
+    /**
      * One part of the reference, by a word of its heading ("revolve", "hole", "shell", "variables", "example").
      * No word: the list of parts.
      */
