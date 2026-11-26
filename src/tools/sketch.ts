@@ -558,7 +558,7 @@ export class SketchTool implements Tool {
         if (best && info?.plane) {
           this.plane = originOnPlane({ origin: info.plane.origin, normal: info.plane.normal, xDir });
           this.attachedTo = { body: best.body, center: info.center, normal: info.normal, area: info.area, ...(info.step ? { step: info.step } : {}), ...(info.curve ? { curve: info.curve } : {}) };
-          this.app.ui.toast("Sketching on the face in front of you (Plane, at the end of the bar: another one)");
+          this.app.ui.toast("Sketching on the face in front of you (Exit to pick another)");
         } else if (view.construction.planes.some((c) => Math.abs(dot(c.plane.normal, normal)) > 0.9999)) {
           // Planes of the project's own face this way (a blade's tip plane,
           // seen from the top): pick one in the card, not the origin plane.
@@ -573,25 +573,6 @@ export class SketchTool implements Tool {
     }
     if (this.phase === "plane") this.showPlaneChoice();
     else this.beginDrawing();
-  }
-
-  /**
-   * A new sketch, nothing drawn yet: another plane than the one it started on
-   * (seen square-on, the face in front was taken - the side plane through the
-   * origin was a trip to the Views menu away).
-   */
-  private choosePlane(): void {
-    // (Only while it's empty: what's drawn stays on the plane it was drawn on.)
-    if (this.sketchId || this.entities.length) return this.updateMenu();
-    // A shape started (its first point placed): dropped, it was on the old plane.
-    this.resetDrawing();
-    this.plane = null;
-    this.attachedTo = undefined;
-    this.onPlane = undefined;
-    // The face's outline came with a preview of the sketch on it: not on the new plane.
-    if (this.pending) ((this.pending = null), void this.app.preview([...this.app.store.features]));
-    this.phase = "plane";
-    this.showPlaneChoice();
   }
 
   private showPlaneChoice(): void {
@@ -1242,11 +1223,9 @@ export class SketchTool implements Tool {
     const icons: Partial<Record<Kind, string>> = { rect: "rect", trim: "trim", arc: "arc", circle: "circle", fillet: "sketchFillet" };
     const variant = <T extends string>(kind: Kind, key: "rect" | "spline" | "trim" | "arc" | "circle" | "corner", options: [T, string][]): ToolItem[] =>
       options.map(([v, l]) => ({ id: `${kind}-${v}`, label: l, icon: icons[kind] ?? "spline", active: memory[key] === v, run: () => (((memory as unknown as Record<string, string>)[key] = v), storeVariants(), this.setKind(kind)) }) as ToolItem);
-    // A new sketch with nothing in it yet can still go on another plane.
-    const fresh = !this.sketchId && !this.entities.length;
     app.ui.setTools([
       exit,
-      ...(fresh ? [{ id: "replane", label: "Plane", icon: "plane", run: () => this.choosePlane() } as ToolItem] : []),
+      // (No Other plane for a new empty sketch: Exit leaves nothing behind, and Sketch again goes where it is wanted.)
       { id: "---1", label: "", icon: "line" },
       t("select", "Select", "pointer", "V"),
       // An empty sketch with no drawing tool on: Line is the next step (it, and Draw round it, pulse).
