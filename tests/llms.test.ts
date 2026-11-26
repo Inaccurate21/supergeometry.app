@@ -239,6 +239,10 @@ const build = async (features: unknown[], body: string) => after(features as Fea
   check(`every word the course shows as on the screen is a word of the app (${bold.length} of them)`, bold.length > 40 && !missing.length, missing);
   // The start page sends an assistant here, and stays short itself.
   const start = readFileSync(new URL("../public/llms.txt", import.meta.url), "utf8");
+  // The page's own text is what an assistant in the tab reads first: it must send a request to be taught to the
+  // course (asked "teach me the lessons", an assistant that had read only of making models found the bolt tutorial).
+  const pageText = readFileSync(new URL("../index.html", import.meta.url), "utf8");
+  check("the page's own text tells an assistant about teaching: sg.teach(), and that More > Tutorial is another thing", /learn or be\s+taught/.test(pageText) && pageText.includes("await sg.teach()") && /More &gt; Tutorial/.test(pageText), "");
   check("the start page says: to teach, sg.teach() - and is still short", start.includes("sg.teach()") && start.includes("offerLessons") && start.length < 6000, start.length);
 }
 
