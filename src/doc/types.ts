@@ -1072,7 +1072,7 @@ export interface MaterialDef {
   maxTemp?: number;
 }
 
-/** The body colours offered by the Color tool: seven, Custom the eighth (no Grey - a body is grey until given one; a tap on its lit colour makes it grey again). Bodies given another before keep it (shown as Custom). */
+/** The body colours offered by the Color tool: six, Custom the seventh (with Back, two rows of the card beside a body) (no Grey - a body is grey until given one; a tap on its lit colour makes it grey again). Bodies given another before keep it (shown as Custom). */
 export const DEFAULT_BODY_COLOR = "#b9bec7";
 export const BODY_COLORS: { name: string; hex: string }[] = [
   // Soft, muted tones (easy on the eyes, still easy to tell apart).
@@ -1080,7 +1080,6 @@ export const BODY_COLORS: { name: string; hex: string }[] = [
   { name: "Orange", hex: "#c29069" },
   { name: "Yellow", hex: "#c4b277" },
   { name: "Green", hex: "#83a67f" },
-  { name: "Teal", hex: "#71a39c" },
   { name: "Blue", hex: "#7c98c2" },
   { name: "Violet", hex: "#9a8bc0" },
 ];
