@@ -5952,7 +5952,7 @@ export class SketchTool implements Tool {
     }
     items.push(
       ...this.constraintChips(),
-      { type: "toggle", label: "Construction", value: !!e.construction, onChange: () => this.toggleConstruction() },
+      { type: "toggle", label: "Construction", icon: "construction", value: !!e.construction, onChange: () => this.toggleConstruction() },
       ...(e.kind === "rect" || e.kind === "polygon" ? [{ type: "button", label: "Explode", icon: "line", onClick: () => this.explodeShape(id) } as PanelItem] : []),
       { type: "button", label: "Delete", icon: "trash", onClick: () => this.deleteSelected() },
     );

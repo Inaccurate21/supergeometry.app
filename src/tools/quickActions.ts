@@ -146,6 +146,7 @@ export class QuickActions {
       chosen = null;
       if (rest.length) grid.replaceChildren(...rest.map(button));
       else grid.hidden = true;
+      fitNames(grid);
       this.layout();
     };
     // A button with choices (Color, Fade): the card shows them in place of the rest, a Back first.
@@ -169,6 +170,7 @@ export class QuickActions {
       chosen = it.id;
       grid.hidden = false;
       grid.replaceChildren(back, ...kids.map(button));
+      fitNames(grid);
       this.layout();
     };
     const grid = document.createElement("div");
@@ -190,6 +192,7 @@ export class QuickActions {
         e.stopPropagation();
         grid.hidden = !grid.hidden;
         more.classList.toggle("on", !grid.hidden);
+        fitNames(grid);
         this.layout();
       });
       row.append(more);
@@ -207,6 +210,7 @@ export class QuickActions {
     this.box.addEventListener("pointerdown", (e) => e.stopPropagation());
     document.body.append(this.box);
     view.frameHooks.add(this.hook);
+    fitNames(this.box);
     this.layout();
   }
 
@@ -259,5 +263,17 @@ export class QuickActions {
 /** A short name under the icon ("Move/Rotate Edge" → "Move"). */
 function shortName(label: string): string {
   const s = label.replace(/…$/, "").split(/[/ –]/)[0];
-  return s.length > 12 ? s.slice(0, 11) + "…" : s;
+  return s.length > 14 ? s.slice(0, 13) + "…" : s;
+}
+
+/**
+ * A name wider than its round button is made smaller till it fits (Perpendicular, Coincident on a phone): it ran
+ * out over the button's edge. Only when they are drawn again, not every frame.
+ */
+function fitNames(root: HTMLElement): void {
+  for (const s of Array.from(root.querySelectorAll<HTMLElement>(".quick-action > span"))) {
+    s.style.fontSize = "";
+    const room = (s.parentElement?.clientWidth ?? 0) - 6;
+    if (room > 0 && s.scrollWidth > room) s.style.fontSize = `${Math.max(7, Math.floor((9 * room * 10) / s.scrollWidth) / 10)}px`;
+  }
 }

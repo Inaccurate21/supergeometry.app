@@ -1346,6 +1346,7 @@ export class App implements AppContext {
             id: "moveKinds",
             label: "Move",
             icon: "move",
+            spread: true,
             children: [
               { id: "move", label: "Move/Rotate", icon: "move", shortcut: "M", run: transform("move", "Move/Rotate") },
               { id: "translate", label: "Translate", icon: "translate", run: transform("translate", "Translate") },

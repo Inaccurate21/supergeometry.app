@@ -6011,10 +6011,12 @@ body.items-open #items-btn {
   display: none;
 }
 .quick-action {
-  /* (Round; a longer name - Construction - makes it a pill.) */
-  min-width: 48px;
+  /* (All one size, beside the pick and in its list: a longer name - Construction - made a wider pill beside round
+     ones, and the list's were smaller again. A long name is made smaller to fit instead: quickActions.ts fitNames.) */
+  width: 60px;
+  flex: none;
   height: 48px;
-  padding: 0 7px;
+  padding: 0 3px;
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -6046,6 +6048,7 @@ body.items-open #items-btn {
 .quick-action span {
   font-size: 9px;
   line-height: 10px;
+  max-width: 100%;
   overflow: hidden;
   white-space: nowrap;
   color: #c3c7cf;
@@ -7340,7 +7343,8 @@ html[data-screen="phone"] body.sentence-ui #toast {
 }
 .quick-rest {
   display: grid;
-  grid-template-columns: repeat(4, 48px);
+  /* (A little wider than round: a constraint's name - Perpendicular - fits in it, made smaller only as needed.) */
+  grid-template-columns: repeat(4, 60px);
   gap: 8px;
   justify-content: center;
   padding: 8px;
@@ -7356,9 +7360,6 @@ html[data-screen="phone"] body.sentence-ui #toast {
   display: none;
 }
 .quick-rest .quick-action {
-  min-width: 0;
-  width: 48px;
-  padding: 0 2px;
   border-color: rgba(255, 255, 255, 0.18);
   box-shadow: none;
 }
@@ -7681,6 +7682,47 @@ body.history-open.history-clear-col #right-col {
 }
 .sn-line.sn-two .sn-end-btn .sn-end-name {
   font-size: 10.5px;
+}
+/* The tool's buttons and the ones at the end (Sketch view, the tick, Exit) as one set, the same width each, two rows
+   right across the bar. (They were two blocks: the tool's in rows at the left, the end's in one row at the bottom
+   right - nothing over it, and the left block's names cut short.) How many across: --sn-cols, set as it is drawn. */
+.sn-line.sn-two {
+  flex-wrap: wrap;
+  align-content: center;
+  padding: 3px;
+  row-gap: 2px;
+}
+.sn-line.sn-two .sn-row,
+.sn-line.sn-two .sn-end {
+  display: contents;
+}
+.sn-line.sn-two .sn-row .sn-word,
+.sn-line.sn-two .sn-end > .sn-end-btn {
+  /* (Each the same width, a short row too - a row of four was wider buttons than a row of five.) */
+  flex: 0 0 calc(100% / var(--sn-cols, 5) - 1px);
+  max-width: none;
+  min-width: 0;
+  box-sizing: border-box;
+}
+.sn-line.sn-two .sn-end > .sn-end-btn {
+  height: 46px;
+  min-width: 0;
+  padding: 3px 2px 2px;
+  flex-direction: column;
+  gap: 2px;
+  background: none;
+}
+/* (What is left over in a short row: before the end's buttons, so Exit stays at the right edge.) */
+.sn-line.sn-two .sn-end > .sn-end-btn:first-child {
+  margin-left: auto;
+}
+/* (The tick keeps its own blue and a finger's width, in the middle of its place.) */
+.sn-line.sn-two .sn-end > .sn-end-btn.sn-done {
+  flex-basis: calc(100% / var(--sn-cols, 5) - 9px);
+  height: 40px;
+  align-self: center;
+  margin: 0 4px;
+  background: var(--accent);
 }
 
 /* Undo and redo are a piece of the bottom bar: its height, whatever that is on this screen. They were a fixed 52 (48 on a

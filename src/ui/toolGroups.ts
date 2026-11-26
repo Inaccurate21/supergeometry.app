@@ -27,7 +27,8 @@ export const RANK = [
   "extrude", "revolve", "sweep", "loft", "hole",
   "fillet", "chamfer", "shell", "offsetFace", "fix", "offsetEdge", "thread", "wrap",
   "subtract", "union", "intersect", "split",
-  "move", "mirror", "pattern", "scale", "translate", "rotate",
+  // (Move's three ways together: in Transform's own list now, not under Move.)
+  "move", "translate", "rotate", "mirror", "pattern", "scale",
   "plane", "axis", "proje",
   "ff-box", "ff-cylinder", "ff-sphere", "ff-torus", "ff-plane", "faceFreeform", "connect",
   "measure", "section", "variables", "insert", "bim",

@@ -38,6 +38,8 @@ export interface ToolItem {
   swatch?: string;
   /** A sign in its icon's place (a constraint's ∥ ⟂ =). */
   glyph?: string;
+  /** Its kinds stand in its parent's list on the bottom bar, not one tap further in, while that list stays short (Transform: Move/Rotate, Translate, Rotate Around Axis). */
+  spread?: boolean;
   /** Small icons after the label (e.g. ⟲ + what a toggle switches to). */
   trailing?: IconName[];
   /**
@@ -102,7 +104,7 @@ export type PanelItem =
       /** Always a drop-down. */
       list?: boolean;
     }
-  | { type: "toggle"; label: string; value: boolean; onChange(v: boolean): void }
+  | { type: "toggle"; label: string; value: boolean; /** Its picture on the bottom bar (a switch had none: Construction stood higher than the buttons beside it). */ icon?: IconName; onChange(v: boolean): void }
   /**
    * Drag to set (no typing, no maths): how much a spout bends, a handle
    * arches… The value shows beside it (`show` formats it).

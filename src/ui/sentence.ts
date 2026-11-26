@@ -170,6 +170,16 @@ const SK_ONCE = new Set(["trim", "split"]);
 /** The model's groups, in the order they are on the line (the tool wheel's own, each always in its place). */
 const GROUPS = ["create", "combine", "modify", "construct", "transform", "freeform", "sketch"];
 /** A sketch's groups (as its wheel has them): what each holds, most used first; anything else is under More. */
+/**
+ * A list in a list (Transform > Move > Translate): its kinds in the outer list itself while that stays short - eight
+ * or fewer. (They were a tap further in, with room to spare.)
+ */
+function spreadOut(its: ToolItem[]): ToolItem[] {
+  const folder = (c: ToolItem) => !!c.spread && !c.run && !!c.children?.length;
+  const n = its.reduce((k, c) => k + (folder(c) ? c.children!.filter(notSep).length : 1), 0);
+  return n > 8 ? its : its.flatMap((c) => (folder(c) ? c.children!.filter(notSep) : [c]));
+}
+
 const SK_GROUPS: { id: string; label: string; icon: IconName; tools: string[] }[] = [
   // (Construction last: the switch for the lines drawn next - under More it was not found.)
   { id: "draw", label: "Draw", icon: "line", tools: ["line", "rect", "circle", "arc", "spline", "polygon", "ellipse", "text", "project", "fill", "construction"] },
@@ -404,7 +414,7 @@ export class Sentence {
 
   /** A tool or action as a word (its kinds, the words it opens). */
   private verb(it: ToolItem, pre = "v"): Word {
-    const kids = (it.children ?? []).filter(notSep).map((c) => this.verb(c, `${pre}-${it.id}`));
+    const kids = spreadOut((it.children ?? []).filter(notSep)).map((c) => this.verb(c, `${pre}-${it.id}`));
     const v = it.value;
     return {
       key: `${pre}-${it.id}`,
@@ -457,7 +467,7 @@ export class Sentence {
       // Nothing picked: every main tool that can be started now (one that needs a pick asks for it as it starts).
       // (A group is dimmed only when nothing in it can be used - asked for: Create, Combine and Transform were
       // dimmed with nothing picked though their tools start and then say what to tap.)
-      for (const g of items) for (const it of g.children?.length ? g.children.filter(notSep) : [g]) put(g.id, it);
+      for (const g of items) for (const it of g.children?.length ? spreadOut(g.children.filter(notSep)) : [g]) put(g.id, it);
       // (A tool waiting for its pick: said over the line, with an x to let it go - the guide text says what to tap.)
       const waits = this.host.waiting();
       subject = waits ? { key: "s-wait", kind: "subject", label: `${waits.replace(/ \(.*\)$/, "")}: tap the model`, lets: true, on: true, run: () => this.host.stopWaiting() } : { key: "s-make", kind: "subject", label: "Make", quiet: true };
@@ -496,7 +506,7 @@ export class Sentence {
       // Something picked: every other tool of the group is there too, under the pick's own - one that cannot use this pick asks for its
       // own as it starts. (Not one the pick has under a longer name: Pattern, with Pattern - Linear there.)
       const have = new Set(mine.flatMap((it) => [it.id, ALIAS[it.id] ?? it.id, it.label]));
-      const rest = sel.length ? usable(g?.children ?? []).filter(notSep).filter((it) => !have.has(it.id) && !have.has(it.label) && !mine.some((m) => m.label.startsWith(it.label))).map((it) => this.verb(it, "r")) : [];
+      const rest = sel.length ? spreadOut(usable(g?.children ?? []).filter(notSep)).filter((it) => !have.has(it.id) && !have.has(it.label) && !mine.some((m) => m.label.startsWith(it.label))).map((it) => this.verb(it, "r")) : [];
       words.push(this.group(id, g?.label ?? id, g?.icon ?? "more", its, why, rest));
       if (its.length) groups.push({ cap: g?.label ?? id, words: its });
     }
@@ -650,7 +660,7 @@ export class Sentence {
         // (One thing to do and no name - a slot's Clear: a tap.)
         if (it.options.length === 1 && !it.label) out.push({ key, kind: "button", label: it.options[0].label, run: kids[0].run });
         else out.push({ key, kind: "choice", cap: it.label, label: now?.label ?? it.options.map((o) => o.label).slice(0, 3).join(" · "), kids });
-      } else if (it.type === "toggle") out.push({ key, kind: "toggle", label: it.label, on: it.value, run: () => it.onChange(!it.value) });
+      } else if (it.type === "toggle") out.push({ key, kind: "toggle", label: it.label, icon: it.icon, on: it.value, run: () => it.onChange(!it.value) });
       else if (it.type === "number" || it.type === "slider") {
         const kind = it.type === "slider" || it.kind === "number" ? "number" : (it.kind ?? "length");
         const len = kind === "length";
@@ -724,7 +734,8 @@ export class Sentence {
     // Draw, Modify, Transform, Delete): two rows of buttons, each a picture over its name, all in view.
     // It was one row to slide, a button and a half wide beside More and Exit.
     const upright = document.documentElement.dataset.screen === "phone" && matchMedia("(max-width: 720px) and (orientation: portrait)").matches;
-    this.line.classList.toggle("sn-two", upright && b.about.startsWith("sketch:") && !b.grouped);
+    // (Nothing picked, no tool on too: the same even buttons, one row of them - they were each as wide as its name.)
+    this.line.classList.toggle("sn-two", upright && b.about.startsWith("sketch:"));
     if (fresh) this.row.scrollLeft = 0;
     // The end of the line: everything for this pick, the eraser, the tick.
     this.end.replaceChildren();
@@ -762,6 +773,18 @@ export class Sentence {
       x.append(el("span", "sn-end-name", "Exit"));
       this.end.append(x);
     }
+    // A phone held upright, two rows: as many across as halve them (sn-two in the stylesheet).
+    if (this.line.classList.contains("sn-two")) {
+      const n = this.row.querySelectorAll(".sn-word").length + this.end.querySelectorAll(".sn-end-btn").length;
+      const cols = String(n <= 6 ? n : Math.max(4, Math.min(6, Math.ceil(n / 2))));
+      if (this.line.style.getPropertyValue("--sn-cols") !== cols) this.line.style.setProperty("--sn-cols", cols);
+      // A name wider than its place (Construction, six across): smaller till it fits, not cut off.
+      for (const s of Array.from(this.line.querySelectorAll<HTMLElement>(".sn-text, .sn-end-name"))) {
+        s.style.fontSize = "";
+        const room = s.clientWidth;
+        if (room > 0 && s.scrollWidth > room + 1) s.style.fontSize = `${Math.max(8, Math.floor((parseFloat(getComputedStyle(s).fontSize) * room * 10) / s.scrollWidth) / 10)}px`;
+      }
+    } else for (const s of Array.from(this.line.querySelectorAll<HTMLElement>(".sn-text[style], .sn-end-name[style]"))) s.style.fontSize = "";
     // (No room for two with every name whole: More after all. Never for one - More with one thing in it is that thing
     // a tap further off. A picked line's words, cut short on a phone anyway, put Sketch view back under More.)
     const cut = (e: HTMLElement) => e.scrollWidth > e.clientWidth + 1;
