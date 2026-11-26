@@ -27,6 +27,7 @@ export const UPDATES: Update[] = [
     fixed: [
       "Sketch constraints in one place: pick a line or a shape and Constraints on the bottom line opens two rows, the ones in use (tap one to take it off, or List all to see every size and join) and the ones you can add (Parallel, Tangent, Equal...). The hint says so too.",
       "Construction (dashed lines) is in the Draw list now, at its end, not only under More.",
+      "Drawing a line on a phone: its values are just Length and Angle (the first point's X and Y, Across and Up are gone).",
       "Constraints beside picked curves: a Constraints button between Construction and Delete opens the ones that fit (Parallel, Tangent, Equal...).",
       "Tangent between a line and an arc that meet end to end now joins them too: moving a line no longer pulls the arc's end off the other line. And a line ending on the origin: an arc drawn from there is joined to the line, not just held to the origin.",
       "Stop now stops. It ends the work before the next step and keeps everything already built, instead of throwing it all away and building the whole project again. A change is taken back; while a project is opening, the steps it had not reached are rolled back in History, so you can look at the part and remove the breakpoint when you are ready.",

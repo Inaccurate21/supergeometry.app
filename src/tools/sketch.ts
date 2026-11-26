@@ -1521,8 +1521,8 @@ export class SketchTool implements Tool {
         // A finger can't hover: after the first tap there's no line to type a
         // length on (and the next point is often off the screen) - so the card
         // takes the length and the direction (0° right, 90° up), Done places it.
-        // Or how far across and up it goes: a slope ("in 10, up 12") with no angle to work out.
-        else if (this.pts.length && isTouchDevice) items.push(...firstAt(), lock("len", "Length"), lock("ang", "Angle", "angle"), lock("dx", "Across"), lock("dy", "Up"));
+        // (Only those two: the first point's X and Y, and how far across and up, made six values on a phone's line.)
+        else if (this.pts.length && isTouchDevice) items.push(lock("len", "Length"), lock("ang", "Angle", "angle"));
         break;
       case "arc":
         // By its centre, on a phone: where the centre is, the radius and where
