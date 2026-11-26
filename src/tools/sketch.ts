@@ -1305,7 +1305,7 @@ export class SketchTool implements Tool {
         active: isCons,
         run: () => this.toggleConstruction(),
       } as ToolItem]),
-      { id: "look", label: "Normal to Sketch", icon: "normal", run: () => this.plane && app.view.cam.lookAlong(this.plane.normal, this.plane.xDir) },
+      { id: "look", label: "Sketch view", icon: "normal", run: () => this.plane && app.view.cam.lookAlong(this.plane.normal, this.plane.xDir) },
     ]);
   }
 

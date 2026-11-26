@@ -728,7 +728,15 @@ export class Sentence {
     if (fresh) this.row.scrollLeft = 0;
     // The end of the line: everything for this pick, the eraser, the tick.
     this.end.replaceChildren();
-    if (this.beyond(b).length) {
+    const extra = this.beyond(b);
+    const lone = extra.length === 1 && extra[0].words.length === 1 && extra[0].words[0].run && !extra[0].words[0].kids?.length ? extra[0].words[0] : null;
+    if (lone) {
+      // One thing beyond the line (a sketch being drawn in: Sketch view): it is the button, not More with it alone inside.
+      const one = this.endButton(lone.icon ?? "grid", lone.label, () => (buzz(), lone.run!()));
+      one.classList.add("sn-all");
+      one.append(el("span", "sn-end-name", lone.label));
+      this.end.append(one);
+    } else if (extra.length) {
       const all = this.endButton("grid", "More", () => this.toggle({ kind: "all" }));
       all.classList.add("sn-all");
       all.append(el("span", "sn-end-name", "More"));
