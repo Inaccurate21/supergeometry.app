@@ -303,7 +303,14 @@ export class InputRouter {
     if (mode === "captured") this.handler.up?.(this.tp(t));
     if (mode === "pending" && !this.held) this.emitTap(t);
     this.held = false;
-    if (mode === "rpending") this.handler.context?.(this.tp(t));
+    if (mode === "rpending") {
+      // The browser's own menu comes after the release, aimed at whatever is under the pointer by then: the
+      // tool list just opened there, not the canvas. Swallow that one.
+      const swallow = (ev: Event) => ev.preventDefault();
+      document.addEventListener("contextmenu", swallow, { capture: true, once: true });
+      setTimeout(() => document.removeEventListener("contextmenu", swallow, { capture: true }), 500);
+      this.handler.context?.(this.tp(t));
+    }
     if (mode === "box") {
       this.marquee.hidden = true;
       // (On a touch screen every tap adds to what's picked: a box does too.)

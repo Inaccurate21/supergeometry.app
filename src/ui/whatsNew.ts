@@ -25,6 +25,7 @@ export const UPDATES: Update[] = [
       "Learn the app with Claude: ask it to teach you. It has a course of eight lessons, from a first block to holes, round parts, parts that fit and variables. You do the tapping; it tells you what to tap and why, and checks each step.",
     ],
     fixed: [
+      "Right-clicking a face or a body on a computer opens only the app's list of tools, not the browser's own menu on top of it.",
       "Sketch constraints in one place: pick a line or a shape and Constraints on the bottom line opens two rows, the ones in use (tap one to take it off, or List all to see every size and join) and the ones you can add (Parallel, Tangent, Equal...). The hint says so too.",
       "Construction (dashed lines) is in the Draw list now, at its end, not only under More.",
       "Drawing on a phone: a shape's values are just its sizes - a line's Length and Angle, a rectangle's Width and Height, a circle's Diameter (the first point's X and Y are gone, and a line's Across and Up).",
