@@ -558,7 +558,7 @@ export class SketchTool implements Tool {
         if (best && info?.plane) {
           this.plane = originOnPlane({ origin: info.plane.origin, normal: info.plane.normal, xDir });
           this.attachedTo = { body: best.body, center: info.center, normal: info.normal, area: info.area, ...(info.step ? { step: info.step } : {}), ...(info.curve ? { curve: info.curve } : {}) };
-          this.app.ui.toast("Sketching on the face in front of you (Other plane: in the tools)");
+          this.app.ui.toast("Sketching on the face in front of you (Plane, at the end of the bar: another one)");
         } else if (view.construction.planes.some((c) => Math.abs(dot(c.plane.normal, normal)) > 0.9999)) {
           // Planes of the project's own face this way (a blade's tip plane,
           // seen from the top): pick one in the card, not the origin plane.
@@ -1246,7 +1246,7 @@ export class SketchTool implements Tool {
     const fresh = !this.sketchId && !this.entities.length;
     app.ui.setTools([
       exit,
-      ...(fresh ? [{ id: "replane", label: "Other plane", icon: "plane", run: () => this.choosePlane() } as ToolItem] : []),
+      ...(fresh ? [{ id: "replane", label: "Plane", icon: "plane", run: () => this.choosePlane() } as ToolItem] : []),
       { id: "---1", label: "", icon: "line" },
       t("select", "Select", "pointer", "V"),
       // An empty sketch with no drawing tool on: Line is the next step (it, and Draw round it, pulse).

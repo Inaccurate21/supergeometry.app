@@ -729,20 +729,26 @@ export class Sentence {
     // The end of the line: everything for this pick, the eraser, the tick.
     this.end.replaceChildren();
     const extra = this.beyond(b);
-    const lone = extra.length === 1 && extra[0].words.length === 1 && extra[0].words[0].run && !extra[0].words[0].kids?.length ? extra[0].words[0] : null;
-    if (lone) {
-      // One thing beyond the line (a sketch being drawn in: Sketch view): it is the button, not More with it alone inside.
-      const one = this.endButton(lone.icon ?? "grid", lone.label, () => (buzz(), lone.run!()));
-      one.classList.add("sn-all");
-      one.append(el("span", "sn-end-name", lone.label));
-      this.end.append(one);
-    } else if (extra.length) {
+    const loose = extra.flatMap((g) => g.words);
+    const more = () => {
       const all = this.endButton("grid", "More", () => this.toggle({ kind: "all" }));
       all.classList.add("sn-all");
       all.append(el("span", "sn-end-name", "More"));
       all.classList.toggle("on", this.open?.kind === "all");
-      this.end.append(all);
-    }
+      return all;
+    };
+    let ones: HTMLElement[] = [];
+    // One or two things beyond the line (a sketch: Sketch view, and a new one's Plane): each its own button, not More
+    // with them alone inside - while the line still has room for every name in it whole.
+    if (loose.length && loose.length <= 2 && loose.every((w) => w.run && !w.kids?.length && !w.off && !w.soon)) {
+      ones = loose.map((w) => {
+        const one = this.endButton(w.icon ?? "grid", w.label, () => (buzz(), w.run!()));
+        one.classList.add("sn-all");
+        one.append(el("span", "sn-end-name", w.label));
+        return one;
+      });
+      this.end.append(...ones);
+    } else if (extra.length) this.end.append(more());
     if (b.cancel) this.end.append(this.endButton("close", b.cancel.label, () => (buzz(), b.cancel!.run())));
     if (b.done) {
       const ok = this.endButton("check", b.done.label, () => this.finish(b.done!.run));
@@ -755,6 +761,12 @@ export class Sentence {
       x.classList.toggle("pulse", !!b.exit.pulse);
       x.append(el("span", "sn-end-name", "Exit"));
       this.end.append(x);
+    }
+    // (No room for them with every name whole - a phone's line with a tool on: More after all.)
+    const cut = (e: HTMLElement) => e.scrollWidth > e.clientWidth + 1;
+    if (ones.length && (cut(this.row) || Array.from(this.line.querySelectorAll<HTMLElement>(".sn-text, .sn-end-name")).some(cut))) {
+      ones[0].before(more());
+      for (const o of ones) o.remove();
     }
     this.drawSheet();
     this.place();
