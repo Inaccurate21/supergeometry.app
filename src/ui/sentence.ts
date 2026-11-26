@@ -762,9 +762,10 @@ export class Sentence {
       x.append(el("span", "sn-end-name", "Exit"));
       this.end.append(x);
     }
-    // (No room for them with every name whole - a phone's line with a tool on: More after all.)
+    // (No room for two with every name whole: More after all. Never for one - More with one thing in it is that thing
+    // a tap further off. A picked line's words, cut short on a phone anyway, put Sketch view back under More.)
     const cut = (e: HTMLElement) => e.scrollWidth > e.clientWidth + 1;
-    if (ones.length && (cut(this.row) || Array.from(this.line.querySelectorAll<HTMLElement>(".sn-text, .sn-end-name")).some(cut))) {
+    if (ones.length > 1 && (cut(this.row) || Array.from(this.line.querySelectorAll<HTMLElement>(".sn-text, .sn-end-name")).some(cut))) {
       ones[0].before(more());
       for (const o of ones) o.remove();
     }
