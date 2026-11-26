@@ -1071,6 +1071,10 @@ export class SketchTool implements Tool {
     }
     const curves = this.pickedCurves();
     let cs = buildConstraints(type, this.selPts, curves, this.entities);
+    // Tangent where the two meet end to end but aren't joined: joined too. Tangent alone keeps a line's endless
+    // run touching the arc's circle, and the arc's end slid off the line's end as soon as anything moved.
+    // (Only between the curves picked.)
+    if (type === "tangent" && cs.length && !this.selPts.length) cs = [...this.endGaps().filter(([a, b]) => this.selected.has(a.e) && this.selected.has(b.e)).map(([a, b]): SketchConstraint => ({ id: uid(), type: "coincident", pts: [a, b] })), ...cs];
     // Lock holds points where they are now.
     if (type === "fix") cs = cs.map((c) => (c.type === "fix" ? { ...c, at: pointOf(this.entities.find((e) => e.id === c.pts![0].e)!, c.pts![0].p) ?? [0, 0] } : c));
     if (!cs.length) return this.app.ui.toast("That constraint doesn't fit the selection");
@@ -2656,12 +2660,19 @@ export class SketchTool implements Tool {
     const sel = this.entities.filter((e) => this.selected.has(e.id));
     const cons = sel.length > 0 && sel.every((e) => e.construction);
     // (Made again only when the pick, its type or its place changed: this runs while it is dragged.)
-    const sig = `${[...this.selected].join()}|${this.selPts.map((r) => r.e + r.p).join()}|${cons}|${at.map((v) => v.toFixed(4)).join()}`;
+    // (And when a constraint is put on or taken off: its button's list says which are on.)
+    const sig = `${[...this.selected].join()}|${this.selPts.map((r) => r.e + r.p).join()}|${cons}|${at.map((v) => v.toFixed(4)).join()}|${this.constraints.map((c) => c.id).join()}`;
     if (sig === this.quickSig && this.quick) return;
     this.clearQuick();
     this.quickSig = sig;
+    // The constraints that fit what is picked (the same as on the line), a tap away beside it.
+    const chips = this.constraintChips().flatMap((p) => (p.type === "chips" ? p.chips : []));
+    const constraints: ToolItem[] = chips.length
+      ? [{ id: "constraints", label: "Constraints", icon: "constraints", children: chips.map((c, i): ToolItem => ({ id: `constraint-${i}`, label: c.label, icon: "constraints", glyph: c.glyph, active: !!c.on, run: () => c.onClick() })) }]
+      : [];
     const items: ToolItem[] = [
       ...(sel.length ? [{ id: "construction", label: cons ? "Regular" : "Construction", icon: cons ? "line" : "lineDashed", run: () => this.toggleConstruction() } as ToolItem] : []),
+      ...constraints,
       { id: "delete", label: "Delete", icon: "trash", run: () => this.deleteSelected() },
     ];
     this.quick = QuickActions.show(this.app.view, sel.length ? "curve" : "point", items, at, { gap: 110 });

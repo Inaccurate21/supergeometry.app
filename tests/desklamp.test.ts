@@ -386,6 +386,10 @@ if (process.argv[2]) writeFileSync(process.argv[2], JSON.stringify({ ...doc(), h
   const end = { label: "Endpoint", d: 0.3, ref: { e: "L1", p: "b" } };
   check("on one spot, the snap point a circle can be kept on wins", nearestSnap([side, end], 8)?.label === "Endpoint" && nearestSnap([end, side], 8)?.label === "Endpoint");
   check("…but a clearly nearer one still wins", nearestSnap([{ label: "near", d: 1 }, { ...end, d: 4 }], 8)?.label === "near");
+  // A line ending on the origin: an arc drawn from there is joined to the line's end, not held to the origin.
+  const origin = { label: "Origin", d: 0, model: true };
+  const lineEnd = { label: "Endpoint", d: 0, ref: { e: "l1", p: "a" as const } };
+  check("a line's end on the origin wins over the origin", nearestSnap([origin, lineEnd], 8)?.label === "Endpoint" && nearestSnap([lineEnd, origin], 8)?.label === "Endpoint");
   check("…and nothing out of reach", nearestSnap([{ label: "far", d: 9 }], 8) === null);
 }
 

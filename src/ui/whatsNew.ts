@@ -27,6 +27,8 @@ export const UPDATES: Update[] = [
     fixed: [
       "Sketch constraints are easier to find: pick two curves and Parallel, Perpendicular, Tangent, Equal and the rest are each a button on the bottom line, not folded under Constraints. The hint says so too.",
       "Construction (dashed lines) is in the Draw list now, at its end, not only under More.",
+      "Constraints beside picked curves: a Constraints button between Construction and Delete opens the ones that fit (Parallel, Tangent, Equal...).",
+      "Tangent between a line and an arc that meet end to end now joins them too: moving a line no longer pulls the arc's end off the other line. And a line ending on the origin: an arc drawn from there is joined to the line, not just held to the origin.",
       "Stop now stops. It ends the work before the next step and keeps everything already built, instead of throwing it all away and building the whole project again. A change is taken back; while a project is opening, the steps it had not reached are rolled back in History, so you can look at the part and remove the breakpoint when you are ready.",
       "Deleting a face of a big body (hundreds of faces) is about four times faster and takes far less memory: a 128-step part with one now opens in about half the time.",
       "A big project no longer gets built over again in the background after every change, which could keep a slower computer or a Chromebook busy for minutes.",

@@ -29,7 +29,8 @@ export const QUICK = {
   axis: ["delete"],
   image: ["scale", "delete"],
   // In a sketch: its picked curves and points (the sketch tool's own buttons).
-  curve: ["construction", "delete"],
+  // (Constraints between them: its button opens the ones that fit what is picked.)
+  curve: ["construction", "constraints", "delete"],
   point: ["delete"],
 } satisfies Record<string, string[]>;
 
@@ -50,7 +51,7 @@ const MOST = 2;
  * An edge has three: Fillet, Chamfer and Move/Rotate Edge. Move/Rotate Edge is for one straight edge: with a curved one, or several, it is not
  * offered and the row is the two.
  */
-const MOST_OF: Partial<Record<QuickKind, number>> = { edge: 3 };
+const MOST_OF: Partial<Record<QuickKind, number>> = { edge: 3, curve: 3 };
 
 export class QuickActions {
   private readonly box = document.createElement("div");
@@ -71,7 +72,7 @@ export class QuickActions {
       }
     };
     walk(items);
-    const picked = (QUICK[kind] as readonly string[]).map((id) => byId.get(id)).filter((it): it is ToolItem => !!it && !it.disabled && !!it.run && (!it.beta || it.id === "editFreeform")).slice(0, MOST_OF[kind] ?? MOST);
+    const picked = (QUICK[kind] as readonly string[]).map((id) => byId.get(id)).filter((it): it is ToolItem => !!it && !it.disabled && (!!it.run || !!it.children?.length) && (!it.beta || it.id === "editFreeform")).slice(0, MOST_OF[kind] ?? MOST);
     if (!all) return picked.length ? new QuickActions(view, picked, at, place) : null;
     // On the model: Delete beside them, and a last button that opens every other tool the pick has. The few most likely
     // stay the row; the rest come up under it only when asked for, so nothing is crowded.
@@ -108,6 +109,7 @@ export class QuickActions {
   }
 
   private readonly facing?: Vec3;
+  private more?: HTMLButtonElement;
 
   private constructor(
     private readonly view: Viewport,
@@ -124,13 +126,27 @@ export class QuickActions {
       b.title = it.shortcut ? `${it.label} (${it.shortcut})` : it.label;
       b.setAttribute("aria-label", it.label);
       const icon = icons[it.icon as keyof typeof icons];
-      b.innerHTML = `${it.swatch ? `<i class="quick-swatch" style="background:${it.swatch}"></i>` : (icon ?? "")}<span>${shortName(it.label)}</span>`;
+      const glyph = document.createElement("i");
+      glyph.className = "quick-glyph";
+      glyph.textContent = it.glyph ?? "";
+      b.innerHTML = `${it.swatch ? `<i class="quick-swatch" style="background:${it.swatch}"></i>` : it.glyph ? "" : (icon ?? "")}<span>${shortName(it.label)}</span>`;
+      if (it.glyph) b.prepend(glyph);
       b.addEventListener("click", (e) => {
         e.stopPropagation();
-        if (!it.run && it.children?.length) choose(it);
-        else it.run?.();
+        // (A button of the row with choices: tapped again, they close.)
+        if (!it.run && it.children?.length) {
+          if (chosen === it.id && !grid.hidden && !rest.some((r) => r.id === it.id)) return close();
+          choose(it);
+        } else it.run?.();
       });
       return b;
+    };
+    let chosen: string | null = null;
+    const close = () => {
+      chosen = null;
+      if (rest.length) grid.replaceChildren(...rest.map(button));
+      else grid.hidden = true;
+      this.layout();
     };
     // A button with choices (Color, Fade): the card shows them in place of the rest, a Back first.
     const choose = (it: ToolItem) => {
@@ -141,8 +157,7 @@ export class QuickActions {
       back.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 5l-7 7 7 7"/></svg><span>Back</span>`;
       back.addEventListener("click", (e) => {
         e.stopPropagation();
-        grid.replaceChildren(...rest.map(button));
-        this.layout();
+        close();
       });
       const kids = (it.children ?? []).filter((k) => k.label && !k.id.startsWith("---")).map((k): ToolItem => ({
         ...k,
@@ -151,10 +166,14 @@ export class QuickActions {
           k.run!();
         }),
       }));
+      chosen = it.id;
+      grid.hidden = false;
       grid.replaceChildren(back, ...kids.map(button));
       this.layout();
     };
     const grid = document.createElement("div");
+    grid.className = "quick-rest";
+    grid.hidden = true;
     const row = document.createElement("div");
     row.className = "quick-row";
     for (const it of items) row.append(button(it));
@@ -166,8 +185,6 @@ export class QuickActions {
       more.title = "Every other tool for this";
       more.setAttribute("aria-label", "More tools for this");
       more.innerHTML = `${icons.more ?? ""}<span>More</span>`;
-      grid.className = "quick-rest";
-      grid.hidden = true;
       for (const it of rest) grid.append(button(it));
       more.addEventListener("click", (e) => {
         e.stopPropagation();
@@ -176,15 +193,15 @@ export class QuickActions {
         this.layout();
       });
       row.append(more);
-      this.box.append(grid);
-      const again = QuickActions.reopen;
-      QuickActions.reopen = null;
-      const was = again && performance.now() < again.until ? rest.find((r) => r.id === again.id) : undefined;
-      if (was) {
-        grid.hidden = false;
-        more.classList.add("on");
-        choose(was);
-      }
+      this.more = more;
+    }
+    this.box.append(grid);
+    const again = QuickActions.reopen;
+    QuickActions.reopen = null;
+    const was = again && performance.now() < again.until ? [...items, ...rest].find((r) => r.id === again.id && !r.run && r.children?.length) : undefined;
+    if (was) {
+      if (rest.includes(was)) this.more?.classList.add("on");
+      choose(was);
     }
     // A press on them is theirs: never a pick on the model behind, nor the view turning.
     this.box.addEventListener("pointerdown", (e) => e.stopPropagation());

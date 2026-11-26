@@ -36,6 +36,8 @@ export interface ToolItem {
   variantsWhenActive?: boolean;
   /** Show a colour circle instead of the icon (colour choices). */
   swatch?: string;
+  /** A sign in its icon's place (a constraint's ∥ ⟂ =). */
+  glyph?: string;
   /** Small icons after the label (e.g. ⟲ + what a toggle switches to). */
   trailing?: IconName[];
   /**

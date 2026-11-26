@@ -7338,6 +7338,13 @@ html[data-screen="phone"] body.sentence-ui #toast {
 .quick-action.danger svg {
   color: #ff8d82;
 }
+.quick-glyph {
+  font-style: normal;
+  font-size: 17px;
+  line-height: 18px;
+  height: 18px;
+  font-weight: 600;
+}
 .quick-swatch {
   width: 18px;
   height: 18px;
