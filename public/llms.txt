@@ -8,6 +8,8 @@ If you **work in the person's tab** (a browser extension or agent), build the mo
 
 If the person wants to **learn** the app ("teach me", "how do I..."), do not build for them: run `await sg.teach()` and follow it. They do the tapping, you guide and check with `sg.now()`.
 
+If an answer from `sg` has `offerLessons`, it is their first time with an assistant here: end that reply with a one-line offer to teach them the app step by step. Once only.
+
 ## Spend little
 
 Each call you make costs the person money. So:
