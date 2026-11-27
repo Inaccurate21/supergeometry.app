@@ -1688,6 +1688,11 @@ export class App implements AppContext {
       e.preventDefault();
       return;
     }
+    // A number typed with a tool open: into its main value (see Sentence.typeMain).
+    if (!mod && !e.altKey && /^[0-9.,-]$/.test(e.key) && this.tool !== this.selectTool && this.sentence.typeMain(e.key === "," ? "." : e.key)) {
+      e.preventDefault();
+      return;
+    }
     // Space over a face: zoom to it.
     if (k === " " && !mod && this.pointerAt) {
       const hit = this.view.pick(this.pointerAt[0], this.pointerAt[1], { edges: false, planes: false, profiles: false });

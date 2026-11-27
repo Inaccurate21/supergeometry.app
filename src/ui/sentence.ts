@@ -1103,6 +1103,28 @@ export class Sentence {
 
   // -------------------------------------------------------------- the sheet
 
+  /**
+   * A number begun on the keyboard with a tool open and nothing being typed into: it goes into the tool's main
+   * value - the first number on its line (Extrude's Distance, Fillet's Radius), or the first behind Options -
+   * as if that had been tapped first. (Typing only worked while the arrow was being dragged, or before the tool
+   * was open: with Extrude open and waiting, the digits went nowhere, though its guide text says "or type".)
+   * False: there is no such value, and the key is not taken.
+   */
+  typeMain(first: string): boolean {
+    if (!this.on || this.typing || this.host.mode() !== "tool") return false;
+    const words = this.state?.words ?? [];
+    const w = words.find((x) => x.kind === "value" && x.value) ?? words.find((x) => x.key === "t-options")?.kids?.find((x) => x.kind === "value" && x.value);
+    if (!w) return false;
+    this.toggle({ kind: "type", key: w.key });
+    const input = this.sheet.querySelector<HTMLInputElement>(".sn-type input");
+    if (!input) return false;
+    // (What was typed is the start of the new number, not put after the old one.)
+    input.value = first;
+    input.setSelectionRange(first.length, first.length);
+    input.dispatchEvent(new Event("input", { bubbles: true }));
+    return true;
+  }
+
   private toggle(to: NonNullable<Sentence["open"]>): void {
     const same = this.open && this.open.kind === to.kind && (to.kind === "all" || (this.open as { key: string }).key === (to as { key: string }).key);
     this.typing?.end(true);

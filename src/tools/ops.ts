@@ -72,7 +72,13 @@ export interface ExtrudeOptions {
  * face) or Offset (how far the face moves). Negative offsets cut.
  */
 /** The last extrude distance used: a new one from the Extrude button starts there. */
-export const lastExtrude: { distance: number; set?: boolean } = { distance: 10 };
+/**
+ * `chosen`: the Operation chosen by hand for a shape of a sketch - the next shapes of that sketch start with it.
+ * (Several shapes of one sketch made bodies one after another: New body had to be chosen again for each, where
+ * a shape touched the body made before and Auto would add to it.) Of that sketch only: a Cut chosen once does
+ * not wait in ambush for an extrude somewhere else.
+ */
+export const lastExtrude: { distance: number; set?: boolean; chosen?: { sketch: string; mode: ExtrudeFeature["mode"] } } = { distance: 10 };
 
 export class ExtrudeOp extends FeatureOp<ExtrudeFeature> {
   readonly id = "extrude";
@@ -89,6 +95,9 @@ export class ExtrudeOp extends FeatureOp<ExtrudeFeature> {
     super(app, { ...app.store.newIdentity("extrude", label), type: "extrude", source, distance: opts.distance ?? 0, mode, target: targetOf(app, source) }, existing);
     // Auto by the way it goes: + a new body (or added to the body it is drawn on), - a cut.
     if (!existing) (this.feature.byDirection = true), (this.feature.separate = true);
+    // (Started with no Operation asked for, on a sketch one was chosen for by hand: that one.)
+    const kept = lastExtrude.chosen;
+    if (!existing && mode === "auto" && source.kind === "profile" && kept && kept.sketch === source.sketch && kept.mode !== "auto") this.feature.mode = kept.mode;
     this.frame = sourceFrame(app, this.feature.source);
     this.handle = new Handle(app.view, "arrow");
     if (this.feature.extent === "to") this.slots = [this.upToSlot()];
@@ -238,7 +247,11 @@ export class ExtrudeOp extends FeatureOp<ExtrudeFeature> {
       },
       ...(anyBody(this.app, this.feature.id) ? [modeChoice(
         () => this.feature.mode,
-        (m) => this.setMode(m),
+        (m) => {
+          const s = this.feature.source;
+          if (!this.existing && s.kind === "profile") lastExtrude.chosen = { sketch: s.sketch, mode: m };
+          this.setMode(m);
+        },
         () => this.render(),
         false,
         () => (this.shownEffect = this.autoEffect()),
