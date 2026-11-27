@@ -61,6 +61,8 @@ const MOST_OF: Partial<Record<QuickKind, number>> = { edge: 3, curve: 3 };
 export class QuickActions {
   private readonly box = document.createElement("div");
   private readonly hook = () => this.layout();
+  /** The window's size changed (a phone's buttons are smaller): the names are fitted to the buttons as they are now. */
+  private readonly refit = () => (fitNames(this.box), this.layout());
   /**
    * A colour just tapped: the pick's buttons are made again (the one in use lit), and they come back with the
    * same choices open, so another colour is one tap more.
@@ -225,6 +227,7 @@ export class QuickActions {
     this.box.addEventListener("pointerdown", (e) => e.stopPropagation());
     document.body.append(this.box);
     view.frameHooks.add(this.hook);
+    window.addEventListener("resize", this.refit);
     fitNames(this.box);
     this.layout();
   }
@@ -271,6 +274,7 @@ export class QuickActions {
 
   dispose(): void {
     this.view.frameHooks.delete(this.hook);
+    window.removeEventListener("resize", this.refit);
     this.box.remove();
   }
 }
@@ -282,13 +286,23 @@ function shortName(label: string): string {
 }
 
 /**
- * A name wider than its round button is made smaller till it fits (Perpendicular, Coincident on a phone): it ran
- * out over the button's edge. Only when they are drawn again, not every frame.
+ * A name wider than its round button (Perpendicular; Construction on a phone, where the buttons are smaller) is
+ * fitted to it: it ran out over the button's edge. Narrowed first, by up to 15% - its letters stay as tall, which
+ * reads better than a smaller size - and made smaller only for what is still too wide. Only when they are drawn
+ * again, not every frame.
  */
 function fitNames(root: HTMLElement): void {
   for (const s of Array.from(root.querySelectorAll<HTMLElement>(".quick-action > span"))) {
     s.style.fontSize = "";
+    s.style.transform = "";
+    s.classList.remove("narrowed");
     const room = (s.parentElement?.clientWidth ?? 0) - 6;
-    if (room > 0 && s.scrollWidth > room) s.style.fontSize = `${Math.max(7, Math.floor((9 * room * 10) / s.scrollWidth) / 10)}px`;
+    const wide = s.scrollWidth;
+    if (room <= 0 || wide <= room) continue;
+    const k = Math.max(0.85, room / wide);
+    const size = Math.max(7, Math.floor((9 * room * 10) / (wide * k)) / 10);
+    if (size < 9) s.style.fontSize = `${size}px`;
+    s.classList.add("narrowed");
+    s.style.transform = `scaleX(${k.toFixed(3)})`;
   }
 }

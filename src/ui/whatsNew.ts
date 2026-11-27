@@ -21,7 +21,9 @@ export const UPDATES: Update[] = [
     added: [
       "Offset Edge takes several edges: with Edge chosen, tap one edge and then any others (tap one again to let it go). They are offset together at one distance, and the ones that join keep their corners. Chain still takes the whole outline.",
       "Fill Pattern sizes are a share of the shape (Spacing %, Size %): 5 gives about twenty rows on a small shape and on a big one, so a big shape no longer fills with thousands of lines. One tap inside a shape fills it, and a pattern or size changed after that follows at once. With a mouse, the shape under the pointer lights up before you click.",
-      "Settings has a new switch, Quick buttons, under the number pad. Off, the round buttons beside what you pick are not shown (Extrude's Add and Cut beside a face go too), and you work from the bottom line alone. The Tutorial then leads you through the line.",
+      "Settings has a new switch, Quick buttons, at the end of its list beside the number pad's. Off, the round buttons beside what you pick are not shown (Extrude's Add and Cut beside a face go too), and you work from the bottom line alone. The Tutorial then leads you through the line.",
+      "On a phone the round buttons beside a pick are smaller (a row of four took most of the screen's width, over the model). Their names are the same size as before, a long one only narrowed, and a button still takes a touch a little past its edge.",
+      "The number pad on screen now comes switched on, on computers too: it opens beside a value you click, and the keyboard still types into the box. If you had it off, it is on again once; Settings > Number pad on screen switches it off.",
     ],
     fixed: [
       "In a sketch, a tool that is on has the bottom line to itself: its own buttons, Sketch view and the blue tick. Draw, Modify, Transform, Delete and Exit come back when the tick puts the tool down. A shape being drawn (Line, Rectangle, Circle, Arc, Spline, Polygon, Ellipse) keeps Draw, to switch to another shape.",

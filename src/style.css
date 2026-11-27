@@ -7386,6 +7386,45 @@ html[data-screen="phone"] body.sentence-ui #toast {
 .quick-action.quick-more {
   border-style: dashed;
 }
+/* A name too wide for its button: narrowed to fit (quickActions.ts fitNames), so it is laid out at its own width. */
+.quick-action span.narrowed {
+  max-width: none;
+  overflow: visible;
+}
+/* A phone: smaller. A row of four took seven tenths of the screen's width, right over the model it is for. The names
+   keep their size (a long one is narrowed before it is made smaller), and each button takes a touch a little past
+   its own edge, half way to the next one: as easy to hit as it was. */
+html[data-screen="phone"] .quick-actions,
+html[data-screen="phone"] .quick-row {
+  gap: 6px;
+}
+html[data-screen="phone"] .quick-action {
+  position: relative;
+  /* (Not narrower: Construction, the longest name in a row, is still as tall as the others, only narrowed.) */
+  width: 52px;
+  height: 40px;
+  border-radius: 20px;
+}
+html[data-screen="phone"] .quick-action::after {
+  content: "";
+  position: absolute;
+  inset: -4.5px;
+}
+html[data-screen="phone"] .quick-action svg,
+html[data-screen="phone"] .quick-swatch {
+  width: 16px;
+  height: 16px;
+}
+html[data-screen="phone"] .quick-glyph {
+  font-size: 15px;
+  line-height: 16px;
+  height: 16px;
+}
+html[data-screen="phone"] .quick-rest {
+  grid-template-columns: repeat(4, 52px);
+  gap: 6px;
+  padding: 7px;
+}
 
 /* A list at the right edge (Settings and its pages, Display): its parts apart - a grey line over each heading but
    the first (Units from Grid from Degree format; Snap to from Show; Shaders from Options from Analysis). */
@@ -7394,7 +7433,7 @@ html[data-screen="phone"] body.sentence-ui #toast {
   padding-top: 12px;
   border-top: 1px solid rgba(255, 255, 255, 0.14);
 }
-/* Its own name at the top, a line under it: Settings apart from Units & grid, Snapping, Number pad, Appearance. */
+/* Its own name at the top, a line under it: Settings apart from Units & grid, Snapping, Appearance and its switches. */
 #popover .pop-heading:first-child {
   padding-bottom: 8px;
   margin-bottom: 4px;

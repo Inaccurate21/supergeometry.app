@@ -203,8 +203,8 @@ const DEFAULTS: Settings = {
   autoConstrain: true,
   sketchAnchor: "first",
   showConstraintGlyphs: true,
-  // On by default on touch screens (phones, tablets, headsets).
-  numpad: isTouchDevice,
+  // On by default, on a computer too (its keyboard types into the box as ever, the pad open beside it).
+  numpad: true,
   quickButtons: true,
   showHints: true,
   offline: false,
@@ -212,7 +212,7 @@ const DEFAULTS: Settings = {
   direct: true,
   mouse: "default",
   wheelReverse: false,
-  version: 5,
+  version: 6,
 };
 
 type Listener = (s: Settings) => void;
@@ -236,6 +236,10 @@ class SettingsStore {
     if ((saved.version ?? 1) < 3) this.value = { ...this.value, numpad: isTouchDevice, version: 3 };
     // v4: the Constraints column starts closed (it got in the way; the Constraints button opens it).
     if ((saved.version ?? 1) < 4) this.value = { ...this.value, showConstraints: false, version: 4 };
+    // v6: the on-screen numpad starts on for everyone, on computers too (it was off there) - also for anyone
+    // whose saved preferences hold it off: a computer's could not say whether that was chosen. Its switch in
+    // Settings puts it off again.
+    if ((saved.version ?? 1) < 6) this.value = { ...this.value, numpad: true, version: 6 };
     // The sentence bar is the only way to the tools (its switch in More is gone): on for everyone.
     this.value.sentence = true;
     // Direct touch is how the app is worked too (it had a switch in More for a while: one saved as off is on again).

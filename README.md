@@ -162,12 +162,14 @@ runs between, a row or a ring of copies for a pattern.
 tools (a flat face Sketch and Move, a round face Thread and Fillet, an edge
 Chamfer and Move, a body Fillet and Mirror), then **Delete**, then **More**,
 which opens every other tool that pick has. In a sketch: Construction and
-Delete. **Settings → Quick buttons** switches them off, for working from the
+Delete. On a phone they are smaller, their names the same size.
+**Settings → Quick buttons** switches them off, for working from the
 line at the bottom alone: every one of those tools is on it too.
 
 **Right edge** - **Fit**, **Display** (shaded, wireframe, X-ray) and
-**Settings**: one sheet with Units & grid, Snapping, the number pad, the
-quick buttons and Appearance, each row saying how it is set now.
+**Settings**: one sheet with Units & grid, Snapping, Appearance and (with a
+mouse) Mouse, each row saying how it is set now, then the two switches:
+Number pad on screen and Quick buttons.
 
 **Bottom left** - Undo / Redo.
 
@@ -399,8 +401,9 @@ sketch. A sketch stays in view until every region of it is used.
   the project's unit changes no size: plain numbers in formulas are given
   the unit they were typed in.
 - The **on-screen numpad** (Settings at the right edge, Number pad on
-  screen) replaces the system keyboard for value boxes. It's on by default
-  on phones, tablets and headsets. Tapping a box selects its value, so typing
+  screen) replaces the system keyboard for value boxes. It's on by default,
+  on a computer too: there it opens beside the box, and the keyboard types
+  into the box as ever. Tapping a box selects its value, so typing
   replaces it; nothing is applied until you press ↵. After the second tap of
   a line, its length box opens right away. Drag the numpad by its grip where
   you want it; double-tap the grip to put it back by the box.
