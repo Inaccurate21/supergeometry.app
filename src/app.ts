@@ -15,6 +15,7 @@ import type { EdgeFeature, EdgeRef, ExtrudeFeature, ExtrudeSource, Feature, Fill
 import { emptyDoc } from "./doc/types";
 import { editedStep } from "./doc/freeformEdits";
 import { createVariable, insertFile, insertImage, acceptFor, MESH_MAX } from "./io/insert";
+import { saveFile } from "./io/save";
 import { RefImages } from "./ui/refImages";
 import { WebWindow } from "./ui/webWindow";
 import { numpadVariables } from "./ui/numpad";
@@ -2657,10 +2658,7 @@ window.addEventListener("pagehide", () => setBuilding(null));
 // (Put out of sight with the build done and only the drawing marked: nothing is being drawn now.)
 document.addEventListener("visibilitychange", () => document.visibilityState === "hidden" && readBuilding()?.drawing && setBuilding(null));
 
+/** A made file to the device: see io/save.ts (Android's "Save to" window where the browser has it, else a download). */
 function download(blob: Blob, name: string): void {
-  const a = document.createElement("a");
-  a.href = URL.createObjectURL(blob);
-  a.download = name;
-  a.click();
-  setTimeout(() => URL.revokeObjectURL(a.href), 5000);
+  saveFile(blob, name);
 }

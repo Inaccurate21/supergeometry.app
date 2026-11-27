@@ -454,6 +454,9 @@ can't be rebuilt after a change, it's marked and the reason is shown.
   clearing the site's data in the browser's settings deletes them.
 - **File → Save project** downloads a `.super` file (keep it as a backup or
   move it to another device).
+- **On Android**, Save project and the exports open the device's own *Save to* window where the
+  browser has it (Chrome): Google Drive and the device's other places are in it. Where it has none, the
+  file is downloaded as before.
 - **File → Import file…** brings a STEP, STL, OBJ, 3MF, DXF or SVG file into the project that is
   open (the same as More → Insert → File).
 - **File → Export STL** or **Export 3MF** for 3D printing (3MF keeps body

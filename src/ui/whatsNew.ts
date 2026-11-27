@@ -19,6 +19,7 @@ export const UPDATES: Update[] = [
   {
     date: "2026-11-27",
     added: [
+      "On Android, Save project and the exports open the device's own Save to window where the browser has it: pick Google Drive there (or any other place the device knows) and the file is on your computer without moving it by hand. Close the window and nothing is saved. Where the browser has no such window, the file is downloaded as before.",
       "With a tool open, just type: the number goes into the tool's main value (Extrude's Distance, Fillet's Radius, a plane's Offset) with no click on its box first. Enter sets it, and Enter again finishes the tool.",
       "Extrude keeps the Operation you chose for a sketch: after New body (or Add, or Cut) is picked for one shape, the next shapes of that same sketch start with it. Other sketches start on Auto as before.",
       "AR on a phone or tablet has a camera button at the bottom: it takes a picture of the model as it stands in your room and hands it to the share sheet, or saves it. The browser asks once to use the camera for it. Where a browser does not give the camera picture, the button says so and a screenshot does the same.",
