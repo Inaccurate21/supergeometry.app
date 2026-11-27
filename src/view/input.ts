@@ -49,6 +49,12 @@ const TAP_SLOP = { mouse: 4, pen: 6, touch: 10 };
 /** Press and hold this long (ms), still, for the right-click menu. */
 const HOLD_MS = 550;
 const DOUBLE_TAP_MS = 350;
+/** Fingers down together and all lifted again within this long (ms), none having moved: a tap of two or three fingers. */
+const FINGER_TAP_MS = 350;
+/** Two fingers move this far (px) before they move the view: under it they may be a tap, and the view stays still. */
+const PINCH_SLOP = 8;
+/** Two fingers turn this far (rad, 12°) before the view rolls with them: fingers that pinch or slide turn a little too. */
+const TWIST_START = 0.21;
 
 interface Tracked {
   id: number;
@@ -80,7 +86,18 @@ export class InputRouter {
   private marquee = document.createElement("div");
   private modifiers = false;
   private penDown = false;
-  private lastPinch: { d: number; cx: number; cy: number } | null = null;
+  private lastPinch: { d: number; cx: number; cy: number; a: number } | null = null;
+  /**
+   * Two fingers tapped on the view together (2), or three (3): Undo and Redo, as drawing apps on a tablet have
+   * them. Set by the app.
+   */
+  fingerTap: ((fingers: number) => void) | null = null;
+  /**
+   * Several fingers on the view: when the first of them came down, the most there were at once, whether any has
+   * moved (then they move the view, and are no tap), how far the first two have turned about each other, and
+   * whether the view rolls with them by now.
+   */
+  private many: { t0: number; most: number; moved: boolean; turned: number; rolling: boolean } | null = null;
   private lastTap = { t: 0, x: 0, y: 0, count: 0 };
 
   constructor(private view: Viewport) {
@@ -140,9 +157,14 @@ export class InputRouter {
       }
       this.mode = "pinch";
       this.lastPinch = this.pinchState();
+      const first = [...this.pointers.values()][0];
+      this.many = { t0: first.at, most: 2, moved: Math.hypot(first.x - first.x0, first.y - first.y0) >= PINCH_SLOP, turned: 0, rolling: false };
       return;
     }
-    if (this.pointers.size > 1) return;
+    if (this.pointers.size > 1) {
+      if (type === "touch" && this.many) this.many.most = Math.max(this.many.most, this.pointers.size);
+      return;
+    }
 
     // Mouse: which drags turn, move and zoom the view is a setting (Settings > Mouse). As it comes: right-drag
     // orbits, middle-drag (or shift+right) pans, alt+left orbits (trackpads).
@@ -272,11 +294,36 @@ export class InputRouter {
         this.view.requestRender();
         return;
       case "pinch": {
+        const m = this.many;
+        // Fingers that have not moved yet may be a tap (Undo, Redo): the view stays still under them. Once one has
+        // moved they move the view, from where they are by then - not at a jump.
+        if (m && !m.moved) {
+          if (![...this.pointers.values()].some((q) => Math.hypot(q.x - q.x0, q.y - q.y0) >= PINCH_SLOP)) return;
+          m.moved = true;
+          this.lastPinch = this.pinchState();
+          // (How far they have turned is counted from where they came down, not from here.)
+          const [a, b] = [...this.pointers.values()];
+          const turn = (this.lastPinch?.a ?? 0) - Math.atan2(b.y0 - a.y0, b.x0 - a.x0);
+          if (this.lastPinch) m.turned = Math.atan2(Math.sin(turn), Math.cos(turn));
+          return;
+        }
         const s = this.pinchState();
         if (!s || !this.lastPinch) return;
         this.view.cam.pan(s.cx - this.lastPinch.cx, s.cy - this.lastPinch.cy, this.view.height);
         if (s.d > 0 && this.lastPinch.d > 0) {
           this.view.cam.zoom(this.lastPinch.d / s.d, this.view.worldUnder(s.cx, s.cy));
+        }
+        // Twisted: the view rolls with the fingers, about the point between them, as paper turned under them. Only
+        // a twist meant as one - fingers that pinch or slide turn a little as they go.
+        if (m) {
+          let da = s.a - this.lastPinch.a;
+          da = Math.atan2(Math.sin(da), Math.cos(da));
+          m.turned += da;
+          if (!m.rolling && Math.abs(m.turned) > TWIST_START) {
+            m.rolling = true;
+            da = m.turned - Math.sign(m.turned) * TWIST_START;
+          }
+          if (m.rolling && da) this.view.cam.twist(da, s.cx - this.view.width / 2, s.cy - this.view.height / 2, this.view.height);
         }
         this.lastPinch = s;
         this.view.requestRender();
@@ -293,8 +340,22 @@ export class InputRouter {
     this.pointers.delete(e.pointerId);
     if (this.mode === "pinch") {
       // Lifting one finger of a pinch must not orbit with the remaining one.
-      if (this.pointers.size === 0) this.mode = "idle";
-      else this.lastPinch = null;
+      if (this.pointers.size > 0) {
+        this.lastPinch = null;
+        return;
+      }
+      this.mode = "idle";
+      const m = this.many;
+      this.many = null;
+      if (!m) return;
+      // All of them up again at once, none having moved: a tap of two fingers or of three. (Not in the tutorial:
+      // its taps are the lit ones.)
+      if (!m.moved && (m.most === 2 || m.most === 3) && e.timeStamp - m.t0 < FINGER_TAP_MS && !this.plainTaps) this.fingerTap?.(m.most);
+      // A view rolled by hand and let go near level, or near a quarter turn, goes there.
+      else if (m.rolling) {
+        this.view.cam.settleRoll();
+        this.view.requestRender();
+      }
       return;
     }
     if (this.pointers.size > 0) return;
@@ -302,6 +363,10 @@ export class InputRouter {
     this.mode = "idle";
     if (mode === "captured") this.handler.up?.(this.tp(t));
     if (mode === "pending" && !this.held) this.emitTap(t);
+    // Held still on a face, an edge or a sketch's shape (it took hold of it: picked, ready to be dragged) and
+    // lifted where it was: the right-click's menu for it, by the finger - a press and hold was the right-click
+    // everywhere but on these.
+    else if (mode === "pending" && this.held) this.handler.context?.(this.tp(t));
     this.held = false;
     if (mode === "rpending") {
       // The browser's own menu comes after the release, aimed at whatever is under the pointer by then: the
@@ -326,6 +391,7 @@ export class InputRouter {
     if (this.pointers.size === 0) {
       if (this.mode === "captured" && t) this.handler.up?.(this.tp(t));
       this.mode = "idle";
+      this.many = null;
     }
   }
 
@@ -345,11 +411,12 @@ export class InputRouter {
     this.handler.tap?.(this.tp(t), count);
   }
 
-  private pinchState(): { d: number; cx: number; cy: number } | null {
+  /** The first two fingers: how far apart, the point between them, and which way the second lies from the first (rad, clockwise on the screen). */
+  private pinchState(): { d: number; cx: number; cy: number; a: number } | null {
     const pts = [...this.pointers.values()];
     if (pts.length < 2) return null;
     const [a, b] = pts;
-    return { d: Math.hypot(a.x - b.x, a.y - b.y), cx: (a.x + b.x) / 2, cy: (a.y + b.y) / 2 };
+    return { d: Math.hypot(a.x - b.x, a.y - b.y), cx: (a.x + b.x) / 2, cy: (a.y + b.y) / 2, a: Math.atan2(b.y - a.y, b.x - a.x) };
   }
 
   private onWheel(e: WheelEvent): void {

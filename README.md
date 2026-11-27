@@ -100,11 +100,14 @@ There's no wrong order. Undo (bottom left) is always one tap away.
 | Turn the view | right-drag (or Alt + left-drag) | one-finger drag | drag with the trigger |
 | Move the view | middle-drag (or Shift + right-drag) | two-finger drag | - (use the view cube) |
 | Zoom | mouse wheel | pinch | thumbstick / pinch |
+| Roll the view | ⟲ ⟳ on the view cube | twist two fingers | - |
 | Select | click | tap | point and trigger |
 | Select several | left-drag a box on empty space, or Ctrl + A for everything | tap one after another | point and trigger |
 | Select a whole body | double-click | double-tap | double-trigger |
 | Deselect | Esc or click empty space | tap empty space | tap empty space |
 | Step back | right-click or Esc | - | - |
+| Undo / Redo | Ctrl + Z / Ctrl + Y | tap with two fingers / with three | - |
+| A menu by the pointer | right-click | press and hold still (on a part: then lift) | press and hold |
 
 - **Used to another program's mouse?** Settings → Mouse makes the buttons
   turn, move and zoom the view as they do there: Onshape and Tinkercad (the
@@ -123,7 +126,10 @@ There's no wrong order. Undo (bottom left) is always one tap away.
 
 - **Fit**: double-tap the view cube to get everything on screen.
 - **View cube** (top right): tap a face for a straight-on view (Top, Front…);
-  ⟲ ⟳ at its top corners turn the view by 90°.
+  ⟲ ⟳ at its top corners turn the view by 90°. On a touch screen two fingers
+  twisted roll it by any amount, about the point between them; let go near
+  level or near a quarter turn and it goes there. A rolled view comes level
+  again as you turn it.
 - **Orbit centre** (the cube's bottom-left button): tap it, then tap a point -
   the view now turns around that point. Fit resets it.
 - **Views** (the cube's bottom-right button): standard and saved views; tap
@@ -277,7 +283,8 @@ sketch. A sketch stays in view until every region of it is used.
 - **Direct touch** - what is picked is dragged by itself: a face pushed or
   pulled, a sketch's shape pulled up into a solid, an edge rounded, a body
   slid over the floor. On a touch screen press and hold a face, shape or edge
-  and pull, in one touch.
+  and pull, in one touch. Lifted without pulling, the press brings the list of
+  what can be done with it, as a right-click does.
 - **Faces** - drag the arrow to push/pull a face: its neighbours follow,
   curved ones included; fillets next to it are kept. **Move/Rotate Face**
   (a gimbal on the face) moves it every way and turns it about its normal. A

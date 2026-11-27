@@ -66,7 +66,12 @@ export class CameraController {
   orbit(dxPx: number, dyPx: number): void {
     this.animation = null;
     this.endFlat();
-    this.roll = 0;
+    // A rolled view (by hand, by the view cube's arrows, to face a tilted plane) comes level again as it is turned:
+    // over its first moves, not at a jump.
+    if (this.roll) {
+      const r = Math.atan2(Math.sin(this.roll), Math.cos(this.roll));
+      this.roll = Math.abs(r) < 0.02 ? 0 : r * 0.7;
+    }
     const az0 = this.azimuth;
     const el0 = this.elevation;
     this.azimuth -= dxPx * 0.006;
@@ -159,6 +164,28 @@ export class CameraController {
     const to = this.aim();
     to.roll += rad;
     this.go(to);
+  }
+
+  /**
+   * Roll the view by hand about a point of the screen - two fingers twisted on it, as a sheet of paper is turned
+   * under them: what is under that point stays under it. (`dxPx`, `dyPx`: the point, from the middle of the view;
+   * `rad`: clockwise on the screen.)
+   */
+  twist(rad: number, dxPx: number, dyPx: number, viewportHeight: number): void {
+    this.animation = null;
+    this.roll += rad;
+    this.update();
+    // (Rolled about the middle of the view, the point went round it by the turn: moved back under the fingers.)
+    const c = Math.cos(rad);
+    const s = Math.sin(rad);
+    this.pan(dxPx - (c * dxPx - s * dyPx), dyPx - (s * dxPx + c * dyPx), viewportHeight);
+  }
+
+  /** A roll made by hand, let go near level or near a quarter turn: it goes there (a view a few degrees off is no one's wish). */
+  settleRoll(): void {
+    const q = Math.round(this.roll / (Math.PI / 2)) * (Math.PI / 2);
+    const off = this.roll - q;
+    if (Math.abs(off) > 1e-6 && Math.abs(off) < MathUtils.degToRad(7)) this.rollBy(-off);
   }
 
   iso(): void {

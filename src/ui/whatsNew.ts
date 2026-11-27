@@ -24,6 +24,9 @@ export const UPDATES: Update[] = [
       "Settings has a new switch, Quick buttons, at the end of its list beside the number pad's. Off, the round buttons beside what you pick are not shown (Extrude's Add and Cut beside a face go too), and you work from the bottom line alone. The Tutorial then leads you through the line.",
       "On a phone the round buttons beside a pick are smaller (a row of four took most of the screen's width, over the model). Their names are the same size as before, a long one only narrowed, and a button still takes a touch a little past its edge.",
       "The number pad on screen now comes switched on, on computers too: it opens beside a value you click, and the keyboard still types into the box. If you had it off, it is on again once; Settings > Number pad on screen switches it off.",
+      "On a touch screen, tap the view with two fingers to undo and with three to redo. A word on the screen says which it did.",
+      "On a touch screen, twist two fingers to roll the view about the point between them. Let go near level, or near a quarter turn, and it goes there. A rolled view now comes level smoothly as you turn it, not at a jump.",
+      "On a touch screen, press and hold a face, an edge or a sketch's shape and lift without dragging: the list of what can be done with it opens by your finger, as a right-click gives. Hold and drag still pulls it.",
     ],
     fixed: [
       "In a sketch, a tool that is on has the bottom line to itself: its own buttons, Sketch view and the blue tick. Draw, Modify, Transform, Delete and Exit come back when the tick puts the tool down. A shape being drawn (Line, Rectangle, Circle, Arc, Spline, Polygon, Ellipse) keeps Draw, to switch to another shape.",

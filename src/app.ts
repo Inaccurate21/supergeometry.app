@@ -115,6 +115,17 @@ export class App implements AppContext {
   constructor(canvas: HTMLCanvasElement) {
     this.view = new Viewport(canvas);
     this.input = new InputRouter(this.view);
+    // Two fingers tapped on the view: Undo. Three: Redo (as drawing apps on a tablet have it). Said in a word each
+    // time, so that a tap not meant is seen for what it did.
+    this.input.fingerTap = (fingers) => {
+      const redo = fingers === 3;
+      const button = document.getElementById(redo ? "redo-btn" : "undo-btn") as HTMLButtonElement | null;
+      if (button?.disabled) return this.ui.toast(redo ? "Nothing to redo" : "Nothing to undo");
+      navigator.vibrate?.(10);
+      if (redo) this.redo();
+      else this.undo();
+      this.ui.toast(redo ? "Redo" : "Undo");
+    };
     this.selectTool = new SelectTool(this);
     this.tool = this.selectTool;
     this.input.handler = this.tool;

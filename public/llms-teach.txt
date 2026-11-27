@@ -19,8 +19,8 @@ For an AI assistant working in the person's tab, when they want to **learn** the
 2. **Pick first.** Tap a face, an edge or a body: the line at the bottom of the screen then shows what can be done with it, by group: **Sketch**, **Freeform**, **Transform**, **Construct**, **Modify**, **Combine**, **Create**, and **More**. Round buttons beside the pick hold the likeliest tools.
 3. A tool open turns the line into its settings. Tap a number to type it. The tick finishes; the cross takes it back.
 4. Every step is listed in **History** (top bar). Tap a step to open it again and change it; everything after it follows.
-5. Turn the view: right-drag with a mouse, one finger on a touch screen. Zoom: wheel, or pinch. Move: middle-drag, or two fingers. Double-tap the view cube (top right) to fit everything.
-6. Nothing is lost: Undo and Redo are at the bottom left, and the project saves itself in the browser.
+5. Turn the view: right-drag with a mouse, one finger on a touch screen. Zoom: wheel, or pinch. Move: middle-drag, or two fingers. Double-tap the view cube (top right) to fit everything. On a touch screen two fingers twisted roll the view.
+6. Nothing is lost: Undo and Redo are at the bottom left (on a touch screen also a tap on the view with two fingers, and with three), and the project saves itself in the browser.
 
 ## Where to start
 
