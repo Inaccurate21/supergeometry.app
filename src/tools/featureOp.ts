@@ -8,6 +8,7 @@ import type { PickHit, PickOptions } from "../view/viewport";
 import { hitToSel, sourcesOf, viewMenu, type AppContext, type Sel, type Tool } from "./tool";
 import { DragTyping } from "./dragTyping";
 import { screenClass } from "../device";
+import { smallerSize } from "../geom";
 import { arrangement, materialRegions, pointInRegion, resolveRegion, type Region } from "../sketch/regions";
 import { pointInPoly } from "../sketch/curves";
 
@@ -414,6 +415,13 @@ export abstract class FeatureOp<F extends Feature> implements Tool {
    */
   private asked: { key: string; base: readonly Feature[]; pending: boolean; result: unknown } | null = null;
 
+  /**
+   * A size the tool chose by itself for a new step (where it is in the step, and what it is now). While it is still
+   * that, a step that cannot be built with it is tried again with the next round size down, a few times: a start
+   * size taken from a long edge may not fit the thin wall beside it.
+   */
+  protected startValue: { path: string; value: number; left: number } | null = null;
+
   /** Re-run the preview with the current draft. */
   protected update(): void {
     this.onDraftChanged();
@@ -441,6 +449,17 @@ export abstract class FeatureOp<F extends Feature> implements Tool {
     this.app.preview(list!).then((r) => {
       shown(r);
       this.error = r?.errors.find((e) => e.featureId === this.feature.id)?.message ?? null;
+      const s = this.startValue;
+      if (this.error && s && !this.existing && s.left > 0 && this.asked === mine && Math.abs(Number(getPath(this.feature as Feature, s.path))) === s.value) {
+        const sign = Number(getPath(this.feature as Feature, s.path)) < 0 ? -1 : 1;
+        s.left--;
+        s.value = smallerSize(s.value);
+        setPath(this.feature as Feature, s.path, sign * s.value);
+        this.error = null;
+        this.render();
+        this.update();
+        return;
+      }
       this.setHint();
       // What the step notes about itself (it cut where Add may have been
       // meant, a piece left off): said while it's being made, not only on

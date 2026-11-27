@@ -7,6 +7,7 @@ import { planeSlot } from "./slots";
 import type { PanelItem } from "../ui/ui";
 import { FeatureOp, type Slot } from "./featureOp";
 import { faceRefOf, type AppContext, type Sel } from "./tool";
+import { startSize } from "../geom";
 
 /** One face, of a kind `fits` says. */
 function faceSlot(app: AppContext, label: string, get: () => FaceRef | null, set: (f: FaceRef, s: Sel) => void, fits: (s: Extract<Sel, { kind: "face" }>) => boolean, rejectHint: string, picked = "1 face", empty = "Tap a face"): Slot {
@@ -155,12 +156,16 @@ export class WrapOp extends FeatureOp<WrapFeature> {
         app,
         "Round face",
         () => this.onto,
-        (ref) => ((this.onto = ref), (f.face = ref)),
+        // (How far it stands out to start with: by the size of the face it goes on.)
+        (ref) => ((this.onto = ref), (f.face = ref), this.ownHeight && (f.height = Math.sign(f.height || 1) * startSize(Math.sqrt(ref.area), 0.03, 1))),
         (s) => !!app.view.body(s.body)?.faces[s.face]?.round,
         "Wrap goes on a round face (a cylinder)",
       ),
     ];
   }
+
+  /** The height is still the one the tool chose (not typed yet). */
+  private ownHeight = !this.existing;
 
   protected hint(): string {
     if (!this.onto) return "Tap the round face to wrap the sketch round (the sketch on a plane along its axis).";
@@ -170,7 +175,7 @@ export class WrapOp extends FeatureOp<WrapFeature> {
   protected items(): PanelItem[] {
     const f = this.feature;
     return [
-      { type: "number", label: "Height", value: Math.abs(f.height), kind: "length", min: 0.01, onInput: (v) => ((f.height = Math.sign(f.height || 1) * Math.max(0.01, Math.abs(v))), this.update()) },
+      { type: "number", label: "Height", value: Math.abs(f.height), kind: "length", min: 0.01, onInput: (v) => ((this.ownHeight = false), (f.height = Math.sign(f.height || 1) * Math.max(0.01, Math.abs(v))), this.update()) },
       { type: "toggle", label: "Sink in", value: f.height < 0, onChange: (v) => ((f.height = (v ? -1 : 1) * Math.abs(f.height)), this.render(), this.update()) },
     ];
   }

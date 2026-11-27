@@ -5,7 +5,7 @@ import type { ThreadFeature } from "../doc/types";
 import { fillEdgeKey } from "../doc/types";
 import { defaultPitch, threadLabel } from "../kernel/threads";
 import type { AxisFeature, AxisKind, AxisRef, ConnectFeature, EdgeFeature, EdgeRef, ExtrudeFeature, ExtrudeSource, FaceRef, FillFeature, FillToPlaneFeature, ImageFeature, LoftFeature, MoveFaceFeature, PathRef, PlaneDef, PlaneFeature, ReplaceFaceFeature, RevolveFeature, ScaleFaceFeature, ShellFeature, SketchFeature, SplitFeature, SweepFeature, TransformFeature, Vec3 } from "../doc/types";
-import { FRONT, GROUND, RIGHT, add, cross, dot, len, norm, niceStep, patternSpacing, roundSig, scale, sub, xDirFor } from "../geom";
+import { FRONT, GROUND, RIGHT, add, cross, dot, len, norm, niceStep, patternSpacing, roundSig, scale, startSize, sub, xDirFor } from "../geom";
 import type { PanelItem, ToolItem } from "../ui/ui";
 import { QuickActions } from "./quickActions";
 import { evaluate, fmtLen } from "../units";
@@ -72,7 +72,7 @@ export interface ExtrudeOptions {
  * face) or Offset (how far the face moves). Negative offsets cut.
  */
 /** The last extrude distance used: a new one from the Extrude button starts there. */
-export const lastExtrude = { distance: 10 };
+export const lastExtrude: { distance: number; set?: boolean } = { distance: 10 };
 
 export class ExtrudeOp extends FeatureOp<ExtrudeFeature> {
   readonly id = "extrude";
@@ -388,7 +388,8 @@ export class ExtrudeOp extends FeatureOp<ExtrudeFeature> {
     this.slots = ext === "to" ? [this.upToSlot()] : [];
     this.active = ext === "to" && !f.to ? 0 : -1;
     if (ext === "to" && f.symmetric) f.symmetric = undefined;
-    if (ext === "distance" && !f.distance) f.distance = lastExtrude.distance;
+    // (No extrude made yet to go by: a quarter of the size of what is there.)
+    if (ext === "distance" && !f.distance) f.distance = lastExtrude.set ? lastExtrude.distance : startSize(sceneSize(this.app), 0.25, lastExtrude.distance);
     // Through all, no way picked yet: a cut goes into the body (a sketch on a
     // face faces out of it: a hole "through all" went off into the air, cut nothing).
     // (So does Auto on a body's face: up off it, Through all only made a tower 350 high.)
@@ -656,7 +657,7 @@ export class ExtrudeOp extends FeatureOp<ExtrudeFeature> {
       if (!this.existing && this.feature.source.kind === "profile") this.app.ui.toast(`Nothing made: the ${this.feature.symmetric ? "distance each side" : "distance"} was 0`);
       return this.app.setTool(null);
     }
-    if (!this.existing && this.feature.source.kind === "profile") lastExtrude.distance = this.feature.distance;
+    if (!this.existing && this.feature.source.kind === "profile") (lastExtrude.distance = this.feature.distance), (lastExtrude.set = true);
     super.done();
   }
 
@@ -694,6 +695,30 @@ function withCircleKin(app: AppContext, edges: EdgeRef[]): EdgeRef[] {
   return out;
 }
 
+const XYZ: Vec3[] = [[1, 0, 0], [0, 1, 0], [0, 0, 1]];
+
+/** The smallest and the largest of the bodies' sizes along X, Y and Z (0: nothing to measure). */
+export function bodySizes(app: AppContext, bodies: string[]): { least: number; most: number } {
+  const all = XYZ.map((d) => bodyExtent(app, bodies, d)).filter((x) => x > 1e-9);
+  return all.length ? { least: Math.min(...all), most: Math.max(...all) } : { least: 0, most: 0 };
+}
+
+/** How big what is in the project is: the largest of its sizes along X, Y and Z (0: no body yet). */
+export function sceneSize(app: AppContext): number {
+  return bodySizes(app, app.view.bodyList.map((b) => b.id)).most;
+}
+
+/** The size a fillet or a chamfer starts with on these edges. */
+function edgeStartSize(app: AppContext, edges: EdgeRef[]): number {
+  let ref = Infinity;
+  for (const e of edges) if (e.length > 1e-9) ref = Math.min(ref, e.length);
+  for (const b of new Set(edges.map((e) => e.body))) {
+    const thin = bodySizes(app, [b]).least;
+    if (thin > 0) ref = Math.min(ref, thin);
+  }
+  return startSize(Number.isFinite(ref) ? ref : 0, 0.1, 1);
+}
+
 export class EdgeOp extends FeatureOp<EdgeFeature> {
   readonly id: string;
   private handle: Handle;
@@ -709,7 +734,11 @@ export class EdgeOp extends FeatureOp<EdgeFeature> {
     // Started by typing: the first digit is the size so far.
     const t = typed !== undefined && !variable ? Number(typed) : NaN;
     const v = variable ? evaluate(variable, "length") : t > 0 ? t : null;
-    super(app, { ...app.store.newIdentity(kind), type: kind, edges: existing ? edges : withCircleKin(app, edges), radius: v ?? 1, ...(variable && v !== null ? { exprs: { radius: variable } } : {}) }, existing);
+    // Neither: a tenth of the shortest edge picked, or of the body where it is thinner than that - a size that
+    // shows on the edge it is put on, small or a metre long.
+    const start = v === null && !existing ? edgeStartSize(app, edges) : 1;
+    super(app, { ...app.store.newIdentity(kind), type: kind, edges: existing ? edges : withCircleKin(app, edges), radius: v ?? start, ...(variable && v !== null ? { exprs: { radius: variable } } : {}) }, existing);
+    if (v === null && !existing) this.startValue = { path: "radius", value: start, left: 6 };
     this.id = kind;
     this.typed = typed;
     this.names = { fillet: existing?.type === "fillet" ? existing.name : app.store.newIdentity("fillet").name, chamfer: existing?.type === "chamfer" ? existing.name : app.store.newIdentity("chamfer").name };
@@ -1488,7 +1517,10 @@ export class ShellOp extends FeatureOp<ShellFeature> {
   private original: FaceRef[];
 
   constructor(app: AppContext, body: string, faces: FaceRef[], existing?: ShellFeature) {
-    super(app, { ...app.store.newIdentity("shell"), type: "shell", body, faces, thickness: 1 }, existing);
+    // (The wall to start with: a twentieth of the body's smallest size - 1 mm on a box 20 across, 50 on one a metre.)
+    const start = existing ? 1 : startSize(bodySizes(app, [body]).least, 0.05, 1);
+    super(app, { ...app.store.newIdentity("shell"), type: "shell", body, faces, thickness: start }, existing);
+    if (!existing) this.startValue = { path: "thickness", value: start, left: 6 };
     this.original = (app.view.body(body)?.faces ?? []).map((f) => ({ body, center: f.center, normal: f.normal, area: f.area, ...(f.step ? { step: f.step } : {}), ...(f.curve ? { curve: f.curve } : {}) }));
 
     this.slots = [facesSlot(app, "Open faces", () => this.feature.faces, (f) => (this.feature.faces = f.map((r) => this.onOriginal(r))), true)];
@@ -3423,6 +3455,8 @@ export class PlaneOp extends FeatureOp<PlaneFeature> {
   constructor(app: AppContext, base: PlaneDef | null, face: FaceRef | undefined, existing?: PlaneFeature) {
     super(app, { ...app.store.newIdentity("plane"), type: "plane", kind: "offset", plane: base ?? { origin: [0, 0, 0], xDir: [1, 0, 0], normal: [0, 0, 1] }, face, offset: 10 }, existing);
     this.base = existing ? existing.plane : base;
+    this.ownOffset = !existing;
+    if (!existing) this.feature.offset = this.startOffset(face);
     // Being edited: not from itself, nor from a plane made after it (that
     // one is built from this one, or comes later in the history).
     const at = existing ? app.store.doc.features.findIndex((x) => x.id === existing.id) : -1;
@@ -3430,7 +3464,15 @@ export class PlaneOp extends FeatureOp<PlaneFeature> {
       const k = app.store.doc.features.findIndex((x) => x.id === id);
       return at >= 0 && k >= at;
     };
-    this.slots = [planeSlot(app, "From", () => this.base, (p, f) => ((this.base = p), (this.feature.plane = p), (this.feature.face = f)), { named: existing ? baseName(app, existing) : undefined, skip })];
+    this.slots = [planeSlot(app, "From", () => this.base, (p, f) => ((this.base = p), (this.feature.plane = p), (this.feature.face = f), this.ownOffset && (this.feature.offset = this.startOffset(f))), { named: existing ? baseName(app, existing) : undefined, skip })];
+  }
+
+  /** The distance is still the one the tool chose (not typed or dragged yet). */
+  private ownOffset = false;
+
+  /** How far away the new plane starts: a quarter of the face it is taken from, or of what is in the project. */
+  private startOffset(face?: FaceRef): number {
+    return startSize(face && face.area > 0 ? Math.sqrt(face.area) : sceneSize(this.app), 0.25, 10);
   }
 
   private handle: Handle | null = null;
@@ -3479,6 +3521,7 @@ export class PlaneOp extends FeatureOp<PlaneFeature> {
   }
 
   private setOffset(v: number): void {
+    this.ownOffset = false;
     this.feature.offset = v;
     this.app.ui.updatePanelValues([v]);
     this.dim?.setValue(v);

@@ -4,7 +4,7 @@ import { isTouchDevice } from "../device";
 import { simplifyStroke } from "../sketch/freehand";
 import { Box3, BufferGeometry, DoubleSide, Line, LineBasicMaterial, LineDashedMaterial, Mesh, MeshBasicMaterial, Points, PointsMaterial, ShapeUtils, Vector2, Vector3 } from "three";
 import type { EdgeLink, ExtrudeSource, FaceRef, OutlineOffset, PlaneDef, PointRef, SketchConstraint, SketchEntity, SketchFeature, SketchFill, SketchRef, SketchRepeat, Vec2, Vec3 } from "../doc/types";
-import { add as add3, dot, GROUND, niceStep as niceStepOf, originOnPlane, patternSpacing, planeY, roundSig, scale as scale3, sub as sub3, toPlane } from "../geom";
+import { add as add3, dot, GROUND, niceStep as niceStepOf, originOnPlane, patternSpacing, planeY, roundSig, scale as scale3, startSize, sub as sub3, toPlane } from "../geom";
 import { addForUser, addStrict, constraintError, constraintName, copiedConstraints, LINKED, pointOf, pointsOf, refsOf, setValueStrict, sizeOf as sizeOfFn, solve, touchingEnds } from "../sketch/constraints";
 import { isExpression } from "../ui/ui";
 import { caretToEnd, selectAll, textField, type TextField } from "../ui/textField";
@@ -215,16 +215,22 @@ function storeVariants(): void {
   }
 }
 
+/** A text size has been typed (now or before a reload): until then Text starts at a size that shows in the view. */
+// (Declared with no value here on purpose: the size is read from storage above this line, as the file loads.)
+var textSizeChosen: boolean | undefined;
+
 /** The text size survives a reload (a ruler's 3.5 mm numbers came back at 10 mm after one). */
 function storedTextSize(): number {
   try {
     const v = Number(localStorage.getItem("sg.textSize"));
+    if (v > 0) textSizeChosen = true;
     return v > 0 ? v : 10;
   } catch {
     return 10;
   }
 }
 function storeTextSize(v: number): void {
+  textSizeChosen = true;
   try {
     localStorage.setItem("sg.textSize", String(v));
   } catch {
@@ -1367,6 +1373,9 @@ export class SketchTool implements Tool {
     if (kind === "move") ((this.edit.dx = 0), (this.edit.dy = 0), (this.edit.moveRot = 0));
     // A linear pattern starts with its first copy just clear of the selection.
     if (kind === "patternLinear") this.autoPatternSpacing();
+    // Text, no size typed yet: a twentieth of the height of what the view shows (10 mm letters on a sketch two
+    // metres across were a speck, and on one 5 mm across they filled the screen).
+    if (kind === "text" && !textSizeChosen) memory.textSize = startSize(this.app.view.cam.worldPerPixel(this.app.view.height) * this.app.view.height, 0.05, 10);
     this.finishFillet();
     this.clearPreviewJoin();
     this.edit.mirrorLine = undefined;
