@@ -316,6 +316,9 @@ export class App implements AppContext {
       },
       askName: async (title, current) => (await this.ui.dialog(title, [{ key: "name", label: "Name", value: current }]))?.name.trim() || null,
       isolated: () => this.isolatedWithSketches(),
+      deselect: () => {
+        if (this.tool === this.selectTool) this.setSelection([]);
+      },
     });
     // Computers and tablets start with Items open (phones: History only, there's no room for both).
     // (A phone on its side is wider than 720 px but only ~375 tall: Items would cover a third of it.)
