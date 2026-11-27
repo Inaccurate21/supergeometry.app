@@ -35,6 +35,9 @@ export const UPDATES: Update[] = [
       "On a touch screen, press and hold a face, an edge or a sketch's shape and lift without dragging: the list of what can be done with it opens by your finger, as a right-click gives. Hold and drag still pulls it.",
     ],
     fixed: [
+      "A project file with a mesh in it far over what can be brought in opens with that step switched off, and says so; inserted into another project, that mesh is left out. Either way it no longer runs the page out of memory.",
+      "Scale in the list of a picked body starts at once, the way you used last: its three ways are on the tool's own line, so the list no longer asks first.",
+      "A plane typed further than 10 km from the origin is refused as a typo, as a body that far is. A step that could not be made now says so in plain words where it showed the kernel's own.",
       "A mesh with too many triangles (an STL, OBJ or 3MF over 250,000) is refused as it is picked, with its count, before it is put into the project. It used to be taken in first and could run the page out of memory; saved by then, it crashed the app again at every start.",
       "If the page does die while building a file you brought in, the next start opens the project with that step switched off and says so, instead of dying again. The step is still in History: delete it, or tap its eye to try once more. A project already stuck this way opens again too.",
       "Scale shows its three ways again: Uniform, X / Y / Z (each direction by itself) and By reference (two points, and the distance they should be). They are on the line the moment Scale is open, and it starts the way you used last. From the bottom line it had only opened by a factor, with nothing to say there were two more.",

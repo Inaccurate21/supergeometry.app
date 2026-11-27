@@ -908,12 +908,8 @@ export class App implements AppContext {
     const again = died ? readDied() + 1 : 0;
     setDied(again);
     const sure = !!died && ((!died.drawing && died.files.length > 0) || again >= 2);
-    for (const f of fs) {
-      if (f.type !== "import" || f.suppressed) continue;
-      // (A binary STL as text: four letters to three bytes, fifty bytes a triangle.)
-      if (f.format === "stl" && (f.data.length * 0.75) / 50 > MESH_MAX * 1.5) off.add(f.id);
-      if (sure && died!.files.includes(f.id)) off.add(f.id);
-    }
+    for (const id of farTooBig(fs)) off.add(id);
+    for (const f of fs) if (sure && f.type === "import" && !f.suppressed && died!.files.includes(f.id)) off.add(f.id);
     // (Died twice with no file to blame: the last step that is on.)
     if (sure && !off.size) {
       const last = [...fs].reverse().find((f) => !f.suppressed && !f.rolledBack);
@@ -2256,6 +2252,15 @@ export class App implements AppContext {
 
   /** Close the open project (it's kept, with a fresh picture) and open another. */
   private async switchProject(doc: ProjectDoc, id: string): Promise<void> {
+    // A project with a mesh in it far over what can be brought in (saved before files were checked on the way
+    // in, or made elsewhere): that step is switched off as it opens, and it is said - built, it would run the
+    // page out of memory, and at every start after.
+    const big = farTooBig(doc.features);
+    if (big.length) {
+      const names = doc.features.filter((f) => big.includes(f.id)).map((f) => (f.type === "import" && f.fileName) || f.name);
+      for (const f of doc.features) if (big.includes(f.id)) f.suppressed = true;
+      void this.ui.ask("A file in this project is too big to build", `${names.join(", ")} has far more triangles than can be brought in (up to ${MESH_MAX.toLocaleString("en-US")}). Its step is switched off so that the project opens: it is still in History.`, [{ id: "ok", label: "OK", primary: true }]);
+    }
     this.setTool(null);
     this.setSection(null);
     this.isolate(null);
@@ -2632,6 +2637,10 @@ function readBuilding(): Building | null {
   } catch {
     return null;
   }
+}
+/** The steps that are meshes far over what can be brought in, and are on. (A binary STL as text: four letters to three bytes, fifty bytes a triangle.) */
+function farTooBig(features: readonly Feature[]): string[] {
+  return features.filter((f) => f.type === "import" && !f.suppressed && f.format === "stl" && (f.data.length * 0.75) / 50 > MESH_MAX * 1.5).map((f) => f.id);
 }
 function takeBuilding(): Building | null {
   const v = readBuilding();

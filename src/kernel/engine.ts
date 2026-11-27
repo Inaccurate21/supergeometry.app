@@ -1778,6 +1778,8 @@ async function apply(f: Feature, ctx: Ctx): Promise<void> {
         }
       }
       plane = { ...plane, origin: add(plane.origin, scale(plane.normal, f.offset)) };
+      // (A plane as far off as a body may not reach: an offset of a million million was taken, and the view with it.)
+      if (!(Math.max(...plane.origin.map(Math.abs)) < MAX_REACH)) throw new Error("This would be more than 10 km from the origin - check its values (a typo?)");
       // (Older projects: how it was made, from its name.)
       const kind = f.kind ?? (/^Midplane/.test(f.name) ? "mid" : /3 Points/.test(f.name) ? "3pt" : /Perp/.test(f.name) ? "perp" : /on Curve/.test(f.name) ? "curve" : /Angle/.test(f.name) ? "angle" : /Parallel/.test(f.name) ? "parallel" : "offset");
       ctx.planes.set(f.id, { id: f.id, name: f.name, plane, kind });
@@ -6355,6 +6357,9 @@ export function errorText(err: unknown): string {
     console.error(err);
     return DAMAGED_TEXT;
   }
+  // (The kernel's own words for a result that is nothing - "This shape has not type, it is null" - were shown as
+  // they are, on a step whose face could no longer be offset after an earlier size was changed.)
+  if (err instanceof Error && /has not type, it is null/i.test(err.message)) return "The geometry kernel could not make this shape (try other values)";
   if (err instanceof Error) return err.message.trim() || "The geometry kernel could not compute this (try other values)";
   // OpenCascade gave up (a raw exception from the kernel): say so in words.
   if (typeof err === "number" || String(err).includes("WebAssembly.Exception") || String(err) === "[object Object]") return "The geometry kernel could not compute this (try other values)";

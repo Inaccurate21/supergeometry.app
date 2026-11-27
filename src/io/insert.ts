@@ -130,7 +130,11 @@ export async function insertFile(app: AppContext): Promise<void> {
       return;
     }
     if (ext === "super" || ext === "tessel") {
-      insertProject(app, parseProject(await file.text()).features, file.name);
+      // (Not a mesh in it far over what can be brought in: see MESH_MAX.)
+      const parts = parseProject(await file.text()).features;
+      const big = parts.filter((f) => f.type === "import" && f.format === "stl" && (f.data.length * 0.75) / 50 > MESH_MAX * 1.5);
+      if (big.length) app.ui.toast(`Left out of ${file.name}: ${big.map((f) => (f.type === "import" && f.fileName) || f.name).join(", ")} has more triangles than can be brought in (up to ${many(MESH_MAX)})`, "error");
+      insertProject(app, parts.filter((f) => !big.includes(f)), file.name);
       return;
     }
     // (Any file can be picked on an iPad: see acceptFor.)

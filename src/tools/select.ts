@@ -1010,15 +1010,10 @@ export class SelectTool implements Tool {
         id: "scale",
         label: "Scale",
         icon: "scale",
-        // Starts the kind used last.
+        // Starts the way used last; its three ways are a choice on the tool's own line (ops.ts scaleWays), not a
+        // list to open here first - that was a tap more for the same thing.
         sub: { uniform: "Uniform", xyz: "X / Y / Z", ref: "By reference" }[scaleWay.kind],
         run: () => app.setTool(scaleWay.kind === "ref" ? new ScaleRefOp(app, bodies) : new ScaleOp(app, scaleWay.kind === "xyz", bodies)),
-        children: [
-          { id: "scaleUniform", label: "Uniform", icon: "scale", active: scaleWay.kind === "uniform", run: () => ((scaleWay.kind = "uniform"), app.setTool(new ScaleOp(app, false, bodies))) },
-          { id: "scaleXYZ", label: "X / Y / Z", icon: "scale", sub: "one direction", active: scaleWay.kind === "xyz", run: () => ((scaleWay.kind = "xyz"), app.setTool(new ScaleOp(app, true, bodies))) },
-          // Two points on it, then what their distance should be: the whole body scales to it.
-          { id: "scaleRef", label: "By reference", icon: "scale", sub: "two points, a distance", active: scaleWay.kind === "ref", run: () => ((scaleWay.kind = "ref"), app.setTool(new ScaleRefOp(app, bodies))) },
-        ],
       },
       { id: "translate", label: "Translate", icon: "translate", shortcut: "N", run: () => app.setTool(new TransformOp(app, "translate", bodies)) },
       { id: "patl", label: "Pattern – Linear", icon: "patternLinear", run: () => app.setTool(new TransformOp(app, "linear", bodies)) },
