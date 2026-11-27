@@ -230,6 +230,9 @@ on along their circle), Split, Move/Rotate (gimbal, or Rotate About a tapped
 centre), Scale, Pattern (linear with an arrow you drag, or circular around a
 centre), Delete. Tools with options start with the option you used last.
 Tapping empty space finishes Offset, Move, Scale, Pattern, Rotate and Mirror.
+A copy made with the **Copy** switch (by the gimbal, or in Move/Rotate, Rotate
+About and Scale) keeps the constraints that lie within it: joined corners,
+level and upright lines, sizes. Change one of its sizes and the rest follows.
 So does the blue tick: while a tool is on, the line at the bottom holds only that tool's own
 buttons, Sketch view and the tick. The tick finishes what the tool has set up and puts it down,
 and Draw, Modify, Transform, Delete and Exit are on the line again.

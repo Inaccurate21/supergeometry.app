@@ -5,7 +5,7 @@ import { simplifyStroke } from "../sketch/freehand";
 import { Box3, BufferGeometry, DoubleSide, Line, LineBasicMaterial, LineDashedMaterial, Mesh, MeshBasicMaterial, Points, PointsMaterial, ShapeUtils, Vector2, Vector3 } from "three";
 import type { EdgeLink, ExtrudeSource, FaceRef, OutlineOffset, PlaneDef, PointRef, SketchConstraint, SketchEntity, SketchFeature, SketchFill, SketchRef, SketchRepeat, Vec2, Vec3 } from "../doc/types";
 import { add as add3, dot, GROUND, niceStep as niceStepOf, originOnPlane, patternSpacing, planeY, roundSig, scale as scale3, sub as sub3, toPlane } from "../geom";
-import { addForUser, addStrict, constraintError, constraintName, LINKED, pointOf, pointsOf, refsOf, setValueStrict, sizeOf as sizeOfFn, solve, touchingEnds } from "../sketch/constraints";
+import { addForUser, addStrict, constraintError, constraintName, copiedConstraints, LINKED, pointOf, pointsOf, refsOf, setValueStrict, sizeOf as sizeOfFn, solve, touchingEnds } from "../sketch/constraints";
 import { isExpression } from "../ui/ui";
 import { caretToEnd, selectAll, textField, type TextField } from "../ui/textField";
 import { nearestSnap } from "../sketch/snapPick";
@@ -2557,7 +2557,9 @@ export class SketchTool implements Tool {
       this.dragBase = null;
       this.typing.reset();
       this.app.ui.setLabel(0, 0, null);
-      this.commit([...base, ...copies]);
+      // (The copy keeps what held its curves together: joined corners, level and upright lines, sizes.)
+      const all = [...base, ...copies];
+      this.commit(all, [...this.constraints, ...copiedConstraints(this.constraints, new Map(moved.map((e, i) => [e.id, copies[i].id])), all, uid)]);
       // The copies are selected: the next drag copies them again.
       this.selected = new Set(copies.map((e) => e.id));
       this.selPts = [];
@@ -5174,6 +5176,9 @@ export class SketchTool implements Tool {
     if (this.kind === "patternCircular" && !this.edit.pivot) return this.app.ui.toast("Tap the centre of the pattern first");
     if (this.kind === "mirror" && !this.edit.mirrorLine) return this.app.ui.toast("Pick the mirror line");
     let results = this.transformed(false);
+    // (Each curve picked and what was made of it, in that order: a copy takes its original's constraints.)
+    const from = this.entities.filter((e) => this.selected.has(e.id));
+    const made = results;
     // Mirroring across one of the shape's own edges: that edge maps onto itself - don't double it.
     const ml = this.edit.mirrorLine;
     if (this.kind === "mirror" && ml) {
@@ -5223,6 +5228,14 @@ export class SketchTool implements Tool {
       });
     }
     const base = keepOriginals ? this.entities : this.entities.filter((e) => !this.selected.has(e.id));
+    // A copy that stands by itself - moved, turned or scaled with Copy on - keeps what held its curves together:
+    // joined corners, level and upright lines, sizes. (A pattern's copies and a mirror's follow their originals.)
+    if (keepOriginals && (this.kind === "move" || this.kind === "rotate" || this.kind === "scale") && made.length === from.length) {
+      const kept = new Set(results);
+      const ids = new Map<string, string>();
+      from.forEach((e, i) => kept.has(made[i]) && ids.set(e.id, made[i].id));
+      links.push(...copiedConstraints(this.constraints, ids, [...base, ...results], uid));
+    }
     // Moved (not copied): ties between what moves and what stays let go, and
     // so do pins holding the moved curves in place - an arch's circle snapped
     // to its window's corner dragged the window along when moved to the middle.
