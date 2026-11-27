@@ -30,6 +30,7 @@ export const UPDATES: Update[] = [
       "On a touch screen, press and hold a face, an edge or a sketch's shape and lift without dragging: the list of what can be done with it opens by your finger, as a right-click gives. Hold and drag still pulls it.",
     ],
     fixed: [
+      "Polygon: Triangle, Square, Pentagon and Octagon each have their own picture in the list. All five showed the hexagon.",
       "On a phone, a sketch shape with two or three ways to draw it (Rectangle, Circle, Arc, Spline) shows them side by side on the bottom line, with Draw after them, as on a wider screen. They were folded into one button that had to be tapped again to see them, with half the line empty. Spline names them Fit, Control and Freehand there.",
       "Offset Edge on part of an ellipse (a rounded edge seen at a slant, projected into a sketch) left the outline open: its offset stopped a little short of the offsets of the lines beside it, so the shape looked closed and could not be picked or extruded. The offset of an ellipse is now the curve that is the same distance from it all along, it meets its neighbours, and Chain takes an outline with such a piece in it whole. An offset made before stays as it was: delete it and offset again.",
       "In a sketch, a tool that is on has the bottom line to itself: its own buttons, Sketch view and the blue tick. Draw, Modify, Transform, Delete and Exit come back when the tick puts the tool down. A shape being drawn (Line, Rectangle, Circle, Arc, Spline, Polygon, Ellipse) keeps Draw, to switch to another shape.",

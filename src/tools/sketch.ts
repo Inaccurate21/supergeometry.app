@@ -1253,7 +1253,7 @@ export class SketchTool implements Tool {
       t("polygon", "Polygon", "polygon", "G", {
         sub: POLYGON_NAMES[memory.sides] ?? `${memory.sides} sides`,
         // The usual ones a tap away (any other count: type it on the drawing).
-        children: [3, 4, 5, 6, 8].map((n) => ({ id: `polygon-${n}`, label: POLYGON_NAMES[n], icon: "polygon" as const, active: memory.sides === n, run: () => ((memory.sides = n), this.setKind("polygon")) })),
+        children: [3, 4, 5, 6, 8].map((n) => ({ id: `polygon-${n}`, label: POLYGON_NAMES[n], icon: (n === 6 ? "polygon" : `polygon${n}`) as "polygon" | "polygon3" | "polygon4" | "polygon5" | "polygon8", active: memory.sides === n, run: () => ((memory.sides = n), this.setKind("polygon")) })),
       }),
       t("text", "Text", "text"),
       t("project", "Project", "project", "P"),

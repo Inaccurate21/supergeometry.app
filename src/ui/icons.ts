@@ -29,6 +29,11 @@ export const icons = {
   circle: svg('<circle cx="12" cy="12" r="7.5"/><circle cx="12" cy="12" r="0.8" fill="currentColor"/>'),
   ellipse: svg('<ellipse cx="12" cy="12" rx="9" ry="5.5"/>'),
   polygon: svg('<path d="M12 3.5l7.4 4.25v8.5L12 20.5l-7.4-4.25v-8.5z"/>'),
+  // (Polygon's kinds, each with its own number of sides: all five were the hexagon.)
+  polygon3: svg('<path d="M12 4.5l7.36 12.75H4.64z"/>'),
+  polygon4: svg('<path d="M5.5 5.5h13v13h-13z"/>'),
+  polygon5: svg('<path d="M12 4l8.08 5.87L17 19.38H7L3.92 9.87z"/>'),
+  polygon8: svg('<path d="M8.75 4.15h6.5l4.6 4.6v6.5l-4.6 4.6h-6.5l-4.6-4.6v-6.5z"/>'),
   project: svg('<path d="M12 3l7 4v6l-7 4-7-4V7z"/><path d="M5 20h14" stroke-dasharray="2 2"/>'),
   offset: svg('<rect x="7" y="7" width="10" height="10" rx="1"/><rect x="3.5" y="3.5" width="17" height="17" rx="3" stroke-dasharray="2.5 2"/>'),
   sketchFillet: svg('<path d="M4 20V11a7 7 0 0 1 7-7h9"/>'),
