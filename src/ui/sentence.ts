@@ -84,6 +84,8 @@ interface Word {
   on?: boolean;
   /** A blank waiting for a tap on the model. */
   blank?: boolean;
+  /** A choice of which tool this is: kept on a phone's line, where the other choices fold into Options. */
+  lead?: boolean;
   /** The step to take next. */
   pulse?: boolean;
   /** The subject with nothing picked, a group's name: said, not tapped. */
@@ -642,7 +644,7 @@ export class Sentence {
     // ΔX, ΔY, ΔZ; folded, its tools were a tap further away than the values.)
     if (panel && !/^Freeform/.test(panel.title) && document.documentElement.dataset.screen === "phone" && matchMedia("(max-width: 720px) and (orientation: portrait)").matches) {
       let sizes = 0;
-      const main = (w: Word) => (w.kind === "value" && sizes++ < 2) || w.kind === "slot" || w.blank || (w.kind === "button" && /^(Apply|Add|Flip)/.test(w.label));
+      const main = (w: Word) => w.lead || (w.kind === "value" && sizes++ < 2) || w.kind === "slot" || w.blank || (w.kind === "button" && /^(Apply|Add|Flip)/.test(w.label));
       const keep = words.filter(main);
       const fold = words.filter((w) => !keep.includes(w));
       if (keep.length && fold.length > 1) words = [...keep, { key: "t-options", kind: "verb", label: "Options", icon: "settings", kids: fold }];
@@ -680,7 +682,7 @@ export class Sentence {
         const kids = it.options.map((o): Word => ({ key: `${key}-${o.id}`, kind: "verb", label: o.label, on: o.id === it.value, run: () => it.onChange(o.id) }));
         // (One thing to do and no name - a slot's Clear: a tap.)
         if (it.options.length === 1 && !it.label) out.push({ key, kind: "button", label: it.options[0].label, run: kids[0].run });
-        else out.push({ key, kind: "choice", cap: it.label, label: now?.label ?? it.options.map((o) => o.label).slice(0, 3).join(" · "), kids });
+        else out.push({ key, kind: "choice", cap: it.label, label: now?.label ?? it.options.map((o) => o.label).slice(0, 3).join(" · "), kids, ...(it.lead ? { lead: true } : {}) });
       } else if (it.type === "toggle") out.push({ key, kind: "toggle", label: it.label, icon: it.icon, on: it.value, run: () => it.onChange(!it.value) });
       else if (it.type === "number" || it.type === "slider") {
         const kind = it.type === "slider" || it.kind === "number" ? "number" : (it.kind ?? "length");

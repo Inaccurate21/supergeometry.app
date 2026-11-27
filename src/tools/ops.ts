@@ -2493,7 +2493,8 @@ export class ScaleOp extends FeatureOp<TransformFeature> {
 
   protected items(): PanelItem[] {
     const ways = this.existing ? [] : [scaleWays(this.app, this.xyz ? "xyz" : "uniform", this.feature.bodies)];
-    if (this.xyz) return [...ways, ...(["X", "Y", "Z"] as const).map((l, i): PanelItem => this.num(`Scale ${l}`, `op.factors.${i}`, "number", { min: 0.0001 }))];
+    // (Beside the choice, which says Scale already, each is its letter: the four fit a phone in one row.)
+    if (this.xyz) return [...ways, ...(["X", "Y", "Z"] as const).map((l, i): PanelItem => this.num(ways.length ? l : `Scale ${l}`, `op.factors.${i}`, "number", { min: 0.0001 }))];
     return [...ways, this.num("Factor", "op.factor", "number", { min: 0.0001 }), { type: "toggle", label: "Copy", value: this.feature.copy, onChange: (v) => ((this.feature.copy = v), this.render(), this.update()) }];
   }
 
@@ -2598,6 +2599,7 @@ function scaleWays(app: AppContext, now: "uniform" | "xyz" | "ref", bodies: stri
   return {
     type: "choice",
     label: "Scale",
+    lead: true,
     options: [{ id: "uniform", label: "Uniform" }, { id: "xyz", label: "X / Y / Z" }, { id: "ref", label: "By reference" }],
     value: now,
     onChange: (v) => {

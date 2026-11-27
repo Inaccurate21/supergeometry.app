@@ -107,6 +107,8 @@ export type PanelItem =
       onChange(id: string): void;
       /** Always a drop-down. */
       list?: boolean;
+      /** Which tool this is (Scale: Uniform, X / Y / Z, By reference): on the line itself on a phone too, not behind Options. */
+      lead?: boolean;
     }
   | { type: "toggle"; label: string; value: boolean; /** Its picture on the bottom bar (a switch had none: Construction stood higher than the buttons beside it). */ icon?: IconName; onChange(v: boolean): void }
   /**
