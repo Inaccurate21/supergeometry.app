@@ -4,7 +4,7 @@
 import opencascade from "replicad-opencascadejs";
 import wasmUrl from "replicad-opencascadejs/wasm?url";
 import { setOC } from "replicad";
-import { askStop, bodyHealth, bodyProperties, projectViews, errorText, exportBodies, regenerate, resetKernel, setOnStep, Stopped, withFreshKernel } from "./engine";
+import { askStop, bodyHealth, bodyProperties, projectViews, errorText, exportBodies, rebuildBegins, rebuildEnds, regenerate, resetKernel, setOnStep, Stopped, withFreshKernel } from "./engine";
 import type { BodyMesh, Envelope, Request, Response } from "./protocol";
 
 /**
@@ -16,6 +16,8 @@ let sent = new Set<number>();
 let oc: { wasmMemory?: WebAssembly.Memory } = {};
 /** Past this much memory the engine is replaced before the next rebuild (a phone's tab is killed not far above it). */
 const FRESH_ENGINE_MB = 1200;
+/** Rebuilds done with the OpenCascade that is loaded now (none yet: the next one says what the project itself takes). */
+let builds = 0;
 
 /** OpenCascade loaded afresh (at the start, and after it broke down: its memory can't be trusted then). */
 async function load(): Promise<void> {
@@ -23,6 +25,7 @@ async function load(): Promise<void> {
   setOC(oc as never);
   // Everything is new to the page again.
   sent = new Set();
+  builds = 0;
 }
 
 /**
@@ -32,8 +35,8 @@ async function load(): Promise<void> {
  */
 let queue: Promise<void> = Promise.resolve();
 self.onmessage = (e: MessageEvent<Envelope<Request>>) => {
-  // (Stop is taken at once: the rebuild sees it between two steps.)
-  if (e.data.msg.type === "stop") return askStop();
+  // (Stop is taken at once: the rebuild it is for sees it between two steps.)
+  if (e.data.msg.type === "stop") return askStop(e.data.msg.of);
   queue = queue.then(() => handle(e));
 };
 setOnStep((featureId) => (self as DedicatedWorkerGlobalScope).postMessage({ id: 0, msg: { type: "step", featureId } } satisfies Envelope<Response>));
@@ -56,10 +59,21 @@ async function handle(e: MessageEvent<Envelope<Request>>): Promise<void> {
           await load();
           resetKernel();
         }
-        const result = await withFreshKernel(load, () => regenerate(msg.features, msg.saved));
+        rebuildBegins(id);
+        let built: Awaited<ReturnType<typeof regenerate>>;
+        try {
+          built = await withFreshKernel(load, () => regenerate(msg.features, msg.saved));
+        } finally {
+          rebuildEnds(id);
+        }
+        // "From nothing" says what the project itself takes only of an engine just loaded: one long in use that
+        // happened to keep no step (its first step edited, another project opened in it) is as big as all that came
+        // before, and the page took that for the project's own size - no spare engine was got ready after it.
+        const { fromNothing, ...result } = built;
+        const first = builds++ === 0;
         const bodies = result.bodies.map((b) => (sent.has(b.key) ? ({ id: b.id, name: b.name, key: b.key, same: true } as unknown as BodyMesh) : b));
         sent = new Set(result.bodies.map((b) => b.key));
-        reply({ type: "regenerated", result: { ...result, bodies, memoryMB: (oc.wasmMemory?.buffer.byteLength ?? 0) / 2 ** 20 } });
+        reply({ type: "regenerated", result: { ...result, bodies, ...(fromNothing && first ? { fromNothing: true } : {}), memoryMB: (oc.wasmMemory?.buffer.byteLength ?? 0) / 2 ** 20 } });
         break;
       }
       case "export":

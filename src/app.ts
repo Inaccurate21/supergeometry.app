@@ -676,9 +676,9 @@ export class App implements AppContext {
   /**
    * The Stop button by the spinner: the engine stops (between two steps, keeping what it built - or, stuck in one
    * long step, thrown away) and the change that started it is taken back: a live preview is cancelled, a committed
-   * change undone. With nothing to take back - a project just opened, or the rebuild after an earlier Stop - the
-   * steps from the one it stopped at are rolled back (the History's breakpoint), so it is not all built again:
-   * Stop stops.
+   * change undone. With nothing to take back - a project just opened or read again, or the rebuild after an earlier
+   * Stop - the steps from the one it stopped at are rolled back (the History's breakpoint), so it is not all built
+   * again: Stop stops. What is done while it is stopping stays as it is: nothing of it is taken back or closed.
    */
   private async stopWork(): Promise<void> {
     if (this.stopping) return;
@@ -690,11 +690,25 @@ export class App implements AppContext {
     }
     try {
       const running = this.kernel.running;
-      const committed = !running || running === this.store.doc.features;
+      const doc = this.store.doc;
+      const tool = this.tool;
+      const committed = !running || running === doc.features;
       // (The rebuild a Stop itself started: taking back yet another change is not what this Stop is for.)
       const again = !!running && running === this.afterStop;
+      // (The project as it was opened or read: no change of now to take back - the last one of the session before
+      // is not it.)
+      const opening = this.store.justOpened;
       const { at, fresh } = await this.kernel.stop();
-      if (this.tool !== this.selectTool && !(this.tool instanceof SketchTool)) this.setTool(null);
+      // The engine may take a few seconds to answer, and nothing is held up meanwhile. An edit made then, an Undo,
+      // another project opened: the project is no longer the one this Stop was pressed for - it stops, and takes
+      // nothing back (it undid that edit, and left the change it was pressed for). Nor is a tool opened meanwhile
+      // the one to close.
+      const moved = this.store.doc !== doc;
+      if (this.tool === tool && tool !== this.selectTool && !(tool instanceof SketchTool)) this.setTool(null);
+      if (moved) {
+        void this.regenerate();
+        return void this.ui.toast("Stopped");
+      }
       if (!running) {
         // Other work (an export, a drawing): its engine is a fresh one - the model is built again.
         void this.regenerate();
@@ -705,7 +719,7 @@ export class App implements AppContext {
         return void this.ui.toast("Stopped - the change was cancelled");
       }
       if (!at && !fresh) return; // (It had finished.)
-      if (this.store.canUndo && !again) {
+      if (this.store.canUndo && !again && !opening) {
         this.store.undo();
         this.afterStop = this.store.doc.features;
         return void this.ui.toast("Stopped - the last change was taken back");
@@ -718,6 +732,8 @@ export class App implements AppContext {
       const off = this.store.features.length - i;
       const name = this.store.features[i].name;
       this.store.commit((d) => d.features.forEach((f, k) => (k >= i ? (f.rolledBack = true) : delete f.rolledBack)));
+      // (Rolled back from there already - nothing changed, so nothing asked for the model: what is built is shown.)
+      if (this.store.doc === doc) void this.regenerate();
       this.afterStop = this.store.doc.features;
       this.ui.toast(`Stopped at ${name}: it and the steps after it (${off} in all) are rolled back. Remove the breakpoint in History to build them again.`);
     } finally {
@@ -2111,7 +2127,11 @@ export class App implements AppContext {
     this.projectKept = kept;
     // The last one's rebuild, if it is still going, is no use now: dropped, not waited for
     // (opening a small project while a guitar was still being built took the guitar's 90 s).
-    if (this.kernel.running) this.kernel.stop();
+    // (Its own rebuild waits behind that one: built as soon as the engine lets go - between two steps, at once
+    // mostly - or on a fresh engine when a long step holds it. Not waited for here; and what the rebuild thrown
+    // away was at is no business of the project now opened.)
+    if (this.kernel.running) void this.kernel.stop(KernelClient.SWITCH_WAIT_MS);
+    this.kernel.newProject();
     this.store.openDoc(doc);
     // A new one starts from the default view (not looking up from below, as the last was left).
     if (!doc.features.length) this.view.cam.iso();

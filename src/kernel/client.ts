@@ -56,12 +56,20 @@ export class KernelClient {
    * out as big, and was replaced by another after every change: the whole project built over again, all the time.
    */
   private freshMB = 0;
-  /** The step a long rebuild was last at (the engine says now and then). */
+  /** The step the rebuild is at (the engine says as each begins). */
   private atStep: string | null = null;
-  /** Stop waiting for the engine to answer (with the step it stopped before; false: it didn't in time). */
-  private stopped: ((at: string | undefined | false) => void) | null = null;
+  /**
+   * Stops waiting for the engine: each is told the step it stopped before and whether the engine is a fresh one
+   * (null: no answer in time). Each its own - a second Stop took the first one's place, and the first then threw
+   * away whatever engine there was four seconds later, the next project's with it.
+   */
+  private stops = new Set<(r: { at?: string; fresh: boolean } | null) => void>();
+  /** The id of the rebuild the engine was last asked for (a Stop is for that one, not for an export in its way). */
+  private regenId = 0;
   /** How long Stop waits for the engine to stop between two steps before throwing it away (a step can't be broken off). */
   static STOP_WAIT_MS = 4000;
+  /** ... and when another project is being opened: its own rebuild is waiting behind the one stopped. */
+  static SWITCH_WAIT_MS = 300;
 
   constructor() {
     this.start();
@@ -148,40 +156,57 @@ export class KernelClient {
    * Stop. A rebuild ends before its next step, and what it built is kept (asked again, it carries on from there);
    * one that doesn't answer in time - a long step can't be broken off - or other work (an export) has its engine
    * thrown away and a fresh one started, with nothing built. Says the step it stopped before (or was at), and
-   * whether the engine is a fresh one.
+   * whether the engine is a fresh one. What is asked for while it waits is built after it, on whichever engine.
    */
-  async stop(): Promise<{ at?: string; fresh: boolean }> {
-    const worker = this.worker;
+  async stop(wait = KernelClient.STOP_WAIT_MS): Promise<{ at?: string; fresh: boolean }> {
     if (this.regenRunning && this.running) {
       this.regenQueued?.resolve(null);
       this.regenQueued = null;
-      worker.postMessage({ id: 0, msg: { type: "stop" } } satisfies Envelope<Request>);
-      const at = await new Promise<string | undefined | false>((done) => {
-        this.stopped = done;
-        setTimeout(() => done(false), KernelClient.STOP_WAIT_MS);
+      this.worker.postMessage({ id: 0, msg: { type: "stop", of: this.regenId } } satisfies Envelope<Request>);
+      let mine!: (r: { at?: string; fresh: boolean } | null) => void;
+      const got = await new Promise<{ at?: string; fresh: boolean } | null>((done) => {
+        mine = done;
+        this.stops.add(done);
+        setTimeout(() => done(null), wait);
       });
-      this.stopped = null;
-      if (at !== false && worker === this.worker) return { at, fresh: false };
+      this.stops.delete(mine);
+      // (Answered - or the engine was thrown away meanwhile by another Stop, or broke down: said, not done again.)
+      if (got) return got;
     }
     const at = this.atStep ?? undefined;
     this.hardStop();
     return { at, fresh: true };
   }
 
-  /** Throw the engine away and start a fresh one (what it was working on is lost). Waiting calls end empty. */
+  /** Another project is being opened: what the last one took of a fresh engine says nothing of this one. */
+  newProject(): void {
+    this.freshMB = 0;
+  }
+
+  /**
+   * Throw the engine away and start a fresh one (what it was working on is lost). Waiting calls end empty; Stops
+   * waiting for it are told; and a rebuild asked for since - another project opened, an edit made while a Stop was
+   * waiting - is built on the fresh engine (it ended empty with the rest, and that project was never built).
+   */
   private hardStop(): void {
+    const at = this.atStep ?? undefined;
     this.spare?.worker.terminate();
     this.spare = null;
     this.worker.terminate();
     const waiting = [...this.pending.values()];
     this.pending.clear();
-    this.regenQueued?.resolve(null);
+    const next = this.regenQueued;
     this.regenQueued = null;
     for (const cb of waiting) cb({ type: "error", message: "Stopped" } as Response);
     this.regenRunning = false;
     this.running = null;
+    this.atStep = null;
     this.start();
+    const stops = [...this.stops];
+    this.stops.clear();
+    for (const s of stops) s({ at, fresh: true });
     this.onBusy?.(false);
+    if (next) void this.runRegen(next.features, next.saved, next.resolve);
   }
 
   /** Told when the kernel starts and stops being busy (to show a busy indicator). */
@@ -223,17 +248,29 @@ export class KernelClient {
   /** `saved`: the project as saved (not a tool's preview) - the engine keeps its steps for Cancel. */
   private async runRegen(features: Feature[], saved: boolean, resolve: (r: RegenResult | null) => void) {
     this.regenRunning = true;
-    await this.ready;
+    const worker = this.worker;
+    try {
+      await this.ready;
+    } catch {
+      // The engine could not be started. (Or was thrown away while starting: see below.)
+    }
+    // Thrown away while it waited for the engine to start (a Stop pressed again): it ends empty - it never ended at
+    // all, and the page went on counting a rebuild under way. Whoever threw the engine away asks again.
+    if (worker !== this.worker) return resolve(null);
     this.running = features;
     this.last = { features, saved: saved ? features : this.last.saved };
-    const worker = this.worker;
     this.atStep = null;
+    this.regenId = this.nextId;
     const r = await this.call({ type: "regenerate", features: lean(features), saved });
     // Stopped meanwhile: the fresh worker has its own queue.
     if (worker !== this.worker) return resolve(null);
-    // A Stop waiting for this one: it stopped (before the step it names), or had finished anyway.
+    // Stops waiting for this one: it stopped (before the step it names), or had finished anyway.
     const stoppedAt = r.type === "error" && r.message.startsWith("Stopped:") ? r.message.slice(8) : undefined;
-    this.stopped?.(stoppedAt);
+    if (this.stops.size) {
+      const stops = [...this.stops];
+      this.stops.clear();
+      for (const s of stops) s({ at: stoppedAt, fresh: false });
+    }
     this.running = null;
     resolve(r.type === "regenerated" ? this.withMeshes(r.result) : null);
     if (r.type === "error" && stoppedAt === undefined) console.error(r.message);

@@ -183,8 +183,9 @@ export type Request =
   | { type: "properties"; features: Feature[] }
   | { type: "health"; features: Feature[] }
   | { type: "drawing"; features: Feature[]; views: ViewSpec[]; bodies?: string[] }
-  // Taken at once, not in turn: the rebuild under way ends before its next step.
-  | { type: "stop" };
+  // Taken at once, not in turn: the rebuild `of` (its request's id) ends before its next step. That one only: not
+  // an export or a drawing working through the same steps, nor the rebuild after it.
+  | { type: "stop"; of: number };
 
 export type Response =
   | { type: "ready" }

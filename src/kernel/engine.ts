@@ -246,12 +246,26 @@ let alsoCache: CacheEntry[] = [];
 /** A rebuild ended by Stop part way: the steps it had built, kept for when it is asked again. */
 let partCache: CacheEntry[] = [];
 
-/** Stop asked for (the page's Stop): the rebuild under way ends before its next step, keeping what it built. */
-let stopAsked = false;
-export function askStop(): void {
-  stopAsked = true;
+/**
+ * Stop asked for (the page's Stop), for the rebuild with this id: it ends before its next step, keeping what it
+ * built. That rebuild only - an export or a drawing working through the same steps is not it (a Stop meant for the
+ * rebuild waiting behind an export failed the export, and the rebuild then ran on) - and it holds till that rebuild
+ * has begun and ended (asked while the engine was still being loaded afresh, it was forgotten when the rebuild began).
+ */
+let stopFor: number | null = null;
+export function askStop(of: number): void {
+  stopFor = of;
 }
-/** Told the step the rebuild is at, now and then (the page's Stop says where it stopped). */
+/** The rebuild the engine is on (its request's id); null: other work, or none - nothing a Stop is for. */
+let rebuilding: number | null = null;
+export function rebuildBegins(id: number): void {
+  rebuilding = id;
+}
+export function rebuildEnds(id: number): void {
+  if (stopFor === id) stopFor = null;
+  rebuilding = null;
+}
+/** Told each step the rebuild builds, as it begins (a Stop that has to throw the engine away says where it was). */
 export let onStep: ((featureId: string) => void) | null = null;
 export function setOnStep(f: ((featureId: string) => void) | null): void {
   onStep = f;
@@ -264,6 +278,23 @@ export class Stopped extends Error {
 }
 /** When the rebuild last let other work in (a Stop asked for meanwhile). */
 let lastYield = 0;
+let pauses = 0;
+/**
+ * Other work let in for a moment: a Stop asked for. By a message to itself, not a timer: timers set one from the
+ * other are each held to 4 ms by the browser - a tenth of the time of a long rebuild made of short steps. Now and
+ * then by a timer all the same, so that nothing which waits its turn behind one is kept out.
+ */
+function pause(): Promise<void> {
+  if (typeof MessageChannel === "undefined" || ++pauses % 8 === 0) return new Promise((done) => setTimeout(done, 0));
+  return new Promise((done) => {
+    const c = new MessageChannel();
+    c.port1.onmessage = () => {
+      c.port1.close();
+      done();
+    };
+    c.port2.postMessage(0);
+  });
+}
 
 /**
  * The engine itself broke down on a step (out of memory, a fault inside
@@ -851,8 +882,6 @@ async function run(features: Feature[], saved = false) {
   // The steps as last rebuilt (by step, wherever in the list they are now).
   const before = new Map<string, CacheEntry>();
   for (const e of [...cache, ...savedCache, ...alsoCache, ...partCache]) if (e.id && !before.has(e.id)) before.set(e.id, e);
-  // (A Stop asked for before this rebuild began was for the one before.)
-  stopAsked = false;
   lastYield = performance.now();
   rebuildStats.ran = rebuildStats.kept = rebuildStats.reused = 0;
   smoothSteps = new Set(features.filter((f) => f.type === "faceFreeform").map((f) => f.id));
@@ -890,17 +919,23 @@ async function run(features: Feature[], saved = false) {
       entry = { ...was, key, ctx: out, input: ctx };
       rebuildStats.reused++;
     } else {
-      // Now and then in a long rebuild: other work let in - a Stop asked for, between two steps (a step itself
-      // can't be broken off). What is built so far is kept: asked again, it carries on from here.
-      if (performance.now() - lastYield > 40) {
+      // A step to build. (Not one switched off or rolled back: those take no time, and a rebuild stopped at one
+      // had built everything there was to build - nothing was shown of it.) The page is told which, as it begins:
+      // a Stop that has to throw the engine away then knows where it was - told only now and then, the first step
+      // of a rebuild was never named, and a project whose slow step came first could not be stopped. Now and then
+      // other work is let in - a Stop asked for, between two steps (a step itself can't be broken off). What is
+      // built so far is kept: asked again, it carries on from here.
+      if (!f.suppressed) {
         onStep?.(f.id);
-        await new Promise((done) => setTimeout(done, 0));
-        lastYield = performance.now();
-      }
-      if (stopAsked) {
-        stopAsked = false;
-        partCache = next;
-        throw new Stopped(f.id);
+        if (performance.now() - lastYield > 40) {
+          await pause();
+          lastYield = performance.now();
+        }
+        if (stopFor !== null && stopFor === rebuilding) {
+          stopFor = null;
+          partCache = next;
+          throw new Stopped(f.id);
+        }
       }
       const out = fork(ctx);
       entry = { key, ctx: out, id: f.id, json, off, input: ctx };
