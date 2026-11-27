@@ -903,6 +903,63 @@ export function offsetChain(entities: SketchEntity[], id: string, d: number): Sk
 }
 
 /**
+ * Several curves offset together by `d`, the first the way it would go alone. Those that join end to end go as one
+ * run - trimmed or carried on to meet again at their corners, as a whole outline's are (offsetChain) - and a run
+ * apart from the first goes to the same side of the lot as the first did (towards the middle of them all, or away
+ * from it). What would collapse is left out.
+ */
+export function offsetSeveral(picked: SketchEntity[], d: number): SketchEntity[] {
+  const list = picked.filter((e, i) => picked.findIndex((x) => x.id === e.id) === i);
+  if (!list.length) return [];
+  // (Dashed ones join runs like the others: whether what comes out is dashed is the caller's to say.)
+  const plain = list.map((e) => (e.construction ? { ...e, construction: undefined } : e));
+  const mid = (es: SketchEntity[]): Vec2 | null => {
+    const ps = es.flatMap((e) => entityPrims(e).map((p) => evalPrim(p, 0.5)));
+    return ps.length ? [ps.reduce((s, p) => s + p[0], 0) / ps.length, ps.reduce((s, p) => s + p[1], 0) / ps.length] : null;
+  };
+  // The runs: each curve with the ones joined to it end to end, the first curve's run first.
+  const left = new Map(plain.map((e) => [e.id, e]));
+  const runs: SketchEntity[][] = [];
+  for (const e of plain) {
+    if (!left.has(e.id)) continue;
+    const ids = connectedChain([...left.values()], e.id)?.links.map((l) => l.id) ?? [e.id];
+    runs.push(ids.map((id) => left.get(id)!));
+    for (const id of ids) left.delete(id);
+  }
+  const make = (run: SketchEntity[], seed: string, by: number): SketchEntity[] => {
+    if (run.length === 1) {
+      const o = offsetEntity(run[0], by);
+      return o ? [o] : [];
+    }
+    return offsetChain(run, seed, by)?.slice(run.length) ?? [];
+  };
+  const gap = (es: SketchEntity[], q: Vec2) => Math.min(Infinity, ...es.flatMap((e) => entityPrims(e).map((p) => closestOnPrim(p, q).d)));
+  // The first run: the way that puts its first curve where it would go alone.
+  const [first, ...rest] = runs;
+  let out = make(first, first[0].id, d);
+  if (first.length > 1) {
+    const alone = offsetEntity(first[0], d);
+    const want = alone && mid([alone]);
+    const other = make(first, first[0].id, -d);
+    if (want && other.length && (!out.length || gap(other, want) < gap(out, want))) out = other;
+  }
+  // The others: to the same side of them all - towards their middle, or away from it - as the first went.
+  const centre = mid(plain);
+  const away = (run: SketchEntity[], made: SketchEntity[]): number => {
+    const [a, b] = [mid(run), mid(made)];
+    if (!centre || !a || !b) return 0;
+    const dd = Math.hypot(b[0] - centre[0], b[1] - centre[1]) - Math.hypot(a[0] - centre[0], a[1] - centre[1]);
+    return Math.abs(dd) < Math.abs(d) * 1e-6 ? 0 : Math.sign(dd);
+  };
+  const lead = away(first, out);
+  for (const run of rest) {
+    const [a, b] = [make(run, run[0].id, d), make(run, run[0].id, -d)];
+    out = [...out, ...(lead && b.length && away(run, b) === lead && away(run, a) !== lead ? b : a.length ? a : b)];
+  }
+  return out;
+}
+
+/**
  * The offset of straight pieces, cut where it crosses itself, keeping only the
  * parts at least the distance from the original (and, for a closed outline, on
  * the side it was offset to) - joined up again into one or more outlines.
@@ -1814,18 +1871,24 @@ export function lineMeet(p: LineE, q: LineE): Vec2 | null {
  */
 export function outlineOffsetCurves(boundary: SketchEntity[], links: OutlineOffset[] | undefined): SketchEntity[] {
   const out: SketchEntity[] = [];
-  for (const o of links ?? []) {
+  const nearest = (at: Vec2): SketchEntity | null => {
     let seed: SketchEntity | null = null;
     let best = Infinity;
     for (const e of boundary) {
       for (const p of entityPrims(e)) {
-        const d = closestOnPrim(p, o.at).d;
+        const d = closestOnPrim(p, at).d;
         if (d < best) [best, seed] = [d, e];
       }
     }
+    return seed;
+  };
+  for (const o of links ?? []) {
+    const seed = nearest(o.at);
     if (!seed) continue;
     let made: SketchEntity[] = [];
-    if (!o.single && (seed.kind === "line" || seed.kind === "arc" || (seed.kind === "spline" && !seed.closed))) made = offsetChain(boundary, seed.id, o.distance)?.slice(boundary.length) ?? [];
+    // (Several edges picked one by one: together, the ones that join as one run.)
+    if (o.single && o.also?.length) made = offsetSeveral([seed, ...o.also.map(nearest).filter((e): e is SketchEntity => !!e)], o.distance);
+    else if (!o.single && (seed.kind === "line" || seed.kind === "arc" || (seed.kind === "spline" && !seed.closed))) made = offsetChain(boundary, seed.id, o.distance)?.slice(boundary.length) ?? [];
     else {
       const one = offsetEntity(seed, o.distance);
       if (one) made = [one];

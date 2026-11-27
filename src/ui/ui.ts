@@ -87,6 +87,8 @@ export type PanelItem =
       onExpr?(expr: string | null): void;
       /** The same value as the value box on the model: left out of the list attached to it. */
       inBox?: boolean;
+      /** In the tool's own window only, not on the bottom line (a text's X and Y: the window that opens has them). */
+      aside?: boolean;
       /**
        * Nothing set yet: the value only shows where the pointer is (a line's
        * Across / Up). Digits typed start it over, sign and all - a set value

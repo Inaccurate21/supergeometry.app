@@ -17,6 +17,21 @@ interface Update {
 
 export const UPDATES: Update[] = [
   {
+    date: "2026-11-27",
+    added: [
+      "Offset Edge takes several edges: with Edge chosen, tap one edge and then any others (tap one again to let it go). They are offset together at one distance, and the ones that join keep their corners. Chain still takes the whole outline.",
+      "Fill Pattern sizes are a share of the shape (Spacing %, Size %): 5 gives about twenty rows on a small shape and on a big one, so a big shape no longer fills with thousands of lines. One tap inside a shape fills it, and a pattern or size changed after that follows at once. With a mouse, the shape under the pointer lights up before you click.",
+    ],
+    fixed: [
+      "In a sketch, a tool that is on has the bottom line to itself: its own buttons, Sketch view and the blue tick. Draw, Modify, Transform, Delete and Exit come back when the tick puts the tool down. A shape being drawn (Line, Rectangle, Circle, Arc, Spline, Polygon, Ellipse) keeps Draw, to switch to another shape.",
+      "The blue tick finishes what the tool has set up and puts the tool down: a spline keeps the points placed, a line being drawn ends there, a pattern or an offset is applied, a text is set down. The cross beside it drops what is under way.",
+      "Text: its X and Y are in its window only, no longer on the bottom line too.",
+      "Polygon: Across flats is gone. Radius sets its size.",
+      "Constraints list: the links a mirror, an offset or a pattern keeps between a copy and its original are no longer buttons named follow or pattern that one tap removed. They are in List all, by name.",
+      "The bottom line no longer stays stretched after the Constraints list has been open.",
+    ],
+  },
+  {
     date: "2026-11-26",
     added: [
       "More → GitHub opens the project's page: the code, the open issues and where to report one.",
@@ -25,7 +40,6 @@ export const UPDATES: Update[] = [
       "Learn the app with Claude: ask it to teach you. It has a course of eight lessons, from a first block to holes, round parts, parts that fit and variables. You do the tapping; it tells you what to tap and why, and checks each step.",
     ],
     fixed: [
-      "Drawing a shape in a sketch (Line, Rectangle, Circle, Arc, Spline, Polygon, Ellipse), the bottom line holds that shape's own choices, Draw (to switch to another shape), Sketch view and the blue tick. Modify, Transform and Delete come back once the tick is tapped, and Exit is no longer beside the tick.",
       "Right-clicking a face or a body on a computer opens only the app's list of tools, not the browser's own menu on top of it.",
       "Sketch constraints in one place: pick a line or a shape and Constraints on the bottom line opens two rows, the ones in use (tap one to take it off, or List all to see every size and join) and the ones you can add (Parallel, Tangent, Equal...). The hint says so too.",
       "Construction (dashed lines) is in the Draw list now, at its end, not only under More.",

@@ -31,11 +31,18 @@ export const FILL_MOST = 2500;
 
 const inRegion = (r: Region, q: Vec2): boolean => pointInPoly(q, r.outer.poly) && !r.holes.some((h) => pointInPoly(q, h.poly));
 
+/** Of these closed shapes, the one a point is in (the smallest, where shapes are one in another): null on none. */
+export function regionAt(regions: Region[], at: Vec2): Region | null {
+  return regions.filter((r) => inRegion(r, at)).sort((a, b) => a.area - b.area)[0] ?? null;
+}
+
 /** The closed shape a point is in (the smallest, where shapes are one in another): null on none. */
 export function fillRegion(entities: SketchEntity[], at: Vec2): Region | null {
-  const regions = arrangement(withoutFills(entities)).regions.filter((r) => inRegion(r, at));
-  return regions.sort((a, b) => a.area - b.area)[0] ?? null;
+  return regionAt(arrangement(withoutFills(entities)).regions, at);
 }
+
+/** What one hundredth is, for sizes given as shares of a shape (`SketchFill.rel`): of the side of a square as big as it. */
+export const fillUnit = (region: Region): number => Math.sqrt(Math.abs(region.area)) / 100;
 
 /**
  * The curves of one fill, for the sketch as it is (its own curves; other fills' are left out). Null: no closed
@@ -60,8 +67,10 @@ export function fillCurves(entities: SketchEntity[], fill: SketchFill): { curves
   const mid: Vec2 = [(a0 + a1) / 2, (c0 + c1) / 2];
   const at = (u: number, v: number): Vec2 => [d[0] * u + n[0] * v, d[1] * u + n[1] * v];
   const reach = Math.hypot(a1 - a0, c1 - c0);
-  const step = Math.max(1e-6, Math.abs(fill.spacing));
-  const size = Math.max(1e-6, Math.abs(fill.size));
+  // (As shares of the shape: hundredths of the side of a square as big as it - the same pattern on a shape of any size.)
+  const unit = fill.rel ? fillUnit(region) : 1;
+  const step = Math.max(1e-6, Math.abs(fill.spacing) * unit);
+  const size = Math.max(1e-6, Math.abs(fill.size) * unit);
 
   /** The parts of a curve that are inside the shape, each from edge to edge. */
   const clipped = (p: Prim): boolean => {

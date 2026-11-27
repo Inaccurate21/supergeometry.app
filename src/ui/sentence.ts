@@ -538,8 +538,10 @@ export class Sentence {
     const tools = items.filter((it) => it !== exit && it !== select);
     const drawing = tools.some((it) => it.active);
     const at = tools.find((it) => it.active);
-    // A shape being drawn (Line, Rectangle, Circle...): that shape's own parts, Draw for another, and the tick that
-    // ends it. Modify, Transform and Delete come back once it is done; and no Exit beside the tick, the same way out.
+    // A tool that is on has the line to itself: its own parts, and the tick that ends it. Draw, Modify, Transform
+    // and Delete come back once it is put down (they could not be used meanwhile: the tool takes the next taps),
+    // and Exit with them - the tick is the way out. A shape being drawn (Line, Rectangle, Circle...) keeps Draw:
+    // another shape is a tap away.
     const shaping = !!at && SK_SHAPES.has(at.id);
     const retapped = (it: ToolItem): Word => {
       const w = this.verb(it);
@@ -558,9 +560,7 @@ export class Sentence {
     };
     const words: Word[] = [];
     const groups: Built["groups"] = [];
-    // A tool is on: Select puts it down (the way back to picking).
-    // (Not while a shape is drawn: the tick puts it down.)
-    if (drawing && !shaping && select && !select.active) words.push({ ...this.verb(select), label: "Stop" });
+    // (No Stop for a tool that is on: the tick puts it down.)
     // The ways the tool that is on can be used (Circle: Center, 2 Points, 3 Points), right on the line: the one in
     // use lit, another a tap away - not back through Draw > Circle. (More than three, or a line too narrow to give
     // each a finger's width - a phone held upright: one word, named for the one in use, that opens them.)
@@ -590,14 +590,14 @@ export class Sentence {
           const line = w.find((x) => x.key.endsWith("line") || x.label === "Line");
           if (line?.run) word.opens = line.run;
         }
-        // (A shape being drawn keeps Draw - another shape a tap away - but not Modify or Transform.)
-        if (shaping && g.id !== "draw") continue;
+        // (A tool that is on: none of them - but a shape being drawn keeps Draw, another shape a tap away.)
+        if (drawing && !(shaping && g.id === "draw")) continue;
         words.push(word);
         if (w.length) groups.push({ cap: g.label, words: w });
       }
       // (Delete: a tap - the curves picked, else the tool that deletes what is tapped; unless their window has it already.)
       const del = tools.find((it) => it.id === "delete");
-      if (del && offered(del) && !shaping) words.push(this.verb(del));
+      if (del && offered(del) && !drawing) words.push(this.verb(del));
       if (del) placed.add(del);
       const rest = [...tools.filter((it) => !placed.has(it) && offered(it)), ...below.filter((it) => !placed.has(it))].map((it) => this.verb(it));
       // (Not a word on the line: the button at its end is where More is.)
@@ -607,10 +607,10 @@ export class Sentence {
       subject: { key: "s-sketch", kind: "subject", label: "Sketch", icon: "sketch", quiet: true },
       words,
       groups,
-      // (Drawing a shape: the tick is always there - what was typed is put in, else the tool is put down.)
-      done: panel?.done ? { label: "Done", run: panel.done } : shaping && select?.run ? { label: "Done", run: () => select.run!() } : undefined,
+      // (A tool that is on: the tick is always there - what it has set up is done, and the tool is put down.)
+      done: panel?.done ? { label: "Done", run: panel.done } : drawing && select?.run ? { label: "Done", run: () => select.run!() } : undefined,
       cancel: panel?.cancel ? { label: "Cancel", run: panel.cancel } : undefined,
-      exit: !shaping && exit?.run ? { label: "Exit Sketch", run: () => exit.run!(), pulse: exit.pulse } : undefined,
+      exit: !drawing && exit?.run ? { label: "Exit Sketch", run: () => exit.run!(), pulse: exit.pulse } : undefined,
       // (What of the sketch is being worked on: the curves picked, else the tool that is on - "Sketch > Line".)
       title: panel && mine.length ? { key: "t-title", kind: "subject", label: panel.title, quiet: true, on: true } : at ? { key: "t-title", kind: "subject", label: at.label, quiet: true, on: true } : undefined,
       grouped: !mine.length,
@@ -661,6 +661,8 @@ export class Sentence {
     for (const it of p.items) {
       const key = `p-${it.type}-${"label" in it && it.label ? it.label : k}`;
       k++;
+      // (In the tool's own window only: a text's X and Y.)
+      if (it.type === "number" && it.aside) continue;
       // (Not filled: a blank - what to tap for it is the guide text's to say. Filled: what it holds.)
       if (it.type === "slot") out.push({ key, kind: "slot", cap: it.label, label: it.filled ? it.value : "", blank: it.active, on: it.filled, run: () => it.onClick() });
       else if (it.type === "choice") {
@@ -716,6 +718,8 @@ export class Sentence {
 
   /** A list kept open through the next change of sentence (opening it started a tool). */
   private stays = "";
+  /** A phone held upright: the size each name was given to fit its place, by how many are across, the screen's width and the name. */
+  private fitted = new Map<string, string>();
 
   private render(): void {
     const b = (this.built = this.build());
@@ -789,11 +793,27 @@ export class Sentence {
       // (Never fewer than six across: two buttons were each half the line wide, a drawn shape's tick and Sketch view.)
       const cols = String(n <= 6 ? 6 : Math.max(4, Math.min(6, Math.ceil(n / 2))));
       if (this.line.style.getPropertyValue("--sn-cols") !== cols) this.line.style.setProperty("--sn-cols", cols);
-      // A name wider than its place (Construction, six across): smaller till it fits, not cut off.
-      for (const s of Array.from(this.line.querySelectorAll<HTMLElement>(".sn-text, .sn-end-name"))) {
-        s.style.fontSize = "";
-        const room = s.clientWidth;
-        if (room > 0 && s.scrollWidth > room + 1) s.style.fontSize = `${Math.max(8, Math.floor((parseFloat(getComputedStyle(s).fontSize) * room * 10) / s.scrollWidth) / 10)}px`;
+      // A name wider than its place (Construction, six across): smaller till it fits, not cut off. Each name is
+      // measured once for the room it has - how many across, how wide the line - and all of them together: the
+      // line is drawn again on every frame while a value is dragged, and measuring name by name had the page lay
+      // itself out again for each one, each time.
+      const names = Array.from(this.line.querySelectorAll<HTMLElement>(".sn-text, .sn-end-name"));
+      const room = `${cols}|${innerWidth}|`;
+      const asked = names.filter((s) => !this.fitted.has(room + s.textContent));
+      for (const s of names) s.style.fontSize = this.fitted.get(room + s.textContent) ?? "";
+      if (asked.length) {
+        const sizes = asked.map((s) => {
+          const w = s.clientWidth;
+          return w > 0 ? (s.scrollWidth > w + 1 ? `${Math.max(8, Math.floor((parseFloat(getComputedStyle(s).fontSize) * w * 10) / s.scrollWidth) / 10)}px` : "") : null;
+        });
+        if (this.fitted.size > 400) this.fitted.clear();
+        asked.forEach((s, i) => {
+          const size = sizes[i];
+          // (Not laid out - nothing to go by yet: asked again next time.)
+          if (size === null) return;
+          this.fitted.set(room + s.textContent, size);
+          s.style.fontSize = size;
+        });
       }
     } else for (const s of Array.from(this.line.querySelectorAll<HTMLElement>(".sn-text[style], .sn-end-name[style]"))) s.style.fontSize = "";
     // (No room for two with every name whole: More after all. Never for one - More with one thing in it is that thing
@@ -1185,7 +1205,9 @@ export class Sentence {
     // (More is a list like any other on the line: a card over its button, as big as what is in it. It was the whole
     // line's width, for a handful of buttons.)
     const compact = o.kind === "kids" && !!this.find(o.key)?.compact;
-    this.sheet.className = `sn-sheet sn-kids${compact ? " sn-compact" : ""}`;
+    // (A class of its own, not the line's "sn-compact": with that on the list, the rule for a closed-up line made
+    // the bar as wide as the screen, and it stayed so once the list had been open.)
+    this.sheet.className = `sn-sheet sn-kids${compact ? " sn-small" : ""}`;
     const old = Array.from(this.sheet.children) as HTMLElement[];
     const had = old.filter((c) => c.classList.contains("sn-group"));
     const same = !rise && had.length === blocks.length && had.every((c, i) => c.dataset.cap === blocks[i].cap);
@@ -1236,7 +1258,7 @@ export class Sentence {
     if (col && under && document.documentElement.dataset.screen === "phone" && matchMedia("(max-width: 720px) and (orientation: portrait)").matches) {
       const room = this.line.getBoundingClientRect().top - col.getBoundingClientRect().bottom - 16;
       // (Small buttons, all of them in view: the buttons at the edge step aside instead.)
-      const whole = this.sheet.classList.contains("sn-compact");
+      const whole = this.sheet.classList.contains("sn-small");
       if (col.offsetHeight && room < this.sheet.offsetHeight && !whole) this.sheet.style.maxHeight = `${Math.max(150, Math.round(room))}px`;
       // (A screen too short for both - a small phone with a tool's two lines: those buttons step aside while the list is up.)
       document.body.classList.toggle("sn-crowd", !!col.offsetHeight && room < (whole ? this.sheet.offsetHeight : Math.min(150, this.sheet.offsetHeight)));
@@ -1287,7 +1309,7 @@ export class Sentence {
     const cs = getComputedStyle(sheet);
     const frame = parseFloat(cs.paddingLeft) + parseFloat(cs.paddingRight) + parseFloat(cs.borderLeftWidth) + parseFloat(cs.borderRightWidth);
     const room = lineWidth - frame;
-    const compact = sheet.classList.contains("sn-compact");
+    const compact = sheet.classList.contains("sn-small");
     const cell = Math.min(room, Math.max(widest, compact ? 56 : phone ? 92 : 84));
     // (Up to five in one row; more than that, four across - a card, not a strip. Small buttons: five across.)
     const fits = Math.max(1, Math.min(most <= 5 || compact ? 5 : 4, Math.floor((room + gap) / (cell + gap))));

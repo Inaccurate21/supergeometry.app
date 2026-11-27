@@ -163,7 +163,10 @@ export class QuickActions {
       const kids = (it.children ?? []).filter((k) => k.label && !k.id.startsWith("---")).map((k): ToolItem => ({
         ...k,
         run: k.run && (() => {
-          QuickActions.reopen = { id: it.id, until: performance.now() + 1500 };
+          // (For the moment it takes the buttons to be made again - at once, when the choice took. A choice that
+          // made nothing - refused, or a list opened - left it standing a second and a half, and the next thing
+          // picked came up with these choices open by themselves.)
+          QuickActions.reopen = { id: it.id, until: performance.now() + 300 };
           k.run!();
         }),
       }));
@@ -190,6 +193,11 @@ export class QuickActions {
       for (const it of rest) grid.append(button(it));
       more.addEventListener("click", (e) => {
         e.stopPropagation();
+        // (Opened again after a list of choices was up in it - Color's: the tools again, as More says.)
+        if (grid.hidden && chosen) {
+          chosen = null;
+          grid.replaceChildren(...rest.map(button));
+        }
         grid.hidden = !grid.hidden;
         more.classList.toggle("on", !grid.hidden);
         fitNames(grid);
