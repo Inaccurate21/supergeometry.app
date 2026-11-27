@@ -2492,8 +2492,9 @@ export class ScaleOp extends FeatureOp<TransformFeature> {
   }
 
   protected items(): PanelItem[] {
-    if (this.xyz) return (["X", "Y", "Z"] as const).map((l, i): PanelItem => this.num(`Scale ${l}`, `op.factors.${i}`, "number", { min: 0.0001 }));
-    return [this.num("Factor", "op.factor", "number", { min: 0.0001 }), { type: "toggle", label: "Copy", value: this.feature.copy, onChange: (v) => ((this.feature.copy = v), this.render(), this.update()) }];
+    const ways = this.existing ? [] : [scaleWays(this.app, this.xyz ? "xyz" : "uniform", this.feature.bodies)];
+    if (this.xyz) return [...ways, ...(["X", "Y", "Z"] as const).map((l, i): PanelItem => this.num(`Scale ${l}`, `op.factors.${i}`, "number", { min: 0.0001 }))];
+    return [...ways, this.num("Factor", "op.factor", "number", { min: 0.0001 }), { type: "toggle", label: "Copy", value: this.feature.copy, onChange: (v) => ((this.feature.copy = v), this.render(), this.update()) }];
   }
 
   protected ready(): boolean {
@@ -2585,6 +2586,28 @@ export class ScaleOp extends FeatureOp<TransformFeature> {
  * type what the distance between them should be - the bodies scale about the
  * first point so it is (everything on them with it).
  */
+/** The way Scale was used last: it starts that way again. */
+export const scaleWay: { kind: "uniform" | "xyz" | "ref" } = { kind: "uniform" };
+
+/**
+ * Scale's three ways - evenly, each direction by itself, or two points and the distance they should be - on the line
+ * of the tool itself, whichever way it was started. (They were a list under Scale that only some ways in showed:
+ * from the line Scale opened by a factor, with nothing to say there were two more.)
+ */
+function scaleWays(app: AppContext, now: "uniform" | "xyz" | "ref", bodies: string[]): PanelItem {
+  return {
+    type: "choice",
+    label: "Scale",
+    options: [{ id: "uniform", label: "Uniform" }, { id: "xyz", label: "X / Y / Z" }, { id: "ref", label: "By reference" }],
+    value: now,
+    onChange: (v) => {
+      if (v === now) return;
+      scaleWay.kind = v as typeof now;
+      app.setTool(v === "ref" ? new ScaleRefOp(app, bodies) : new ScaleOp(app, v === "xyz", bodies));
+    },
+  };
+}
+
 export class ScaleRefOp extends FeatureOp<TransformFeature> {
   readonly id = "scale";
   private a: Vec3 | null = null;
@@ -2619,8 +2642,10 @@ export class ScaleRefOp extends FeatureOp<TransformFeature> {
 
   protected items(): PanelItem[] {
     const o = this.feature.op;
-    if (o.kind !== "scale" || this.d0 < 1e-9) return [];
+    const ways = this.existing ? [] : [scaleWays(this.app, "ref", this.feature.bodies)];
+    if (o.kind !== "scale" || this.d0 < 1e-9) return ways;
     return [
+      ...ways,
       { type: "number", label: "Distance", value: this.d0 * o.factor, kind: "length", onInput: (v) => this.setLength(v) },
       this.num("Factor", "op.factor", "number", { min: 0.0001, onInput: () => (this.dim?.setValue(this.d0 * (this.feature.op as { factor: number }).factor), this.update()) }),
     ];

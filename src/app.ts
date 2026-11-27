@@ -34,7 +34,7 @@ import { ItemsPanel } from "./ui/items";
 import { OffsetEdgeOp } from "./tools/offsetEdge";
 import { faceFreeformTool } from "./tools/faceFreeform";
 import { HoleOp } from "./tools/holeOp";
-import { bodyCenter, AxisOp, ConnectOp, EdgeOp, ExtrudeOp, FillOp, FillToPlaneOp, ThreadOp, ImageOp, LoftOp, MidplaneOp, MoveFaceOp, PlaneOp, ReplaceFaceOp, ScaleFaceOp, ScaleOp, ScaleRefOp, RevolveOp, ShellOp, SplitOp, SweepOp, TransformOp } from "./tools/ops";
+import { bodyCenter, AxisOp, ConnectOp, EdgeOp, ExtrudeOp, FillOp, FillToPlaneOp, ThreadOp, ImageOp, LoftOp, MidplaneOp, MoveFaceOp, PlaneOp, ReplaceFaceOp, ScaleFaceOp, ScaleOp, ScaleRefOp, scaleWay, RevolveOp, ShellOp, SplitOp, SweepOp, TransformOp } from "./tools/ops";
 import { add, dist, scale, xDirFor } from "./geom";
 import { entityWorldPolylines } from "./sketch/curves";
 import { FreeformTool } from "./tools/freeform";
@@ -1388,7 +1388,7 @@ export class App implements AppContext {
               { id: "rotate", label: "Rotate Around Axis", icon: "rotateAxis", run: transform("rotate", "Rotate Around Axis") },
             ],
           },
-          { id: "scale", label: "Scale", icon: "scale", run: wait("Scale", ["body", "face", "edge"], () => this.setTool(new ScaleOp(this, false, bodies()))) },
+          { id: "scale", label: "Scale", icon: "scale", run: wait("Scale", ["body", "face", "edge"], () => this.setTool(scaleWay.kind === "ref" ? new ScaleRefOp(this, bodies()) : new ScaleOp(this, scaleWay.kind === "xyz", bodies()))) },
           { id: "mirror", label: "Mirror", icon: "mirror", run: transform("mirror", "Mirror") },
           {
             id: "pattern",
