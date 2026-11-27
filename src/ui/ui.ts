@@ -709,6 +709,8 @@ export class UI {
     this.hintWords.textContent = text ?? "";
     this.hintText = text;
     this.hint.hidden = !text || !settings.value.showHints;
+    // (Shown or not: the warning line stands over it, or in its place.)
+    document.body.classList.toggle("hint-shown", !this.hint.hidden);
     // How tall it is (a long hint wraps to more lines): the sketch tools column keeps clear of it.
     if (!this.hint.hidden) {
       document.documentElement.style.setProperty("--hint-h", `${Math.ceil(this.hint.offsetHeight)}px`);

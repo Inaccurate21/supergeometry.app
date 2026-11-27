@@ -221,7 +221,8 @@ small shapes (dots, honeycomb, squares, diamonds). One tap inside the shape fill
 share of the shape, in percent (5 gives about twenty rows on a shape of any size), and the pattern follows when
 they or its angle are changed. The strips and cells are shapes to extrude or cut, for textures.
 
-**Edit tools:** Offset Edge (parallel copy; several edges together, or whole outlines), Fillet and
+**Edit tools:** Offset Edge (parallel copy; several edges together, or whole outlines; an ellipse's
+offset is the curve the same distance from it all along, a spline), Fillet and
 Chamfer (round or bevel a corner where lines or arcs meet; tap the next corner
 to go on), Mirror (the selected shapes, across a line or an axis), Trim (cut
 away between crossings - tap, or swipe across several - or *Join* two lines
@@ -280,6 +281,10 @@ sketch. A sketch stays in view until every region of it is used.
   profiles.
 - **Shell** - hollow a body; tapped faces become openings (Clear empties the
   list).
+- **Starting sizes** - a tool starts at a size taken from what it is used on, so the change shows on a
+  small part and on one a metre across: a fillet or chamfer at a tenth of the shortest edge picked, a
+  shell at a twentieth of the body, an offset plane at a quarter of its face. If that size cannot be
+  built, the tool steps down to one that can. Type or drag to change it.
 - **Fillet / Chamfer** - tap edges, drag the dot (outward rounds, inward
   bevels) or type a size in the box on the model; variables work too. A
   fillet that can't be made leaves the edge sharp with a note in History.
@@ -448,6 +453,8 @@ can't be rebuilt after a change, it's marked and the reason is shown.
   clearing the site's data in the browser's settings deletes them.
 - **File → Save project** downloads a `.super` file (keep it as a backup or
   move it to another device).
+- **File → Import file…** brings a STEP, STL, OBJ, 3MF, DXF or SVG file into the project that is
+  open (the same as More → Insert → File).
 - **File → Export STL** or **Export 3MF** for 3D printing (3MF keeps body
   names and colours), **Export STEP** for other CAD programs. With bodies
   selected (or isolated), only those are exported. On phones and tablets the
@@ -541,9 +548,13 @@ you: how to build a model in the person's open tab with the page's `sg` handle, 
 complete examples, is https://supergeometry.app/llms-full.txt; everything both pages say is tested against the
 app on every change (`tests/llms.test.ts`).
 
-**Learning the app with an assistant:** ask it to teach you. It has a course of eight lessons
-(`public/llms-teach.txt`): you do the tapping, it says what to tap and why, and checks what you did
-(`sg.now()`) before going on. It starts from what you want to make and what you already know.
+**Learning the app with an assistant:** ask it to teach you. Its course (`public/llms-teach.txt`) builds
+one thing from start to finish, a desk lamp, in nine lessons: a base, a pole drawn on it, a flared hollow
+shade, a freeform bulb, three feet as a pattern of holes, the head tilted, then the tilt, the wall and the
+number of feet made variables, and out to the printer. You do the tapping, it says what to tap and why,
+and checks what you did (`sg.now()`) before going on. Three more lessons cover what the lamp does not
+need: exact sizes and constraints, Revolve, two parts that fit. The lamp as the lessons build it is
+tested on every change (`tests/courselamp.test.ts`).
 
 **People:** on a computer, the **Claude** button at the bottom right shows how to model by asking. It needs
 Claude's extension for Chrome: open it beside the app, say what you want, and Claude builds the model in your

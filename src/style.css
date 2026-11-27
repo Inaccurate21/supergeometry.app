@@ -6796,6 +6796,15 @@ html[data-screen="phone"] #sentence {
   html[data-screen="phone"] body.sentence-ui #hint {
     bottom: calc(var(--sn-line, 48px) + var(--sn-sheet, 0px) + 70px + var(--safe-b)) !important;
   }
+  /* The warning line: clear above undo and redo, which stand over the line here. (It was a fixed 118 px up, from
+     when they were lower: half of it was under them.) */
+  html[data-screen="phone"] body.sentence-ui #warn {
+    bottom: calc(var(--sn-line, 48px) + var(--sn-sheet, 0px) + 16px + min(var(--sn-bar, 52px), 64px) + 10px + var(--safe-b));
+  }
+  /* (The guide text is there too, over undo and redo: the warning over that.) */
+  html[data-screen="phone"] body.sentence-ui.hint-shown #warn {
+    bottom: calc(var(--sn-line, 48px) + var(--sn-sheet, 0px) + 70px + var(--hint-h, 40px) + 8px + var(--safe-b));
+  }
   html[data-screen="phone"] .sn-row.sn-wrap {
     max-height: 94px;
   }

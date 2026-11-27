@@ -19,6 +19,8 @@ export const UPDATES: Update[] = [
   {
     date: "2026-11-27",
     added: [
+      "Learn the app with Claude by building something: its course now makes one desk lamp from start to finish, in nine lessons. A base, a pole drawn on it, a flared hollow shade, a bulb shaped with Freeform, three feet as a pattern of holes, the head tilted, then the tilt, the wall and the number of feet as variables, and out to the printer. Three more lessons hold what the lamp does not need: exact sizes and constraints, Revolve, two parts that fit.",
+      "File has Import file…, between Save project and the exports: it brings a STEP, STL, OBJ, 3MF, DXF or SVG file into the project that is open, as More > Insert > File does.",
       "Tools start at a size that fits what you use them on, so the change shows at once. A fillet or a chamfer starts at a tenth of the shortest edge picked (2 on a 20 mm edge, 100 on a metre), a shell at a twentieth of the body, an offset plane at a quarter of the face it starts from, and sketch text at a size that reads in the view until you type one. If a starting size does not fit, the tool steps down to one that does. Type or drag as before to change it.",
       "Offset Edge takes several edges: with Edge chosen, tap one edge and then any others (tap one again to let it go). They are offset together at one distance, and the ones that join keep their corners. Chain still takes the whole outline.",
       "Fill Pattern sizes are a share of the shape (Spacing %, Size %): 5 gives about twenty rows on a small shape and on a big one, so a big shape no longer fills with thousands of lines. One tap inside a shape fills it, and a pattern or size changed after that follows at once. With a mouse, the shape under the pointer lights up before you click.",
@@ -30,6 +32,8 @@ export const UPDATES: Update[] = [
       "On a touch screen, press and hold a face, an edge or a sketch's shape and lift without dragging: the list of what can be done with it opens by your finger, as a right-click gives. Hold and drag still pulls it.",
     ],
     fixed: [
+      "A hole's flat bottom starts a pattern of the hole, as its round wall does. A shallow recess has a wall too thin to tap, and a pattern started from its bottom made copies of the whole body.",
+      "On a phone the warning line (a sketch whose constraints can't all be met, a body not closed) stands clear above undo and redo, and above the guide text when that is shown. Half of it was hidden under the buttons.",
       "Polygon: Triangle, Square, Pentagon and Octagon each have their own picture in the list. All five showed the hexagon.",
       "On a phone, a sketch shape with two or three ways to draw it (Rectangle, Circle, Arc, Spline) shows them side by side on the bottom line, with Draw after them, as on a wider screen. They were folded into one button that had to be tapped again to see them, with half the line empty. Spline names them Fit, Control and Freehand there.",
       "Offset Edge on part of an ellipse (a rounded edge seen at a slant, projected into a sketch) left the outline open: its offset stopped a little short of the offsets of the lines beside it, so the shape looked closed and could not be picked or extruded. The offset of an ellipse is now the curve that is the same distance from it all along, it meets its neighbours, and Chain takes an outline with such a piece in it whole. An offset made before stays as it was: delete it and offset again.",

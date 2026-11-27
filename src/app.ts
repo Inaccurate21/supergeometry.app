@@ -1929,6 +1929,8 @@ export class App implements AppContext {
     item("m-new", () => void this.newProject());
     item("m-open", () => void this.showProjects());
     item("m-save", () => this.save());
+    // (The same as More > Insert > File: where a file is looked for first.)
+    item("m-import", () => void insertFile(this));
     item("m-stl", () => void this.export("stl"));
     item("m-step", () => void this.export("step"));
     item("m-3mf", () => void this.export3mf());

@@ -252,8 +252,9 @@ const build = async (features: unknown[], body: string) => after(features as Fea
   const teach = read("../public/llms-teach.txt");
   const parts = teach.split(/\n(?=## Lesson \d+)/);
   const lessons = parts.slice(1);
-  check("the course: an opening and eight lessons, numbered in order", lessons.length === 8 && lessons.every((l, i) => l.startsWith(`## Lesson ${i + 1}:`)), lessons.map((l) => l.split("\n")[0]));
-  check("the opening is short enough to read at the start of a chat (under 5500 characters)", parts[0].length < 5500, parts[0].length);
+  // (Nine that build the lamp, and three beside it.)
+  check("the course: an opening and twelve lessons, numbered in order", lessons.length === 12 &&lessons.every((l, i) => l.startsWith(`## Lesson ${i + 1}:`)), lessons.map((l) => l.split("\n")[0]));
+  check("the opening is short enough to read at the start of a chat (under 6000 characters)", parts[0].length < 6000, parts[0].length);
   check("each lesson is short (under 2200 characters) and says what to check", lessons.every((l) => l.length < 2200 && /\nCheck/.test(l)), lessons.map((l) => l.length));
   check("the opening lists each lesson, and says how to look without a screenshot", lessons.every((_, i) => new RegExp(`\\n${i + 1}\\. `).test(parts[0])) && parts[0].includes("sg.now()") && parts[0].includes("sg.teach("), "");
   // The app's own words: everything in its source and its page.
@@ -269,7 +270,9 @@ const build = async (features: unknown[], body: string) => after(features as Fea
   const shown = teach.slice(teach.indexOf("## How the app works"));
   const bold = [...new Set([...shown.matchAll(/\*\*([^*]+)\*\*/g)].map((m) => m[1]))];
   // (Not words of the app: the course's own headings, and a step's name as History shows it - "Extrude 01".)
-  const own = (w: string) => /[.:]$/.test(w) || /^(New to CAD|Has used|Wants one|Has a part)/.test(w) || /^[A-Z][a-z]+ \d\d$/.test(w);
+  // (Nor, as one piece of text in the source: a label the app puts together from an axis's letter - "Pivot" and "Z".)
+  const joined = new Set(["ΔX", "ΔY", "ΔZ", "Pivot Z", "Rotate Y"]);
+  const own = (w: string) => /[.:]$/.test(w) || /^(New to CAD|Has used|Wants one|Has a part|Comes back)/.test(w) || /^[A-Z][a-z]+( [A-Z][a-z]+)? \d\d$/.test(w) || joined.has(w);
   const missing = bold.filter((w) => !own(w) && ![`"${w}"`, `>${w}<`, `'${w}'`, `\`${w}\``, `"${w} `, `>${w} `, `"${w}…`].some((x) => words.includes(x)));
   check(`every word the course shows as on the screen is a word of the app (${bold.length} of them)`, bold.length > 40 && !missing.length, missing);
   // The start page sends an assistant here, and stays short itself.

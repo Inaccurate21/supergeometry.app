@@ -11,7 +11,7 @@ For an AI assistant working in the person's tab, when they want to **learn** the
 - **Words in bold are exactly what is on the screen.** Say them as written. If `sg.now()` shows something else, trust the app: tell them what you see and go from there.
 - **Praise what worked, name what happened.** "That made Extrude 01, 20 tall" teaches the vocabulary. If something went wrong, say what the app did and the one tap that undoes it (Undo is bottom left, or Ctrl + Z).
 - **Let them wander.** If they try something off the lesson, answer it. Come back to the lesson when they are ready.
-- Fetch one lesson at a time with `await sg.teach(3)`, when you start it. Each ends with what `sg.now()` should show.
+- Fetch one lesson at a time with `await sg.teach(3)`, when you start it. Each ends with what `sg.now()` should show, and the slips people make there.
 
 ## How the app works, in six lines (tell them this first, in your own words)
 
@@ -22,12 +22,19 @@ For an AI assistant working in the person's tab, when they want to **learn** the
 5. Turn the view: right-drag with a mouse, one finger on a touch screen. Zoom: wheel, or pinch. Move: middle-drag, or two fingers. Double-tap the view cube (top right) to fit everything. On a touch screen two fingers twisted roll the view.
 6. Nothing is lost: Undo and Redo are at the bottom left (on a touch screen also a tap on the view with two fingers, and with three), and the project saves itself in the browser.
 
+## The course builds one thing
+
+Lessons 1 to 9 build a desk lamp in one project, a part a lesson: a round base on three feet, a pole, a flared shade that tilts, a bulb inside it. Each lesson needs the lamp as the one before left it. At the end the tilt, the wall and the number of feet are numbers they can change, and it is ready to print. Tell them this at the start, in a sentence, and now and then how far along they are.
+
+The lessons' sizes fit each other (a base 12 tall and a pole of 200 put the pole's top at 212, which lessons 5 and 7 use). If theirs differ, read them with `sg.now()` and give the numbers that fit their lamp.
+
 ## Where to start
 
-- **New to CAD:** lessons 1 to 4 in order, then whichever of 5 to 8 fits what they want to make.
-- **Has used another CAD program:** tell them what is the same (sketch, extrude, revolve, fillet, a history of steps) and what differs (you pick first and the tools come to the pick; there is no toolbar of icons; sizes are typed on the line or on the model). Then lesson 1 quickly, and jump to what they ask for.
-- **Wants one specific thing** ("how do I make a hole for an M4 screw"): go to that lesson and do only its relevant part.
-- **Has a part in mind:** teach through that part. Pick the lessons its shapes need, and use their sizes, not the lesson's.
+- **New to CAD:** lesson 1, and on through the lamp in order. They can stop anywhere: the project saves itself.
+- **Has used another CAD program:** say what is the same (sketch, extrude, fillet, shell, a history of steps) and what differs (you pick first and the tools come to the pick; no toolbar of icons; sizes are typed on the line or on the model). Then the lamp, quickly.
+- **Wants one specific thing** ("how do I make a hole for an M4 screw"): the lesson that has it, only that part, on a part of their own or a quick block.
+- **Has a part in mind:** teach through that part, with their sizes. Lessons 10 to 12 hold what the lamp does not need.
+- **Comes back to a lamp half built:** `sg.now()` lists its steps and bodies: go on from the next missing part.
 
 ## When they are stuck
 
@@ -39,44 +46,160 @@ For an AI assistant working in the person's tab, when they want to **learn** the
 
 ## The lessons
 
-1. A first part: a block, and looking around it.
-2. Changing a part: pulling a face, rounding an edge, going back in History.
-3. Drawing exactly: a sketch on a face, sizes and constraints, cutting a pocket.
-4. Screw holes, and a hollow box.
-5. Round parts: a knob with Revolve.
-6. Two parts that fit: a box and its lid.
-7. One number that resizes the part: variables, and rows of copies.
-8. Out to the printer: checking, exporting, saving.
+The lamp:
 
-## Lesson 1: A first part
+1. The base: a first solid, and looking around it.
+2. Changing it: a rounded rim, and going back in History.
+3. The pole: drawing on a face.
+4. The shade: a second body, flared and hollow.
+5. The bulb: a smooth shape with Freeform.
+6. Three feet: a hole, and copies of it in a circle.
+7. The head tilted: turning two bodies together.
+8. Sizes with names: variables.
+9. Out to the printer: checking, exporting, saving.
 
-Makes: a block 40 x 30 x 20. Teaches: a sketch, pulling it into a solid, looking around.
+Beside the lamp, for when they ask:
 
-1. If the welcome window is up, **New project**. A new project opens already in a sketch on the floor, seen from above, with **Line** on. (Any other time: **Sketch** on the line, then a plane.)
-2. Tap **Draw**, then **Rectangle**. Click one corner. Move the pointer: two small tags show Width and Height. Type `40`, press Tab, type `30`, press Enter. (Touch: tap two corners; then tap a side to type its size.)
-3. Tap **Exit** at the end of the line. The view swings round and the shape is picked, with an arrow on it.
-4. Drag the arrow up, or just type `20` and press Enter. Up from the floor makes a new body. Tap the tick.
-5. Now look around: turn, zoom, move the view (line 5 above). Tap a face of the view cube for a straight-on view. Double-tap the cube to fit.
+10. Drawing exactly: sizes and constraints, cutting a pocket.
+11. Round parts: a knob with Revolve.
+12. Two parts that fit: a box and its lid.
 
-Check with `sg.now()`: `steps` 2; `last` is "Extrude 01: extrude 20"; one body of `size` [40, 30, 20].
-Likely slips: drawing with **Line** because **Rectangle** was not chosen (Undo, then **Draw**, **Rectangle**); forgetting **Exit**, so taps keep drawing; dragging the arrow down, which makes nothing on an empty floor.
+## Lesson 1: The base
 
-## Lesson 2: Changing a part
+Makes: a disc 120 across and 12 tall. Teaches: a sketch, pulling it into a solid, looking around.
 
-Needs: the block from lesson 1. Teaches: that a part is changed by picking it, and that History can be gone back into.
+1. If the welcome window is up, **New project**. A new project opens already in a sketch on the floor, seen from above, with **Line** on. (Any other time: **Sketch** on the line, then **XY (floor)**.)
+2. Tap **Draw**, then **Circle**. The line now shows **Center**, **2 Points** and **3 Points**: **Center** should be the lit one; tap it if it is not.
+3. Click where the red and the green line cross: that is the middle of everything. Move the pointer out, type `120` and press Enter. The number is the circle's size across (its diameter). (Touch: tap the middle, tap again further out, then tap the circle and type its size on the line.)
+4. Tap **Exit** at the end of the line (it pulses). The view swings round and the circle is picked, with an arrow on it.
+5. Type `12` and press Enter. That pulls the circle up into a solid 12 tall and finishes the step. (Or drag the arrow up and let go.)
+6. Now look around: turn, zoom and move the view (line 5 of "How the app works"). Tap a face of the view cube, top right, for a straight-on view. Double-tap the cube to fit everything.
 
-1. Tap the top face. It lights up, an arrow appears, and round buttons show beside it. Drag the arrow up: the block gets taller. The size is in a box on the model; tap the box to type an exact one.
-2. Tap one upright edge. The buttons beside it are **Fillet** and **Chamfer**. Tap **Fillet**, then drag the dot or type `5`. Tap the other upright edges to round them too. Tap the tick.
-3. Open **History** (top bar) and tap **Extrude 01**. Its tool opens with the old value. Change **Distance** to `35` and tap the tick. The rounded edges follow: this is what "parametric" means.
-4. Try Undo (bottom left, or Ctrl + Z), then Redo.
-5. In History, the eye beside a step switches it off without deleting it; the bin deletes it.
+Check with `sg.now()`: `steps` 2; `last` is "Extrude 01: extrude 12"; one body of `size` [120, 120, 12].
+Likely slips: drawing with **Line** because **Circle** was not chosen (Undo, then **Draw**, **Circle**); a circle of two taps because **2 Points** was lit; forgetting **Exit**, so taps keep drawing.
+Say once: a typed size and Enter finishes most steps. Dragging does the same by eye.
 
-Check: `last` names a fillet with radius 5 on the edges they tapped; the body's third size is 35 after step 3.
-Likely slips: tapping a face when an edge was meant (tap again nearer the edge, or zoom in); leaving the Fillet tool open and wondering why other taps add edges (the tick first).
+## Lesson 2: Changing it
 
-## Lesson 3: Drawing exactly
+Needs: the base. Teaches: that a part is changed by picking it; **Fillet**; **History**; Undo.
+
+1. Tap the top rim of the base, the round edge. It lights up, and round buttons show beside it: **Fillet** and **Chamfer** first.
+2. Tap **Fillet**. The rim is rounded at once, by a size the app chose from the part. Type `4` and press Enter (or drag the dot), then the tick if the tool is still open.
+3. Open **History** (top bar). It lists Sketch 01, Extrude 01, Fillet 01: every step, in order. Tap **Extrude 01**: its tool opens again with the old value. Change **Distance** to `20` and tap the tick. The base is taller and the rounded rim came with it. This is what "parametric" means.
+4. Tap Undo (bottom left, or Ctrl + Z): the base is 12 tall again. Redo is beside it. Leave it at 12.
+5. In History, the eye beside a step switches it off without deleting it; the bin deletes it. Close History.
+
+Check: `last` is "Fillet 01: fillet 4 on 1 edge(s)"; the body's third size is 12 again after step 4.
+Likely slips: tapping the flat top when the rim was meant (tap again on the edge itself, or zoom in); leaving the Fillet tool open and wondering why other taps add edges (the tick first).
+
+## Lesson 3: The pole
+
+Needs: the base. Teaches: a sketch on a face; that a shape pulled out of a face joins the body.
+
+1. Tap the flat top of the base (not the rim). Round buttons show: tap **Sketch**. The view turns to face the top, and you are drawing on it.
+2. **Draw**, **Circle**. Click the middle of the top: the pointer catches on it. Type `12`, Enter.
+3. **Exit**. The small circle is picked, with its arrow.
+4. Type `200`, Enter. A pole 200 tall. On a face, out adds to the body and in cuts into it: so the base and the pole are one body.
+5. Double-tap the view cube to see all of it.
+
+Check: `last` is "Extrude 02: extrude 200"; still one body, now of `size` [120, 120, 212].
+Likely slips: the circle off the middle (Undo, and click nearer the middle; a small mark shows when it has caught); a typed minus sign, which cuts a hole down into the base instead (Undo).
+
+## Lesson 4: The shade
+
+Needs: the pole. Teaches: a tool's settings on the line; **Operation** and a second body; **Draft angle**; **Shell**; **Items**.
+
+1. Zoom in on the top of the pole and tap its small flat top. **Sketch**.
+2. **Draw**, **Circle**, click the middle, type `32`, Enter. The circle is wider than the pole. **Exit**.
+3. This time do not type a height: tap **Extrude**, the round button beside the shape. The line now holds the tool's settings. (On a phone held upright some are behind **Options**.)
+4. Tap **All shapes**. The pole's own outline cuts the circle into a ring and a middle; this takes both.
+5. Tap **Distance**, type `70`, Enter. Tap **Draft angle**, type `-20`, Enter: the sides lean out as they rise. (A plus angle leans them in.)
+6. Tap **Operation** and choose **New body**. Without this the shade would be added to the pole; as a body of its own it can be hollowed, coloured, turned and printed by itself. Tap the tick.
+7. Hollow it. Tap the shade's wide flat top. On the line: **Modify**, then **Shell**. Type the wall, `2`, Enter, and tap the tick. The face tapped is the open one.
+8. Open **Items** (top bar): it lists Body 1 (base and pole) and Body 2 (the shade). **Rename** is beside each, and so is **Hide**.
+
+Check: `last` is "Shell 01: shell, walls 2, 1 face(s) open"; two bodies, the second about [83, 83, 70].
+Likely slips: the shade joined to the pole, so there is still one body (History, **Extrude 03**, **Operation**, **New body**); only a ring pulled up, with a hole down its middle (**All shapes** was missed: History, Extrude 03, tap it); the sides leaning in (the minus sign).
+
+## Lesson 5: The bulb
+
+Needs: the shade. Teaches: **Freeform**, a shape pulled by its points, for what is not made of flat sketches; hiding a body; **Color**.
+
+1. The bulb goes inside the shade, so put the shade out of the way first: **Items**, and **Hide** beside Body 2.
+2. Tap empty space so nothing is picked. On the line: **Freeform**, then **Sphere**. A ball 40 across appears at the middle of the floor, inside the base, with a cage of points round it. All of it is picked, and the line shows **Diameter**, **Move**, **ΔX**, **ΔY**, **ΔZ**.
+3. Lift it over the pole: tap **ΔZ**, type `225`, Enter. (The pole's top is at 212.)
+4. Tap empty space to let go of the points.
+5. Turn the view to look at the ball a little from below. Tap the lowest point of its cage, the one at the very bottom.
+6. Tap **ΔZ**, type `-25`, Enter. The ball draws down to a neck that sits on the pole: a bulb. Pulling one point moves the smooth shape near it; that is all Freeform is.
+7. Tap the tick.
+8. **Items**: show Body 2 again (the same button beside it). The bulb sits inside the shade.
+9. Give it a colour: in **Items** tap Body 3, then **More** at the end of the line, **Color**, **Yellow**.
+
+Check: `last` is "Freeform 01: freeform"; three bodies, the third about [40, 40, 51] and near 214 to 265 high.
+Likely slips: a point at the side taken, not the bottom one (tap empty space, turn the view lower, tap again); an edge or a face picked (the same); the whole ball moved by -25 because nothing was let go (Undo, tap empty space first).
+If they enjoy this: more points picked together (each tap adds, or drag a box round them) move together, **Scale** in place of **Move** makes a waist, and **Add detail** gives more points.
+
+## Lesson 6: Three feet
+
+Needs: the base. Teaches: looking from below; **Hole**; **Pattern – Circular**.
+
+1. Turn the view until you see the underside of the base. Tap it about two thirds of the way out from the middle.
+2. On the line: **Create**, then **Hole**. It starts as an M3 screw hole right through, where you tapped.
+3. Make it a shallow recess for a stick-on foot: tap **Diameter**, type `12`, Enter. Tap **Through** to switch it off; **Depth** appears: type `1.5`, Enter. Tap the tick.
+4. Now two more, evenly round the base. Tap the flat bottom of the recess. On the line: **Transform**, then **Pattern – Circular** (it says "repeats this hole").
+5. The line asks for an **Axis**: tap **Z**. Set **Count** to `3`. Tap the tick.
+6. Turn the view back up.
+
+Check: `last` is "Hole Pattern 01: circular, 3 in all"; still three bodies.
+Likely slips: `bodies` jumped to five: the pattern copied the whole base, because the underside was picked and not the recess (Undo, tap inside the recess, again); a hole right through the base (History, **Hole 01**, **Through** off).
+Say once: holes for real screws are the same tool: **Screw** M2 to M12, **Head** for a counterbore or countersink; printed holes come out a little tight, 0.2 to 0.3 mm more on **Diameter** is common.
+
+## Lesson 7: The head tilted
+
+Needs: the shade and the bulb. Teaches: picking more than one thing; **Rotate Around Axis**.
+
+1. The shade and the bulb turn together. Open **Items** and tap Body 2, then Body 3: each tap adds to what is picked. (On the model a double tap picks a whole body.)
+2. On the line: **Transform**, then **Rotate Around Axis**.
+3. The line asks for an **Axis**: tap **Y**. That is the axis that runs away from you, so the head tips sideways towards X.
+4. It has to turn about the top of the pole, not about the floor: tap **Pivot Z**, type `212`, Enter.
+5. Tap **Angle**, type `30`, Enter. Tap the tick.
+
+Check: `last` is "Rotate 01: move"; the second body's box now reaches further in X than in Y.
+Likely slips: only the shade picked, so the bulb stays behind (Undo, pick both); the head swung far off to the side (the pivot is still at the floor: History, **Rotate 01**, **Pivot Z**).
+
+## Lesson 8: Sizes with names
+
+Needs: the lamp with its tilt, shell and feet. Teaches: **Variables**; a formula in place of a number.
+
+1. Tap empty space. **More**, then **Variables**. **New Variable** opens a small window: Name `tilt`, Value `30`, then **Add Another**. The same for `wall` = `2` and `feet` = `3`. **OK**.
+2. Put them to work. **History**, tap **Rotate 01**. Tap **Rotate Y**, and in place of the number type `tilt`, Enter. The line now shows the name with its result. Tap the tick.
+3. **History**, **Shell 01**: **Thickness** becomes `wall`. **History**, **Hole Pattern 01**: **Count** becomes `feet`.
+4. Now change the lamp from one place: **More**, **Variables**, and give `tilt` the value `50`. The head moves. Try `feet` at `5` and `wall` at `3`.
+5. A size can be a sum: anywhere a number goes, `wall * 2` or `tilt + 10` goes too.
+
+Check: `sg.now()` after step 4 shows the second body's box changed; the first body has more faces with five feet.
+Likely slips: a name typed that does not exist (the app says so: make the variable first, or mind the spelling); a variable typed into the wrong step (Undo).
+If they ask why the pole's height was not made a variable: a sketch on a face follows the face, so the shade would go up with a taller pole. But the bulb was placed, and the head's pivot was typed, as plain numbers, so those two would stay behind. A formula mends the pivot (**Pivot Z**: `12 + poleH`); the bulb would have to be moved up by hand. Knowing which things follow and which were typed is most of what parametric modelling is.
+
+## Lesson 9: Out to the printer
+
+Needs: the lamp.
+
+1. Tap empty space. **More**, **Print / Share**: it says whether the model is fit to print ("Ready to print: all 3 bodies are closed and solid") and its size, and saves it as 3MF, STL or STEP. 3MF keeps sizes and colours; STEP is for other CAD programs.
+2. A lamp prints in parts. With a body picked, only that body is exported: pick the shade (a double tap), then **File** (top bar), **Export 3MF**. The same for the bulb and for the base with its pole.
+3. For printing the shade lying flat, set `tilt` to `0` first; set it back after.
+4. **File**, **Save project** downloads a `.super` file: the whole model with its history, to keep as a backup or open on another device with **File**, **Open…**.
+5. The project also saves itself in this browser. Clearing the browser's data for this site deletes it, so the saved file is the safe copy.
+6. **File**, **Import file…** brings a STEP, STL, OBJ, 3MF, DXF or SVG file into the project that is open: a part from somewhere else to build round.
+
+Check: nothing to check in the app; ask them whether the file opened in their slicer.
+Then tell them what they now know: a sketch, a solid from it, changing a step in History, drawing on a face, a second body, a hollow one, a freeform shape, holes and patterns, turning bodies, variables. What is left is in lessons 10 to 12, for when they need it, and **More**, **Help** has every tool.
+
+## Lesson 10: Drawing exactly
 
 Needs: a block. Teaches: a sketch on a face, exact sizes, constraints, and cutting.
+
+A block to work on, if there is none: a new project, **Draw**, **Rectangle**, two corners about 40 by 30 apart, **Exit**, type `20`, Enter.
 
 1. Tap the top face, then **Sketch** (the round button beside it, or on the line). The view turns to face it.
 2. **Draw**, **Circle**: click a centre on the face, move out, type `8` and Enter.
@@ -88,21 +211,7 @@ Needs: a block. Teaches: a sketch on a face, exact sizes, constraints, and cutti
 Check: while they draw, `inSketch` is the sketch's name and `drawn` lists their shapes with sizes; `sizes` counts the dimensions and constraints. After step 6 `last` is an extrude with a negative distance (or "(cut)") and the body has more faces.
 Likely slips: a typed size "refused": it contradicts a constraint already there; delete that one (pick the line, **Constraints**) or Undo. A shape that will not turn blue is not closed: zoom in on its corners.
 
-## Lesson 4: Screw holes, and a hollow box
-
-Needs: a block or a plate. Teaches: **Hole**, **Shell**.
-
-1. Tap the top face about where a screw should go. On the line: **Create**, then **Hole**.
-2. On the line: **Screw** (M2 to M12) and **Head**: None, Counterbore (a cap screw's head sunk in) or Countersink. **Through** goes right through; switch it off for a **Depth**.
-3. Placing it: two sizes show from the nearest edges; tap one and type it. Or drag the hole's dot: it catches on the middle of the face, on the centre of a round edge, on the point where an axis passes through the face, and on a sketch drawn on the face (a line's end, where lines cross, a circle's centre). Tap the tick.
-4. For a pattern of holes: draw a sketch on the face first with a point for each hole (crossing lines or small circles), the tick and **Exit**, then make each hole by tapping near its mark.
-5. Hollow it: tap the face that should be open, **Modify**, **Shell**. Type the wall's **Thickness**. Tap more faces to open them as well. Tap the tick.
-
-Check: `last` reads like "Hole 01: hole M4, through at 10, 10, 20"; after Shell, "shell, walls 2, 1 face(s) open".
-Tell them once: printed holes come out a little tight; 0.2 to 0.3 mm more on **Diameter** is common.
-Likely slips: Shell refuses when the wall is thicker than the part allows, or a rounded edge is smaller than the wall: a thinner wall, or round the edges after the Shell.
-
-## Lesson 5: Round parts
+## Lesson 11: Round parts
 
 Makes: a knob. Teaches: a sketch on a standing plane, **Revolve**.
 
@@ -115,11 +224,11 @@ Makes: a knob. Teaches: a sketch on a standing plane, **Revolve**.
 Check: `last` is "Revolve 01: revolve 360 degrees"; the body is as wide as twice their outline's reach.
 Likely slips: an outline that crosses the axis cannot be revolved (keep it on one side); an outline that is not closed has nothing to pick.
 
-## Lesson 6: Two parts that fit
+## Lesson 12: Two parts that fit
 
 Makes: a box and a lid. Teaches: more than one body, **Operation**, **Combine**.
 
-1. Make a box and **Shell** it open on top (lessons 1 and 4).
+1. Make a block (as in lesson 10) and hollow it: tap its top, **Modify**, **Shell**, a wall of `2`, the tick.
 2. The lid: tap empty space, **Sketch**, tap the box's top rim face. **Draw**, **Rectangle** over the whole box. **Exit**, pull the shape up `3`.
 3. Before the tick, look at **Operation** on the line: on a face, out would **Add** to the box. Set it to **New body**, so the lid is its own part. Tap the tick. **Items** (top bar) now lists two bodies; the eye beside one hides it.
 4. A lip that fits inside: sketch on the lid's underside a rectangle a little smaller than the opening (0.2 mm clear on each side is a good start for printing), pull it down `3` with **Operation** set to **Add**.
@@ -127,27 +236,3 @@ Makes: a box and a lid. Teaches: more than one body, **Operation**, **Combine**.
 
 Check: two entries in `bodies`; hide the lid and the box is still hollow.
 Likely slips: the lid joined to the box (open that Extrude in History and set **Operation** to **New body**).
-
-## Lesson 7: One number that resizes the part
-
-Needs: any part. Teaches: **Variables**, **Pattern**, **Mirror**.
-
-1. **More**, then **Variables**. Tags appear on the model wherever a size acts. **New Variable**: name it `wall` and give it `3`.
-2. Open a step in History, tap one of its sizes and type `wall` (or `wall * 2`) in place of the number. The line then shows it as a formula with its result.
-3. Change `wall` in the Variables list: every size that uses it follows. Formulas take + - * / and brackets.
-4. A row of copies: pick a body, or a hole's face. **Transform**, **Pattern – Linear**. Tap an edge or an axis word (**X**, **Y**, **Z**) for the **Direction**; set **Count** and **Spacing**. Tick. **Pattern – Circular** goes round an axis.
-5. **Transform**, **Mirror** makes the other half of a symmetric part across a plane or a flat face.
-
-Check: `last` names the pattern and reads like "linear ..., 4 in all"; `bodies` or the face count grew to match.
-
-## Lesson 8: Out to the printer
-
-Needs: a finished part.
-
-1. **More**, **Print / Share**: it says whether the part is fit to print (closed, in one piece) and saves it as 3MF, STL or STEP. 3MF keeps names and colours; STEP is for other CAD programs.
-2. **File** (top bar) has the same exports. With a body picked, only that body is exported: this is how a box and its lid become two files.
-3. **File**, **Save project** downloads a `.super` file: the whole model with its history, to keep as a backup or open on another device with **File**, **Open…**.
-4. The project also saves itself in this browser. **File**, **Open…** shows every project as a gallery. Clearing the browser's data for this site deletes them, so a saved file is the safe copy.
-5. Lay the part in the slicer the way it prints best; the app's up is Z.
-
-Check: nothing to check in the app; ask them whether the file opened in their slicer.

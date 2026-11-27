@@ -835,8 +835,17 @@ export class SelectTool implements Tool {
     const freeFaces = { disabled: !allFlat, why: one ? "Needs a flat face" : "Needs flat faces of one body" };
     const ref = faceRefOf(app, s);
     const bodies = bodiesOf(sel);
-    // (One round wall of a hole picked: a pattern started here repeats the hole.)
-    const holeRef = one && info?.round?.hole && ref ? ref : undefined;
+    // (One round wall of a hole picked: a pattern started here repeats the hole. So does its flat bottom, or the
+    // step of a counterbore - any face a Hole step made: a shallow recess has a wall too thin to tap, and a
+    // pattern started from its bottom made copies of the whole body.)
+    const holeRef = ((): NonNullable<typeof ref> | undefined => {
+      if (!one || !info || !ref) return undefined;
+      if (info.round?.hole) return ref;
+      const made = info.step ? app.store.features.find((f) => f.id === info.step) : undefined;
+      if (made?.type !== "hole") return undefined;
+      const wall = app.view.body(s.body)?.faces.findIndex((g) => g.step === info.step && !!g.round?.hole) ?? -1;
+      return wall >= 0 ? (faceRefOf(app, { body: s.body, face: wall }) ?? undefined) : undefined;
+    })();
     // A round face: its axis (from its mesh).
     const axis = info?.round && one ? roundAxis(app, s.body, s.face) : null;
     // A face a Freeform Face step made: that step opens again to reshape it.
