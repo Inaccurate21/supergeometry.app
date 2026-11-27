@@ -294,6 +294,8 @@ Keep the person's cost down: one call per change, several commands in one call w
 
 ## Guiding a person
 
+To teach someone the app from inside their tab, there is a course written for you: `await sg.teach()` in the page gives how to teach and the list of lessons, `await sg.teach(3)` one lesson, and `sg.now()` says in a line what the person has just done (the same text is at https://supergeometry.app/llms-teach.txt). What follows is the short version, for when you cannot act in the tab.
+
 The app is pick-first: tap a thing on the model, and the line at the bottom of the screen shows what can be done with it. With nothing picked, the line shows the groups: Sketch, Create (Extrude, Revolve, Sweep, Loft, Hole), Modify (Fillet, Chamfer, Shell, Thread), Combine (Union, Subtract, Intersect, Split), Transform (Move, Mirror, Pattern, Scale), Construct (Plane, Axis), Freeform, and More (Insert, Variables, Measure, Section, Assemblies, Drawings, Settings, Help, Tutorial).
 
 A first part: Sketch, pick a plane, draw a shape, tap the tick; tap the shape, Extrude, type a distance. Sizes can be typed while drawing; in a sketch, click a dimension to change it.

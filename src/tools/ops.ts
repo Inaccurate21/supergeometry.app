@@ -2844,7 +2844,8 @@ export class ImageOp extends FeatureOp<ImageFeature> {
       { type: "number", label: "X", value: u0, kind: "length", onInput: (v) => place(v, dot(this.feature.plane.origin, cross(this.feature.plane.normal, this.feature.plane.xDir))) },
       { type: "number", label: "Y", value: v0, kind: "length", onInput: (v) => place(dot(this.feature.plane.origin, this.feature.plane.xDir), v) },
       this.num("Width", "width", "length", { min: 0.001, onInput: (v) => ((this.feature.height = v * this.aspect), this.update()) }),
-      { type: "number", label: "Opacity", value: this.feature.opacity, kind: "number", min: 0.05, onInput: (v) => ((this.feature.opacity = Math.min(1, v)), this.update()) },
+      // Fade, as a body's: how see-through, in % (0 = solid; stored as an opacity).
+      { type: "number", label: "Fade %", value: Math.round((1 - this.feature.opacity) * 100), kind: "int", min: 0, onInput: (v) => ((this.feature.opacity = 1 - Math.min(95, Math.max(0, v)) / 100), this.update()) },
     ];
   }
 

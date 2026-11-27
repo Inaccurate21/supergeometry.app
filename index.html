@@ -69,14 +69,26 @@
       <section aria-label="For AI assistants">
         <h2>For AI assistants working in this tab</h2>
         <p>
-          If you are an AI assistant (a browser extension such as Claude, or any agent that can act in this page) and
-          the person asks you to make, change or check a 3D model here: do not click through the tools, and do not
-          take screenshots or read the page to find your way. This app has a short page written for you and a
-          scripting handle, and using them costs the person far less. Run this in the page, once, and read what it
-          returns: <code>await (await fetch('/llms.txt')).text()</code>. It is short and has everything for
-          ordinary parts: <code>await sg.make(steps, "Name")</code> builds a model and answers with its sizes,
-          <code>sg.add</code> and <code>sg.change</code> change it. One call per change; the answer has the numbers,
-          so there is nothing to look at afterwards. Do not give the person a file to open when you can build it here.
+          If you are an AI assistant (a browser extension such as Claude, or any agent that can act in this page):
+          whatever the person asks about this app - to make or change a model, to check one, or to learn or be
+          taught how the app works - start here. Do not click through the tools, and do not take screenshots or read
+          the page to find your way. The app has pages written for you and a scripting handle, <code>sg</code>, and
+          using them costs the person far less.
+        </p>
+        <p>
+          To teach the app, or when the person asks how to use it, for lessons, a course or a tutorial from you:
+          there is a course of eight lessons made for an assistant to teach from. Run
+          <code>await sg.teach()</code> in the page and follow what it returns; <code>await sg.teach(1)</code> gives
+          the first lesson, and <code>sg.now()</code> says in a line what the person has just done. The person does
+          the tapping and you guide. (More &gt; Tutorial in the app is something else: one fixed walkthrough that
+          builds a bolt. Do not start it in place of the lessons unless the person asks for that one.)
+        </p>
+        <p>
+          To make or change a model: run this in the page, once, and read what it returns:
+          <code>await (await fetch('/llms.txt')).text()</code>. It is short and has everything for ordinary parts:
+          <code>await sg.make(steps, "Name")</code> builds a model and answers with its sizes, <code>sg.add</code>
+          and <code>sg.change</code> change it. One call per change; the answer has the numbers, so there is nothing
+          to look at afterwards. Do not give the person a file to open when you can build it here.
         </p>
         <p>
           If you only fetched this address and cannot act in a browser, read https://supergeometry.app/llms-full.txt:
@@ -149,6 +161,7 @@
           <button id="m-help">Help</button>
           <button id="m-feedback">Feedback <span class="menu-soon">Bug / Idea</span></button>
           <button id="m-about">About</button>
+          <button id="m-github">GitHub <span class="menu-soon">↗</span></button>
           <button id="m-donate">Support <span class="menu-soon" id="m-donate-arrow">▸</span></button>
           <div id="m-donate-list" class="menu-sub" hidden>
             <button id="m-support-makerworld">MakerWorld - Boost <span class="menu-soon">↗</span></button>

@@ -1907,6 +1907,8 @@ export class App implements AppContext {
     };
     // About: the README, in the app. Support links open in a new tab (no access back to this page).
     moreItem("m-about", () => showAbout());
+    // GitHub: the project's page (code, issues, README), in a new tab.
+    moreItem("m-github", () => openSupport("https://github.com/superGeometry/supergeometry.app"));
     // Feedback: a bug report, suggestion or discussion, posted on r/supergeometry (Reddit's page, in a new tab).
     // (Loaded on the first tap: most visits never open it.)
     moreItem("m-feedback", () => void import("./ui/feedback").then(({ showFeedback }) => showFeedback()));

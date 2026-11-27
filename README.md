@@ -346,8 +346,8 @@ sketch. A sketch stays in view until every region of it is used.
   through an edge at an angle, parallel to a face at a point. Each kind has
   its own small mark at the plane's corner (⇡ ⇹ ∴ ∿ ⊥ ∠ ∥) and on its icon.
   Axes from a face or edge, or along X / Y / Z through a point you type.
-- **Colour** - ten soft colours or **Custom…** for any colour; and how
-  see-through a body is.
+- **Colour** - six soft colours or **Custom…** for any colour; and
+  **Fade**, how see-through a body is.
 - **Section View** - cut the view (not the part) to look inside; the cut
   shows as a solid face with a thick outline. **Place Plane** on the line
   puts a construction plane where the cut is (to sketch on or split with).
@@ -515,6 +515,10 @@ you: how to build a model in the person's open tab with the page's `sg` handle, 
 (`sg.make`, `sg.add`, `sg.change`; see `src/assist.ts`). The full reference, with the project file format and
 complete examples, is https://supergeometry.app/llms-full.txt; everything both pages say is tested against the
 app on every change (`tests/llms.test.ts`).
+
+**Learning the app with an assistant:** ask it to teach you. It has a course of eight lessons
+(`public/llms-teach.txt`): you do the tapping, it says what to tap and why, and checks what you did
+(`sg.now()`) before going on. It starts from what you want to make and what you already know.
 
 **People:** on a computer, the **Claude** button at the bottom right shows how to model by asking. It needs
 Claude's extension for Chrome: open it beside the app, say what you want, and Claude builds the model in your
