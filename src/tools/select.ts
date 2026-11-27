@@ -340,7 +340,7 @@ export class SelectTool implements Tool {
 
   private boxHint(): void {
     const name = { all: "everything", body: "bodies", face: "faces", edge: "edges" }[this.boxKind];
-    this.app.ui.setHint(`Box: ${name} - Tab for the next kind (B bodies, F faces, E edges, A all). Left to right takes what's inside, right to left what it touches.`);
+    this.app.ui.setHint(`Box: ${name}. Tab changes the kind. Left to right: what is inside. Right to left: what it touches.`);
   }
 
   /**
@@ -629,7 +629,7 @@ export class SelectTool implements Tool {
     if (first.kind === "face" && n === 2 && sel[1].kind === "face") return "The distance between the faces is shown. Pick a tool for them.";
     if (first.kind === "edge" && !this.sheetFreeform(first.body)) return `Drag the dot to round ${n > 1 ? "the edges" : "the edge"}, ${or}.`;
     if (first.kind === "body") return `Drag the arrows or arcs to move it, ${or}.`;
-    return this.quick ? `${cap(tap)} a button beside it, or pick a tool on the line at the bottom.` : `Pick a tool for ${n > 1 ? "them" : "it"}, or ${tap} another to add it (${tap} a picked one to let it go).`;
+    return this.quick ? `${cap(tap)} a button beside it, or pick a tool on the line at the bottom.` : `Pick a tool for ${n > 1 ? "them" : "it"}, or ${tap} another to add it.`;
   }
 
   /** Called by the app when a top-level tool needs a selection first. */

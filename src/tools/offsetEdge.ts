@@ -245,6 +245,6 @@ export class OffsetEdgeOp extends FeatureOp<SketchFeature> {
     if (this.problem) return `⚠ ${this.problem}`;
     if (!this.edge) return this.face ? "Tap a straight edge: the line on this face runs alongside it." : "Tap a straight edge: the line runs alongside it.";
     if (!this.face) return "Tap the flat face to draw the line on.";
-    return "The line runs across the face beside the edge. Drag the double arrow, or type, to set how far from the edge (negative: the other side).";
+    return "Drag the double arrow, or type, to set how far from the edge. Negative: the other side.";
   }
 }

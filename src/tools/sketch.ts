@@ -107,8 +107,8 @@ const CENTRE_HINT = {
 };
 
 const HINTS: Record<Kind, string> = {
-  select: "Tap a line or curve to change its size. Tap a second one to make them parallel, tangent, equal... Double-tap to pick a whole shape.",
-  line: "Tap to place points. Closing a shape ends the line (double-tap ends it sooner). Dashed construction lines: Draw > Construction.",
+  select: "Tap a line to set its size. Tap a second to tie them together. Double-tap picks a whole shape.",
+  line: "Tap to place points. Closing a shape ends the line; a double tap ends it sooner.",
   arc: isCoarse ? "Drag from one end of the arc to the other, then drag to bend it." : "Click where the arc starts and ends, then a third point to bend it.",
   spline: "Tap points for the curve to pass through. Tap the first point to close it, or double-tap to stop.",
   rect: "Tap one corner, then the opposite corner.",
@@ -116,17 +116,17 @@ const HINTS: Record<Kind, string> = {
   ellipse: "Tap the centre, then the end of the long side, then tap to set the width.",
   polygon: "Tap the centre, then where a corner should be.",
   text: "Tap where the text should start, then type it in the card.",
-  project: "Tap edges of a body, or lines of another sketch, to copy them into this sketch. Double-tap copies a whole sketch.",
+  project: "Tap edges of a body, or lines of another sketch, to copy them here. Double-tap copies a whole sketch.",
   offset: "Tap a line or shape - or an edge of a body - to draw a copy of it a set distance away.",
   fill: "Tap inside a closed shape: it is filled with the pattern. Tap a shape that has one to change it.",
   fillet: "Tap a corner to round it, or two lines that meet. Then drag or type the radius.",
-  move: "Tap what to move, then drag the arrows to move it or the ring to turn it (or type exact values).",
-  scale: "Tap what to resize, then drag the middle square (or an arrow's square end for one way only), or type how many times bigger.",
+  move: "Tap what to move, then drag the arrows to move it or the ring to turn it, or type.",
+  scale: "Tap what to resize, then drag the middle square (an arrow's end: one way only), or type a factor.",
   patternLinear: "Tap what to repeat, then drag an arrow to space the copies, and set how many.",
   patternCircular: "Tap what to repeat (double-tap for a whole shape), then tap the centre to repeat it around.",
-  rotate: "Tap what to turn (double-tap for a whole shape), then tap the point to turn it around, and set the angle.",
+  rotate: "Tap what to turn (double-tap: a whole shape), then the point to turn it about, and set the angle.",
   mirror: "Tap a shape, then tap the line to flip it across. Any line works, even one of its own.",
-  trim: "Tap the piece of a line to cut away, or swipe across several pieces. (Join: tap a line to merge it with the one it continues.)",
+  trim: "Tap the piece of a line to cut away, or swipe across several.",
   align: "Tap the line to move, then the line it should line up with.",
   extend: "Tap a line near the end to lengthen, then tap the line it should reach.",
   delete: "Tap lines or shapes to delete them.",
@@ -162,7 +162,7 @@ function hintOf(kind: Kind): string {
   if (kind === "circle" && memory.circle === "2pt") return "Tap two points on opposite sides of the circle.";
   if (kind === "circle" && memory.circle === "3pt") return "Tap three points on the circle's edge.";
   if (kind === "fillet" && memory.corner === "chamfer") return "Tap a corner where two lines meet to cut it off straight.";
-  if (kind === "spline" && memory.spline === "control") return "Tap points that pull the curve towards them (it passes through the first and last). Tap the first point to close it, or double-tap to stop.";
+  if (kind === "spline" && memory.spline === "control") return "Tap points that pull the curve towards them. Tap the first to close it, or double-tap to stop.";
   if (kind === "trim" && memory.trim === "join") return "Tap a line to merge it with the one it continues.";
   if (kind === "spline" && memory.spline === "draw") return isTouchDevice ? "Draw with one finger, like a pencil (two move the view). End where you began to close it." : "Press and drag to draw, like a pencil. End where you began to close it.";
   return HINTS[kind];
@@ -1414,7 +1414,7 @@ export class SketchTool implements Tool {
   private journeyHint(): string | undefined {
     // (The sentence bar: Exit is at the end of the line, the drawing tools are under Draw.)
     if (document.body.classList.contains("sentence-ui")) {
-      if (this.exitPulse && this.kind === "select") return "Shape closed. Tap Exit (pulsing, at the end of the line): its arrow is ready to pull it into 3D.";
+      if (this.exitPulse && this.kind === "select") return "Shape closed. Tap Exit (pulsing): its arrow is ready to pull it into 3D.";
       if (!this.entities.length && this.kind === "select") return "Tap Draw, then Line: tap points, and end on the first one to close the shape.";
     }
     if (this.exitPulse && this.kind === "select") return "Shape closed. Tap Exit Sketch (pulsing) - then pull the shape into 3D.";
@@ -2945,7 +2945,7 @@ export class SketchTool implements Tool {
             this.lightEdges(null);
             this.updatePanel();
             this.refreshPreview();
-            return this.setHint("Another offset of the same edge: set how much further, then Apply. Flip puts it on the other side of this line.");
+            return this.setHint("Another offset of the same edge: set how much further, then Apply. Flip: the other side.");
           }
           // The face's own edge: its whole outline, offset inward to start, and
           // linked - it's made again from the face when the face changes.
@@ -4922,7 +4922,7 @@ export class SketchTool implements Tool {
       fr.base,
       { facing: fr.normal, gap: 70 },
     );
-    this.setHint(this.regionQuick ? "Drag the arrow to pull the shape into 3D, or pick what to make of it." : "Drag the arrow to pull the shape into 3D. For Revolve, Sweep or Loft, tap Exit: they are under Create.");
+    this.setHint(this.regionQuick ? "Drag the arrow to pull the shape into 3D, or pick what to make of it." : "Drag the arrow to pull the shape into 3D. Revolve, Sweep and Loft: tap Exit, then Create.");
   }
 
   /** The tools for the shape tapped in the sketch (Extrude, Revolve, Sweep, Loft), beside it. */
@@ -5329,7 +5329,7 @@ export class SketchTool implements Tool {
     if (remove) this.fillAt = this.fillId = null;
     this.updatePanel();
     this.refreshPreview();
-    this.setHint(remove ? "Pattern removed. Tap inside a closed shape to fill it." : "Filled. Change its pattern or its sizes here, or tap another shape. The strips and cells are shapes of their own: exit the sketch to extrude or cut them.");
+    this.setHint(remove ? "Pattern removed. Tap inside a closed shape to fill it." : "Filled. Change its pattern or sizes here, or tap another shape. Exit the sketch to extrude the strips.");
     return true;
   }
 
@@ -5651,7 +5651,7 @@ export class SketchTool implements Tool {
     this.updatePanel();
     this.refreshPreview();
     this.lightEdges(hit);
-    this.setHint("Set the distance (Flip for the other side), then Apply. The dashed line is the body's edge: the offset is made from it.");
+    this.setHint("Set the distance (Flip: the other side), then Apply. The dashed line is the body's edge.");
   }
 
   private applyOffset(): void {

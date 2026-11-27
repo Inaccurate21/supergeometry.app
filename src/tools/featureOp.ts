@@ -403,7 +403,7 @@ export abstract class FeatureOp<F extends Feature> implements Tool {
   protected setHint(): void {
     const slot = this.slots[this.active];
     let text = this.error ? `⚠ ${this.error}` : slot && !slot.filled() ? `${slot.label}: ${slot.describe()}` : this.hint();
-    if (!this.error && this.partOfAShape()) text += `${/[.!?]$/.test(text) ? "" : "."} Only this part of the shape is picked: tap its other parts to add them.`;
+    if (!this.error && this.partOfAShape()) text += `${/[.!?]$/.test(text) ? "" : "."} Only this part of the shape is picked: tap the others to add them.`;
     this.app.ui.setHint(text);
     this.app.ui.setPanelWarning(this.error);
   }

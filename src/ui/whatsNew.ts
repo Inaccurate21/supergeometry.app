@@ -32,6 +32,7 @@ export const UPDATES: Update[] = [
       "On a touch screen, press and hold a face, an edge or a sketch's shape and lift without dragging: the list of what can be done with it opens by your finger, as a right-click gives. Hold and drag still pulls it.",
     ],
     fixed: [
+      "The guide text is shorter: the longest ones (Move/Rotate, Fillet, Chamfer, Shell, Scale, Loft, Offset, the sketch tools and others, 35 in all) say what to do next in a line or two, without the asides.",
       "A hole's flat bottom starts a pattern of the hole, as its round wall does. A shallow recess has a wall too thin to tap, and a pattern started from its bottom made copies of the whole body.",
       "On a phone the warning line (a sketch whose constraints can't all be met, a body not closed) stands clear above undo and redo, and above the guide text when that is shown. Half of it was hidden under the buttons.",
       "Polygon: Triangle, Square, Pentagon and Octagon each have their own picture in the list. All five showed the hexagon.",

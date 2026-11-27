@@ -201,7 +201,7 @@ export class ExtrudeOp extends FeatureOp<ExtrudeFeature> {
     if (this.feature.extent === "through") return "It goes through every body in its way. Flip direction turns it the other way.";
     if (this.feature.extent === "to") return "It stops at the face or plane picked (a round face too).";
     // (A bin drafted 5 came out narrowing to the top: which way a sign leans wasn't said.)
-    if (this.feature.draft) return `Draft ${Math.abs(this.feature.draft)}°: the sides lean ${this.feature.draft > 0 ? "in" : "out"} towards the far end - type ${this.feature.draft > 0 ? "a minus angle to lean them out" : "a plus angle to lean them in"}.`;
+    if (this.feature.draft) return `Draft ${Math.abs(this.feature.draft)}°: the sides lean ${this.feature.draft > 0 ? "in" : "out"}. A ${this.feature.draft > 0 ? "minus angle leans them out" : "plus angle leans them in"}.`;
     if (this.feature.symmetric) return "Symmetric: the distance goes each way from the shape - type half the whole width.";
     // (Auto goes by the way it is pulled: which way does what.)
     if (this.feature.mode !== "auto") return "Drag the arrow or type a distance.";
@@ -761,7 +761,7 @@ export class EdgeOp extends FeatureOp<EdgeFeature> {
   }
 
   protected hint(): string {
-    return this.feature.type === "fillet" ? "Drag the dot or type a size to round the edge. Tap more edges to round them too (a face: all round it)." : "Drag the dot or type a size to cut the edge off at a slant. Tap more edges to add them (a face: all round it).";
+    return this.feature.type === "fillet" ? "Drag the dot or type a radius to round the edge. Tap more edges, or a face for all round it." : "Drag the dot or type a size to bevel the edge. Tap more edges, or a face for all round it.";
   }
 
   protected items(): PanelItem[] {
@@ -1177,7 +1177,7 @@ export class RevolveOp extends FeatureOp<RevolveFeature> {
   private typing = new DragTyping(this.app);
 
   protected hint(): string {
-    return "Set how far the shape spins around the axis (360° is a full turn). Drag the arrow along the axis to make a spring.";
+    return "Set the angle (360° is a full turn). Drag the arrow along the axis to make a spring.";
   }
 
   protected items(): PanelItem[] {
@@ -1466,8 +1466,8 @@ export class LoftOp extends FeatureOp<LoftFeature> {
   }
 
   protected hint(): string {
-    if (this.extra.conns) return "Connections: tap a point on each profile in turn - the loft joins them (a corner of a square to a point on a circle).";
-    if (this.extra.rails) return "Guide curves: each runs through every profile, and the sides follow it. Tap one again to take it off.";
+    if (this.extra.conns) return "Connections: tap a point on each profile in turn, and the loft joins them there.";
+    if (this.extra.rails) return "Guide curves: each runs through every profile and the sides follow it. Tap one again to drop it.";
     if (this.feature.guide) return "The body follows the guide through each shape. Tap more curves to make the guide longer.";
     return "Tap the shapes in order: the body passes through each one.";
   }
@@ -1552,7 +1552,7 @@ export class ShellOp extends FeatureOp<ShellFeature> {
 
 
   protected hint(): string {
-    return this.feature.faces.length ? "Drag the arrow into the body, or type, to set how thick the walls are. Tap more faces to open them too." : "Tap the faces to leave open: an arrow comes up to set how thick the walls are.";
+    return this.feature.faces.length ? "Drag the arrow into the body, or type, for the wall's thickness. Tap more faces to open them." : "Tap the faces to leave open: an arrow comes up to set how thick the walls are.";
   }
 
   protected items(): PanelItem[] {
@@ -1816,13 +1816,13 @@ export class TransformOp extends FeatureOp<TransformFeature> {
   protected hint(): string {
     switch (this.kind) {
       case "move":
-        return "Drag an arrow to slide it, an arc to turn it, or type exact values. Drag the dot in the middle to move the point it turns about - it snaps to corners and edges. Tap empty space when done.";
+        return "Drag an arrow to move it or an arc to turn it, or type. The middle dot is the point it turns about.";
       case "mirror":
         return "The body is flipped across the plane. A copy is made unless you turn Copy off.";
       case "translate":
         return "Tap a point on the body, then the point it should move to.";
       default:
-        return ({ rotate: "Set the angle to turn the body around the axis.", linear: this.dir ? "Drag the arrow, or type, to set how far apart the copies are; Count is how many." : "Tap an edge, an axis or a face: the copies go along it (point at one to see how, in dashed yellow).", circular: this.axis ? "Drag the dot round the axis, or type, to set the angle the copies are spread over; Count is how many." : "Tap an axis, or a round edge or face: the copies go round it (point at an axis to see how)." } as Record<string, string>)[this.kind] ?? `${TITLES[this.kind]}: set the values, then tap empty space.`;
+        return ({ rotate: "Set the angle to turn the body around the axis.", linear: this.dir ? "Drag the arrow, or type, to set how far apart the copies are; Count is how many." : "Tap an edge, an axis or a face: the copies go along it (point at one to see how, in dashed yellow).", circular: this.axis ? "Drag the dot round the axis, or type, for the angle the copies cover. Count is how many." : "Tap an axis, or a round edge or face: the copies go round it (point at an axis to see how)." } as Record<string, string>)[this.kind] ?? `${TITLES[this.kind]}: set the values, then tap empty space.`;
     }
   }
 
@@ -2487,7 +2487,7 @@ export class ScaleOp extends FeatureOp<TransformFeature> {
 
   protected hint(): string {
     return this.xyz
-      ? "Drag one handle to stretch the body that way, or the centre to resize it evenly. Type a number while dragging (2 = twice)."
+      ? "Drag a handle to stretch the body that way, or the centre to resize it evenly. Or type (2 = twice)."
       : "Drag a handle to resize. Type a number while dragging (2 = twice as big).";
   }
 
@@ -2858,7 +2858,7 @@ export class ImageOp extends FeatureOp<ImageFeature> {
   }
 
   protected hint(): string {
-    return "Drag the arrows to place the image. Set its width and how see-through it is on the line at the bottom.";
+    return "Drag the arrows to place the image. Its width and how see-through it is are on the line.";
   }
 
   protected items(): PanelItem[] {
@@ -3214,7 +3214,7 @@ export class SplitOp extends FeatureOp<SplitFeature> {
   }
 
   protected hint(): string {
-    return "The body is cut where the planes, and the surfaces of the bodies picked, cross it. Those bodies stay as they are.";
+    return "The body is cut where the planes and the picked bodies' surfaces cross it. Those bodies stay.";
   }
 
   protected items(): PanelItem[] {
@@ -3266,7 +3266,7 @@ export class ConnectOp extends FeatureOp<ConnectFeature> {
   protected hint(): string {
     return this.feature.guide
       ? "The bridge runs along the guide from face to face. Size: how big it is against the faces."
-      : "Bend: how far the bridge bows out of the faces. Tap a sketch curve (a spline from face to face) to have it follow that instead.";
+      : "Bend: how far the bridge bows out. Or tap a sketch curve for it to follow.";
   }
 
   protected items(): PanelItem[] {
@@ -3300,7 +3300,7 @@ export class FillOp extends FeatureOp<FillFeature> {
   }
 
   protected hint(): string {
-    return this.feature.boundary.length ? "Tap more curves or edges until they close a loop. Guides are curves inside it the surface passes through." : "Tap the curves or edges round the surface.";
+    return this.feature.boundary.length ? "Tap curves or edges until they close a loop. A guide is a curve inside it the surface passes through." : "Tap the curves or edges round the surface.";
   }
 
   protected items(): PanelItem[] {
