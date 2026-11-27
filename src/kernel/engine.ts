@@ -5171,7 +5171,9 @@ let infosKept = 0;
 function faceInfoKept(face: Face): FaceInfo {
   let hash = -1;
   try {
-    hash = (face.wrapped as unknown as { HashCode(max: number): number }).HashCode(2147483647);
+    // (The face's own hash, as replicad reads it: asked of the kernel's handle directly - HashCode on it - there is
+    // no such thing in this build, so nothing was ever found again and every face was measured anew each time.)
+    hash = face.hashCode;
     for (const kept of [infosNow, infosWas]) {
       const hit = kept.get(hash)?.find((x) => !x.face.IsNull() && x.face.IsEqual(face.wrapped));
       if (hit) {
@@ -6874,7 +6876,7 @@ function blendFillet(body: Shape3D, edges: Edge[], r: number, smooth: boolean): 
     const wire = assembleWire([curve, makeLine(B, outB), makeLine(outB, outO), makeLine(outO, outA), makeLine(outA, A)]);
     const section = makeFace(wire);
     const tool = (axis ? revolution(section, axis.c, axis.dir, 360) : basicFaceExtrusion(section, new Vector(scale(t, length + 2 * ext)))) as Shape3D;
-    made.push({ tool, convex, along: axis ? null : t });
+    made.push({ tool: convex || axis ? tool : heldByBoth(tool, [fa, n1], [fb, n2], d), convex, along: axis ? null : t });
   }
   // Two rounds side by side that run into each other along their length (both
   // edges of a block narrower than the two of them): that isn't a round that
@@ -6887,7 +6889,22 @@ function blendFillet(body: Shape3D, edges: Edge[], r: number, smooth: boolean): 
       if (measureVolume(both) > 1e-6 * Math.pow(r, 3)) throw new Error("Those rounds run into each other - make the radius smaller");
     }
   let out = body;
-  for (const m of made) out = (m.convex ? out.cut(m.tool) : out.fuse(m.tool)) as Shape3D;
+  for (const m of made) out = (m.convex ? out.cut(m.tool) : m.along ? checkedBoolean("fuse", out, m.tool) : out.fuse(m.tool)) as Shape3D;
+  return out;
+}
+
+/**
+ * An inside corner's fill, kept to where both faces are there to carry it: a face that narrows to nothing at the
+ * edge's ends (the flat top of a round boss against a wall) held a fill as long as the edge and more, standing out
+ * past the boss as a bar with a block under each end. Each face, made a slab on both sides of itself, cuts the fill
+ * to its own outline.
+ */
+function heldByBoth(tool: Shape3D, a: [Face, Vec3], b: [Face, Vec3], d: number): Shape3D {
+  let out = tool;
+  for (const [face, n] of [a, b]) {
+    const slab = basicFaceExtrusion(face.clone().translate(scale(n, -1.5 * d)) as Face, new Vector(scale(n, 3 * d))) as Shape3D;
+    out = out.intersect(slab) as Shape3D;
+  }
   return out;
 }
 

@@ -38,6 +38,7 @@ export const UPDATES: Update[] = [
       "On a touch screen, press and hold a face, an edge or a sketch's shape and lift without dragging: the list of what can be done with it opens by your finger, as a right-click gives. Hold and drag still pulls it.",
     ],
     fixed: [
+      "A Smooth (G2) fillet in an inside corner stays inside the corner. It was built longer than the edge and stood out past both ends, with a block hanging under each end where a face stopped short (the flat top of a round boss against a wall). It now ends where the two faces end.",
       "A project file with a mesh in it far over what can be brought in opens with that step switched off, and says so; inserted into another project, that mesh is left out. Either way it no longer runs the page out of memory.",
       "Scale in the list of a picked body starts at once, the way you used last: its three ways are on the tool's own line, so the list no longer asks first.",
       "A plane typed further than 10 km from the origin is refused as a typo, as a body that far is. A step that could not be made now says so in plain words where it showed the kernel's own.",
