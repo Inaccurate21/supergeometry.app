@@ -6842,18 +6842,20 @@ function blendFillet(body: Shape3D, edges: Edge[], r: number, smooth: boolean): 
       t = norm(cross(n, sub(p0, c)));
     } else throw new Error(smooth ? "Smooth (G2) works on straight edges between flat faces and on the round edges of cylinders - set Blend to Round for this edge" : "unsupported edge");
     const probe = Math.max(1e-4, r * 1e-3);
+    // (Asked at the edge's middle: at an end that is a wall's corner, a step either way is still on the face's rim.)
+    const from = axis ? at : add(at, scale(t, length / 2));
     const inward = (face: Face): Vec3 => {
-      const nrm = norm(P(face.normalAt(at)));
+      const nrm = norm(P(face.normalAt(from)));
       let u = norm(cross(nrm, t));
-      const q = makeVertex(add(at, scale(u, probe)));
+      const q = makeVertex(add(from, scale(u, probe)));
       if (measureDistanceBetween(face, q) > probe * 0.5) u = scale(u, -1);
       q.delete();
       return u;
     };
     const u1 = inward(fa);
     const u2 = inward(fb);
-    const n1 = norm(P(fa.normalAt(at)));
-    const n2 = norm(P(fb.normalAt(at)));
+    const n1 = norm(P(fa.normalAt(from)));
+    const n2 = norm(P(fb.normalAt(from)));
     const convex = dot(n1, u2) < 0;
     const cosA = Math.max(-1, Math.min(1, dot(u1, u2)));
     const phi = Math.acos(cosA);
@@ -6876,7 +6878,9 @@ function blendFillet(body: Shape3D, edges: Edge[], r: number, smooth: boolean): 
     const wire = assembleWire([curve, makeLine(B, outB), makeLine(outB, outO), makeLine(outO, outA), makeLine(outA, A)]);
     const section = makeFace(wire);
     const tool = (axis ? revolution(section, axis.c, axis.dir, 360) : basicFaceExtrusion(section, new Vector(scale(t, length + 2 * ext)))) as Shape3D;
-    made.push({ tool: convex || axis ? tool : heldByBoth(tool, [fa, n1], [fb, n2], d), convex, along: axis ? null : t });
+    // The piece between the two faces and nowhere else (see heldByBoth).
+    const held = () => (axis ? heldByRound(tool, kinds[0] === "PLANE" ? [fa, n1] : [fb, n2], kinds[0] === "PLANE" ? fb : fa, axis, d) : heldByBoth(tool, [fa, u2], [fb, u1], d));
+    made.push({ tool: convex ? sparing(tool, held, body, r) : held(), convex, along: axis ? null : t });
   }
   // Two rounds side by side that run into each other along their length (both
   // edges of a block narrower than the two of them): that isn't a round that
@@ -6889,22 +6893,66 @@ function blendFillet(body: Shape3D, edges: Edge[], r: number, smooth: boolean): 
       if (measureVolume(both) > 1e-6 * Math.pow(r, 3)) throw new Error("Those rounds run into each other - make the radius smaller");
     }
   let out = body;
-  for (const m of made) out = (m.convex ? out.cut(m.tool) : m.along ? checkedBoolean("fuse", out, m.tool) : out.fuse(m.tool)) as Shape3D;
+  for (const m of made) {
+    if (isEmpty(m.tool)) continue;
+    out = m.convex ? (out.cut(m.tool) as Shape3D) : checkedBoolean("fuse", out, m.tool);
+  }
   return out;
 }
 
 /**
- * An inside corner's fill, kept to where both faces are there to carry it: a face that narrows to nothing at the
- * edge's ends (the flat top of a round boss against a wall) held a fill as long as the edge and more, standing out
- * past the boss as a bar with a block under each end. Each face, made a slab on both sides of itself, cuts the fill
- * to its own outline.
+ * A blend's piece (an inside corner's fill, an outside corner's cut), kept to where both faces of its edge are:
+ * made as long as the edge and a little more, and as deep as the radius, it took no notice of what stood there.
+ * A fill stood out past a face that narrows to nothing at the edge's ends (the flat top of a round boss against
+ * a wall) as a bar with a block under each end; a cut went on into a wall the edge ends at, or one standing on
+ * the face nearer than the radius. Each face, made a slab on both sides of itself, cuts the piece to its own
+ * outline: what is left lies between the two faces and nowhere else.
  */
 function heldByBoth(tool: Shape3D, a: [Face, Vec3], b: [Face, Vec3], d: number): Shape3D {
   let out = tool;
+  // (Each face's outline is carried the other face's way, not square to itself: in a corner that isn't square,
+  // that is where the piece lies over it.)
   for (const [face, n] of [a, b]) {
     const slab = basicFaceExtrusion(face.clone().translate(scale(n, -1.5 * d)) as Face, new Vector(scale(n, 3 * d))) as Shape3D;
     out = out.intersect(slab) as Shape3D;
   }
+  return out;
+}
+
+/**
+ * An outside corner's cut is made bigger than the piece between the faces (out past both, and past the edge's
+ * ends), so that none of its faces lies on the body's. Whatever of the body stands in that extra - a wall the
+ * edge ends at, a tower on the face nearer than the radius - is spared: taken out of the cut first. Nothing
+ * there (most edges): the cut as it is.
+ */
+function sparing(tool: Shape3D, held: () => Shape3D, body: Shape3D, r: number): Shape3D {
+  try {
+    const extra = tool.cut(held()) as Shape3D;
+    if (isEmpty(extra)) return tool;
+    const stands = body.intersect(extra) as Shape3D;
+    if (isEmpty(stands) || measureVolume(stands) < 1e-6 * Math.pow(r, 3)) return tool;
+    return tool.cut(stands) as Shape3D;
+  } catch {
+    return tool;
+  }
+}
+
+/** The same for a round edge: the flat face's outline, and the cylinder's own height (a low boss, a thin disc). */
+function heldByRound(tool: Shape3D, flat: [Face, Vec3], round: Face, axis: { c: Vec3; dir: Vec3 }, d: number): Shape3D {
+  const [face, n] = flat;
+  let out = tool.intersect(basicFaceExtrusion(face.clone().translate(scale(n, -1.5 * d)) as Face, new Vector(scale(n, 3 * d))) as Shape3D) as Shape3D;
+  let lo = Infinity;
+  let hi = -Infinity;
+  let reach = 0;
+  for (const e of round.edges)
+    for (const u of [0, 0.25, 0.5, 0.75, 1]) {
+      const p = sub(e.pointAt(u).toTuple() as Vec3, axis.c);
+      const h = dot(p, axis.dir);
+      lo = Math.min(lo, h);
+      hi = Math.max(hi, h);
+      reach = Math.max(reach, len(sub(p, scale(axis.dir, h))));
+    }
+  if (hi - lo > 1e-9) out = out.intersect(makeCylinder(reach + 3 * d, hi - lo, add(axis.c, scale(axis.dir, lo)), axis.dir) as Shape3D) as Shape3D;
   return out;
 }
 

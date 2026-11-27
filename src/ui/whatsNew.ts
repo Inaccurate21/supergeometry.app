@@ -39,6 +39,7 @@ export const UPDATES: Update[] = [
     ],
     fixed: [
       "A Smooth (G2) fillet in an inside corner stays inside the corner. It was built longer than the edge and stood out past both ends, with a block hanging under each end where a face stopped short (the flat top of a round boss against a wall). It now ends where the two faces end.",
+      "Smooth (G2) fillets leave alone what stands beside the edge. An edge that ends at a wall, or the foot of a rib, was refused as too big for the faces: it is rounded now, up to the wall. A wall or a pin standing nearer to the edge than the radius is no longer cut into, and the fill round a boss near a plate's edge no longer hangs over that edge.",
       "A project file with a mesh in it far over what can be brought in opens with that step switched off, and says so; inserted into another project, that mesh is left out. Either way it no longer runs the page out of memory.",
       "Scale in the list of a picked body starts at once, the way you used last: its three ways are on the tool's own line, so the list no longer asks first.",
       "A plane typed further than 10 km from the origin is refused as a typo, as a body that far is. A step that could not be made now says so in plain words where it showed the kernel's own.",
