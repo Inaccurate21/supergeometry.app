@@ -12,8 +12,9 @@
 //
 // On a phone or tablet (AR through its camera): point it at the floor or a
 // table and tap to put the model there (tap again to move it); two fingers
-// pinch to size it and twist to turn it. The scale sits at the left edge.
-import { BufferGeometry, CanvasTexture, Color, DoubleSide, Euler, Group, Line, LineBasicMaterial, Matrix4, Mesh, MeshBasicMaterial, PlaneGeometry, Quaternion, RingGeometry, Scene, SRGBColorSpace, Vector3, type WebGLRenderer, type XRTargetRaySpace } from "three";
+// pinch to size it and twist to turn it. The scale sits at the left edge, and
+// a camera button at the bottom takes a picture of the model in the room.
+import { BufferGeometry, CanvasTexture, Color, DoubleSide, Euler, Group, Line, LineBasicMaterial, Matrix4, Mesh, MeshBasicMaterial, OrthographicCamera, PerspectiveCamera, PlaneGeometry, Quaternion, RingGeometry, SRGBColorSpace, Scene, ShaderMaterial, Vector3, WebGLRenderTarget, type WebGLRenderer, type XRTargetRaySpace, type Texture } from "three";
 import { icons, type IconName } from "../ui/icons";
 
 type Vec3 = [number, number, number];
@@ -43,6 +44,8 @@ export interface XRHost {
   beforeFrame(): void;
   onEnter(): void;
   onExit(): void;
+  /** A picture taken in AR (the camera's view with the model in it), to save or send. */
+  picture(blob: Blob): void;
 }
 
 type XRSystemLike = { isSessionSupported(mode: string): Promise<boolean>; requestSession(mode: string, init?: object): Promise<XRSession> };
@@ -395,7 +398,9 @@ export class VRMode {
       if (await xr.isSessionSupported("immersive-ar")) {
         session = await xr.requestSession(
           "immersive-ar",
-          this.handheld ? { optionalFeatures: ["local-floor", "hit-test", "dom-overlay"], domOverlay: { root: this.overlay } } : { optionalFeatures: ["local-floor", "hit-test"] },
+          // (camera-access: the camera's own picture each frame, for the photo button. Where the browser has
+          // none, or it is not allowed, AR is as before and the button says so.)
+          this.handheld ? { optionalFeatures: ["local-floor", "hit-test", "dom-overlay", "camera-access"], domOverlay: { root: this.overlay } } : { optionalFeatures: ["local-floor", "hit-test"] },
         );
         this.passthrough = true;
       }
@@ -679,6 +684,107 @@ export class VRMode {
     this.tape.draw(this.holder.scale.x / REAL);
     this.host.beforeFrame();
     this.host.renderer.render(this.room, this.host.renderer.xr.getCamera());
+    // (After the frame is drawn: the camera's picture is this frame's, and only while the frame lasts.)
+    if (this.shot && frame) {
+      this.shot = false;
+      this.takePicture(frame);
+    }
+  }
+
+  /** The photo button was tapped: the next frame is the picture. */
+  private shot = false;
+
+  /**
+   * A photo of what the phone shows: the camera's picture of this frame with the model drawn over it, as the
+   * screen has them (the ring that marks the floor left out), handed to the page to save or send.
+   * The screen itself can't be read - the camera is laid under the page by the browser, not drawn by it - so
+   * the browser is asked for the camera's picture (WebXR camera-access) and the model is drawn on it again.
+   */
+  private takePicture(frame: XRFrame): void {
+    const { renderer } = this.host;
+    const space = renderer.xr.getReferenceSpace();
+    const pose = space ? frame.getViewerPose(space) : null;
+    type Seen = XRView & { camera?: { width: number; height: number } };
+    const view = (pose?.views as Seen[] | undefined)?.find((v) => v.camera) ?? null;
+    const xr = renderer.xr as unknown as { getCameraTexture?(c: unknown): Texture | undefined };
+    const image = view?.camera ? xr.getCameraTexture?.(view.camera) : undefined;
+    if (!view?.camera || !image) {
+      this.setHint("This browser doesn't give the camera's picture: take a screenshot instead");
+      return;
+    }
+    const w = view.camera.width;
+    const h = view.camera.height;
+    const target = new WebGLRenderTarget(w, h);
+    target.texture.colorSpace = SRGBColorSpace;
+    // The camera's picture, as it is: one flat sheet over the whole frame.
+    const sheet = new Mesh(
+      new PlaneGeometry(2, 2),
+      new ShaderMaterial({
+        uniforms: { map: { value: image } },
+        vertexShader: "varying vec2 vUv; void main() { vUv = uv; gl_Position = vec4(position.xy, 0.0, 1.0); }",
+        // (The picture's numbers are for the screen as they are; what is written here is made so on the way out.
+        // So they are taken back first, to come out the same: without this the photo was washed out.)
+        fragmentShader:
+          "uniform sampler2D map; varying vec2 vUv; void main() { vec3 c = texture2D(map, vUv).rgb; vec3 lin = mix(c / 12.92, pow((c + 0.055) / 1.055, vec3(2.4)), step(0.04045, c)); gl_FragColor = vec4(lin, 1.0); }",
+        depthTest: false,
+        depthWrite: false,
+      }),
+    );
+    sheet.frustumCulled = false;
+    const back = new Scene();
+    back.add(sheet);
+    // The model, seen as this frame's view sees it.
+    const eye = new PerspectiveCamera();
+    eye.matrix.fromArray(view.transform.matrix);
+    eye.matrix.decompose(eye.position, eye.quaternion, eye.scale);
+    eye.updateMatrixWorld(true);
+    eye.projectionMatrix.fromArray(view.projectionMatrix);
+    eye.projectionMatrixInverse.copy(eye.projectionMatrix).invert();
+    const was = { target: renderer.getRenderTarget(), xr: renderer.xr.enabled, auto: renderer.autoClear, ring: this.reticle.visible };
+    const pixels = new Uint8Array(w * h * 4);
+    try {
+      this.reticle.visible = false;
+      renderer.xr.enabled = false;
+      renderer.setRenderTarget(target);
+      renderer.autoClear = true;
+      renderer.render(back, new OrthographicCamera(-1, 1, 1, -1, 0, 1));
+      renderer.autoClear = false;
+      renderer.clearDepth();
+      renderer.render(this.room, eye);
+      renderer.readRenderTargetPixels(target, 0, 0, w, h, pixels);
+    } catch {
+      this.setHint("The picture couldn't be taken: take a screenshot instead");
+      return;
+    } finally {
+      renderer.autoClear = was.auto;
+      renderer.xr.enabled = was.xr;
+      renderer.setRenderTarget(was.target);
+      this.reticle.visible = was.ring;
+      target.dispose();
+      sheet.geometry.dispose();
+      (sheet.material as ShaderMaterial).dispose();
+    }
+    // (Read from the bottom row up: turned the right way for a picture.)
+    const canvas = document.createElement("canvas");
+    canvas.width = w;
+    canvas.height = h;
+    const g = canvas.getContext("2d");
+    if (!g) return;
+    const img = g.createImageData(w, h);
+    for (let y = 0; y < h; y++) img.data.set(pixels.subarray((h - 1 - y) * w * 4, (h - y) * w * 4), y * w * 4);
+    g.putImageData(img, 0, 0);
+    canvas.toBlob((blob) => blob && this.host.picture(blob), "image/jpeg", 0.92);
+    this.flash();
+  }
+
+  /** The screen blinks white: the picture is taken. */
+  private flash(): void {
+    if (!this.overlay) return;
+    const f = document.createElement("div");
+    f.style.cssText = "position:absolute;inset:0;background:#fff;opacity:0.7;transition:opacity 0.35s ease-out;pointer-events:none";
+    this.overlay.append(f);
+    requestAnimationFrame(() => (f.style.opacity = "0"));
+    setTimeout(() => f.remove(), 450);
   }
 
   /** The headset's own scan of the room (tables, floor) along this hand's ray, when it offers that. */
@@ -881,7 +987,7 @@ export class VRMode {
     this.holder.position.add(this.two.base.clone().sub(this.baseInRoom()));
   }
 
-  /** The phone's layer over the camera: Exit at the top, the hint at the bottom, the scale at the left. */
+  /** The phone's layer over the camera: Exit at the top, the photo button at the bottom with the hint over it, the scale at the left. */
   private makeOverlay(): void {
     this.dropOverlay();
     const glass = "background:rgba(28,28,30,0.72);-webkit-backdrop-filter:blur(20px);backdrop-filter:blur(20px);border:1px solid rgba(255,255,255,0.14);color:#fff;border-radius:999px";
@@ -893,11 +999,21 @@ export class VRMode {
     // A tap on Exit isn't a tap in the room.
     exit.addEventListener("beforexrselect", (e) => e.preventDefault());
     exit.addEventListener("click", () => this.exit());
+    // The photo button, bottom centre where a camera's is: the model in the room, to keep or send.
+    const photo = document.createElement("button");
+    photo.title = "Take a picture";
+    photo.setAttribute("aria-label", "Take a picture");
+    photo.innerHTML = '<svg viewBox="0 0 24 24" width="30" height="30" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 8h3l2-3h6l2 3h3v11H4z"/><circle cx="12" cy="13" r="3.5"/></svg>';
+    photo.style.cssText = `position:absolute;left:50%;bottom:calc(env(safe-area-inset-bottom, 0px) + 24px);transform:translateX(-50%);pointer-events:auto;${glass};width:68px;height:68px;padding:0;display:flex;align-items:center;justify-content:center;border-width:2px`;
+    // (A tap on it isn't a tap in the room.)
+    photo.addEventListener("beforexrselect", (e) => e.preventDefault());
+    photo.addEventListener("click", () => (this.shot = true));
     const hint = document.createElement("div");
-    hint.style.cssText = `position:absolute;left:50%;bottom:calc(env(safe-area-inset-bottom, 0px) + 24px);transform:translateX(-50%);${glass};padding:10px 18px;white-space:nowrap`;
+    // (Over the button. It wraps on a narrow screen rather than run off both sides.)
+    hint.style.cssText = `position:absolute;left:50%;bottom:calc(env(safe-area-inset-bottom, 0px) + 108px);transform:translateX(-50%);${glass};border-radius:22px;padding:10px 18px;max-width:calc(100vw - 32px);width:max-content;text-align:center;box-sizing:border-box`;
     const tape = this.tape.board.g.canvas;
     tape.style.cssText = "position:absolute;left:16px;top:50%;transform:translateY(-50%);width:84px;height:auto";
-    root.append(exit, hint, tape);
+    root.append(exit, hint, photo, tape);
     document.body.append(root);
     this.overlay = root;
     this.hint = hint;

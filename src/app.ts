@@ -229,6 +229,9 @@ export class App implements AppContext {
         this.view.xrMode(true);
       },
       onExit: () => this.view.xrMode(false),
+      // A photo taken in AR: to the share sheet where the device has one for pictures (it is taken to be sent),
+      // else saved as a file.
+      picture: (blob) => void this.deliver(blob, `${this.store.doc.name} in AR.jpg`, "share"),
     }));
     // In the top bar, where it's seen, in a headset; under More on a phone or tablet (when its browser can show AR); never on a computer.
     const vrBtn = document.getElementById("vr-btn")!;
