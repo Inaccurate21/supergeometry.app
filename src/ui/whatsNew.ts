@@ -37,6 +37,9 @@ export const UPDATES: Update[] = [
       "Stop ends the rebuild only: an export or a drawing under way at that moment is not what stops.",
       "Learning with Claude: the size it reads for a round part is right (a cylinder was read as having no width one way, and a turned knob too). An ellipse it draws without saying how it is turned is taken as level.",
       "Help, the README and the lessons say what the bottom line shows now: the tick, Constraints as one button, Fill Pattern in percent.",
+      "iPhone, the app opened from the Home Screen: Fullscreen is off the More menu and off the opening window. The app has the screen already there, and the button only said to add it to the Home Screen.",
+      "iPhone on iOS 26.1 or later, the app opened from the Home Screen: the phone lays the page out shorter than the screen and leaves an empty strip along the bottom. That is a fault in iOS itself, still open with Apple. The app now works round it as far as a page can: its bottom line sits lower, and the 3D view goes on down through the strip where the phone shows it.",
+      "More > Install app is off the menu where the app is installed already or the browser cannot install it. It was always shown.",
     ],
   },
   {

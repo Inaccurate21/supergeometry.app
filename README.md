@@ -475,7 +475,9 @@ can't be rebuilt after a change, it's marked and the reason is shown.
 - iPad / Android: **More → Fullscreen** gives the whole screen. On phones and
   tablets the app offers to be **installed on the home screen** (or More →
   Install app); on iPhone/iPad it's *Share → Add to Home Screen*.
-- The window the app opens with has a **Full screen** button.
+- The window the app opens with has a **Full screen** button. Opened from an
+  iPhone's Home Screen the app has the screen already: Fullscreen is not
+  offered there.
 - Fit frames the model in the part of the screen the bars leave
   free.
 - Meta Quest: open the site in the Quest browser; buttons and pick distances

@@ -2,7 +2,7 @@ import "./style.css";
 import { App } from "./app";
 import { outerScrollbars } from "./ui/scrollbars";
 import { installDebug } from "./debug";
-import { keepPageSteady } from "./ui/steady";
+import { keepPageSteady, keepPageWhole } from "./ui/steady";
 
 // Update reloads with ?v=<time> so no stored copy is used; once loaded, the
 // address is plain again (it's what people copy to share the app).
@@ -16,6 +16,8 @@ import { keepPageSteady } from "./ui/steady";
 
 // The page itself never scrolls (a phone pushing it along for a keyboard that does not come).
 keepPageSteady();
+// An iPhone's home-screen app laid out shorter than its screen: the picture still goes to the bottom.
+keepPageWhole();
 
 // Scroll bars outside the windows, only while scrolling.
 outerScrollbars();

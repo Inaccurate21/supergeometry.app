@@ -9,6 +9,8 @@ import { icons } from "./icons";
 import { el, textButton } from "./ui";
 import { textField as typingBox } from "./textField";
 import { openSupport } from "./support";
+import { isInstalled } from "./install";
+import { pageFacts } from "./steady";
 
 export const SUBREDDIT = "supergeometry";
 
@@ -22,7 +24,11 @@ const KINDS: { id: Kind; label: string; tag: string; title: string; text: string
 /** A browser address has a length limit: the text stops well short of it. */
 const MAX_TEXT = 4000;
 
-/** "Chrome 131, Android, phone": short, nothing that tells who it is. */
+/**
+ * "Chrome 131, Android, phone": short, nothing that tells who it is. From an app on a home screen also how tall
+ * the page is laid out against the screen ("installed, page 793 of 852, insets 59/34"): an iPhone's has come out
+ * shorter than its screen, and only these numbers say which way.
+ */
 export function deviceLine(): string {
   const ua = navigator.userAgent;
   const browser =
@@ -31,7 +37,8 @@ export function deviceLine(): string {
   const os = /Android/.test(ua) ? "Android" : /iPhone|iPad|iPod/.test(ua) || (/Macintosh/.test(ua) && navigator.maxTouchPoints > 1) ? "iOS" : /Windows/.test(ua) ? "Windows" : /Mac OS X/.test(ua) ? "macOS" : /CrOS/.test(ua) ? "ChromeOS" : /Linux/.test(ua) ? "Linux" : "";
   const touch = matchMedia("(pointer: coarse)").matches;
   const kind = touch ? (Math.min(screen.width, screen.height) < 600 ? "phone" : "tablet") : "";
-  return [browser, os, kind].filter(Boolean).join(", ");
+  const installed = kind && isInstalled() ? `installed, ${pageFacts()}` : "";
+  return [browser, os, kind, installed].filter(Boolean).join(", ");
 }
 
 export function infoLine(): string {

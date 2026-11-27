@@ -64,7 +64,7 @@ import { HelpPanel } from "./ui/help";
 import { icons } from "./ui/icons";
 import { Updates } from "./ui/update";
 import { Offline } from "./ui/offline";
-import { Install } from "./ui/install";
+import { Install, isInstalled } from "./ui/install";
 import { exportThreeMF, zip } from "./io/threemf";
 import { glb } from "./io/formats";
 import { sketchToDXF } from "./io/dxf";
@@ -1737,6 +1737,11 @@ export class App implements AppContext {
       // iPhone Safari has no fullscreen for pages: the Home Screen app is.
       else this.ui.toast("Tip: Share → Add to Home Screen opens superGeometry.app full screen");
     };
+    // Opened from an iPhone's Home Screen, the app has the screen already and the browser has no full screen to
+    // give: there is nothing to offer. (The item was still on the menu, and the button in the welcome window: each
+    // said to add the app to the Home Screen - to someone who had just opened it from there. Reported.)
+    const nothingToOffer = typeof root.requestFullscreen !== "function" && typeof root.webkitRequestFullscreen !== "function" && isInstalled();
+    fs.hidden = nothingToOffer;
     moreItem("m-fullscreen", () => {
       if (isFull()) return void (document.exitFullscreen?.() ?? doc.webkitExitFullscreen?.());
       goFull();
@@ -1744,7 +1749,7 @@ export class App implements AppContext {
     // The welcome window (and File → Open) has a Full screen button too (a
     // browser only allows it from a tap). Everywhere but an app that already
     // has the whole screen; where a browser has none (iPhone), it says how.
-    this.fullscreen = !matchMedia("(display-mode: fullscreen)").matches ? { isFull, toggle: () => (isFull() ? void (document.exitFullscreen?.() ?? doc.webkitExitFullscreen?.()) : goFull()) } : null;
+    this.fullscreen = !matchMedia("(display-mode: fullscreen)").matches && !nothingToOffer ? { isFull, toggle: () => (isFull() ? void (document.exitFullscreen?.() ?? doc.webkitExitFullscreen?.()) : goFull()) } : null;
     // Help and Tutorial: placeholders for now.
     // A newer build out? More pulses and its Update item says NEW.
     this.updates = new Updates(() => this.store.flush());
