@@ -482,9 +482,12 @@ can't be rebuilt after a change, it's marked and the reason is shown.
 - iPad / Android: **More → Fullscreen** gives the whole screen. On phones and
   tablets the app offers to be **installed on the home screen** (or More →
   Install app); on iPhone/iPad it's *Share → Add to Home Screen*.
-- The window the app opens with has a **Full screen** button. Opened from an
-  iPhone's Home Screen the app has the screen already: Fullscreen is not
-  offered there.
+- The window the app opens with has a **Full screen** button. On an iPhone,
+  Apple lets only videos go full screen, not web pages: in Safari the button
+  says so and how to add the app to the Home Screen, and opened from the Home
+  Screen it is not offered. Since iOS 26.1 an iPhone does not give a web app on
+  its Home Screen the whole screen either (a fault in iOS that Apple has
+  open): the app says so once and uses the room it gets.
 - Fit frames the model in the part of the screen the bars leave
   free.
 - Meta Quest: open the site in the Quest browser; buttons and pick distances

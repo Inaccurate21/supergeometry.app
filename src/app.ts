@@ -64,7 +64,8 @@ import { HelpPanel } from "./ui/help";
 import { icons } from "./ui/icons";
 import { Updates } from "./ui/update";
 import { Offline } from "./ui/offline";
-import { Install, isInstalled } from "./ui/install";
+import { Install, isInstalled, isIOS, notice } from "./ui/install";
+import { onShortPage } from "./ui/steady";
 import { exportThreeMF, zip } from "./io/threemf";
 import { glb } from "./io/formats";
 import { sketchToDXF } from "./io/dxf";
@@ -1745,8 +1746,11 @@ export class App implements AppContext {
     const goFull = () => {
       if (root.requestFullscreen) void root.requestFullscreen().catch(() => this.ui.toast("This browser won't go fullscreen here"));
       else if (root.webkitRequestFullscreen) root.webkitRequestFullscreen();
-      // iPhone Safari has no fullscreen for pages: the Home Screen app is.
-      else this.ui.toast("Tip: Share → Add to Home Screen opens superGeometry.app full screen");
+      // An iPhone's browser has no full screen for pages - Apple gives it to videos only there (an iPad has it, and
+      // Android): said, with the nearest thing there is, the app on the Home Screen. (It was a tip that went by in
+      // three seconds and did not say why.)
+      else if (isIOS()) install.offer(true, "On an iPhone, Apple lets only videos go full screen, not web pages. The nearest thing is superGeometry.app on your Home Screen, without Safari's bars.");
+      else this.ui.toast("This browser won't go fullscreen here");
     };
     // Opened from an iPhone's Home Screen, the app has the screen already and the browser has no full screen to
     // give: there is nothing to offer. (The item was still on the menu, and the button in the welcome window: each
@@ -1767,6 +1771,36 @@ export class App implements AppContext {
     moreItem("m-update", () => void this.confirmReset());
     // Phones and tablets: an offer to add the app to the home screen (More → Install app too).
     const install = new Install((t) => this.ui.toast(t));
+    // An iPhone's Home Screen app laid out short of its screen (ui/steady.ts): said once on the device, so that the
+    // empty strip is known for the phone's doing and is not taken for a fault of the app (it was reported as one).
+    // Once the window the app opens with is out of the way, and the question that follows it a moment later: the
+    // notice would lie over their buttons.
+    let stripWatched = false;
+    onShortPage(() => {
+      if (stripWatched) return;
+      stripWatched = true;
+      const tell = () => {
+        try {
+          if (localStorage.getItem("sg.stripTold") === "1") return;
+          localStorage.setItem("sg.stripTold", "1");
+        } catch {
+          return;
+        }
+        notice("On this iPhone the tools at the bottom cannot reach the bottom of the screen. That is iOS's doing, not the app's: since iOS 26.1 an iPhone does not give a web app on its Home Screen the whole screen. Apple has the fault open.");
+      };
+      let timer = 0;
+      const wait = () => {
+        clearTimeout(timer);
+        timer = window.setTimeout(() => {
+          if (document.querySelector(".dialog-back")) return;
+          watch.disconnect();
+          tell();
+        }, 700);
+      };
+      const watch = new MutationObserver(wait);
+      watch.observe(document.body, { childList: true });
+      wait();
+    });
     const inst = document.getElementById("m-install")!;
     document.getElementById("more-btn")!.addEventListener("click", () => (inst.hidden = !install.available));
     moreItem("m-install", () => install.offer(true));

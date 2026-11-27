@@ -3804,6 +3804,9 @@ body:has(#flyout:not([hidden])) #warn {
   gap: 10px;
   flex-wrap: wrap;
   justify-content: center;
+  /* (As wide as its words, up to the screen: placed from the middle, it was held to half the screen's width - a
+     notice of three sentences stood as a narrow column on a phone.) */
+  width: max-content;
   max-width: calc(100vw - 24px);
   padding: 8px 10px 8px 16px;
   border-radius: 14px;

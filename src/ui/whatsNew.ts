@@ -44,6 +44,8 @@ export const UPDATES: Update[] = [
       "iPhone on iOS 26.1 or later, the app opened from the Home Screen: the phone lays the page out shorter than the screen and leaves an empty strip along the bottom. That is a fault in iOS itself, still open with Apple. The app now works round it as far as a page can: its bottom line sits lower, and the 3D view goes on down through the strip where the phone shows it.",
       "More > Install app is off the menu where the app is installed already or the browser cannot install it. It was always shown.",
       "The opening window has its Tutorial button on a first visit only. After that the tutorial is under More > Tutorial.",
+      "iPhone, in Safari: Fullscreen now says why it cannot (on an iPhone, Apple lets only videos go full screen, not web pages) and how to add the app to the Home Screen. It was a tip that went by in three seconds.",
+      "iPhone on iOS 26.1 or later, the app opened from the Home Screen: it says once that the tools at the bottom cannot reach the bottom of the screen because of a fault in iOS, so it is not taken for a fault of the app.",
     ],
   },
   {

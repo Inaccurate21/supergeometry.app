@@ -21,8 +21,18 @@ export function isInstalled(): boolean {
 }
 
 /** iPhone / iPad (iPadOS says it's a Mac, but has touch). */
-function isIOS(): boolean {
+export function isIOS(): boolean {
   return /iPhone|iPad|iPod/.test(navigator.userAgent) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+}
+
+/** A standing notice under the top bar, over whatever is open: a sentence or two, and one button that puts it away. */
+export function notice(text: string, button = "OK"): void {
+  const box = el("div", "update-banner");
+  box.addEventListener("pointerdown", (e) => e.stopPropagation());
+  const ok = el("button", "text-btn primary", button);
+  ok.addEventListener("click", () => box.remove());
+  box.append(el("span", "", text), ok);
+  document.body.append(box);
 }
 
 export class Install {
@@ -69,8 +79,8 @@ export class Install {
     this.banner.hidden = true;
   }
 
-  /** The notice: Install / Not now (or, on iOS, how to do it). */
-  offer(fromMenu = false): void {
+  /** The notice: Install / Not now (or, on iOS, how to do it). `why`: said first, where it is shown for a reason (an iPhone asked for full screen). */
+  offer(fromMenu = false, why = ""): void {
     if (isInstalled()) return void (fromMenu && this.toast("superGeometry.app is already installed on this device"));
     this.banner.innerHTML = "";
     const ios = isIOS() && !this.deferred;
@@ -83,7 +93,9 @@ export class Install {
       "span",
       "",
       ios
-        ? "Add superGeometry.app to your Home Screen: tap Share (the square with the arrow), then “Add to Home Screen”."
+        ? why
+          ? `${why} Tap Share (the square with the arrow), then “Add to Home Screen”.`
+          : "Add superGeometry.app to your Home Screen: tap Share (the square with the arrow), then “Add to Home Screen”."
         : "Install superGeometry.app on this device? It opens like an app, full screen.",
     );
     const yes = el("button", "text-btn primary", ios ? "Got it" : "Install");

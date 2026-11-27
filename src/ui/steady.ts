@@ -86,6 +86,16 @@ function onIPhoneHomeScreen(): boolean {
   return (navigator as { standalone?: boolean }).standalone === true && /iPhone|iPod/.test(navigator.userAgent);
 }
 
+/** By how much the page is short now (0: it is not), and who is told when it is found so. */
+let shortNow = 0;
+const told = new Set<(gap: number) => void>();
+
+/** Told when the page is found laid out short of its screen - at once, if it is so already. */
+export function onShortPage(fn: (gap: number) => void): void {
+  told.add(fn);
+  if (shortNow) fn(shortNow);
+}
+
 export function keepPageWhole(): void {
   if (!onIPhoneHomeScreen()) return;
   const root = document.documentElement;
@@ -93,10 +103,11 @@ export function keepPageWhole(): void {
   const look = () => {
     const gap = shortBy(pageSizes());
     if (gap === was) return;
-    was = gap;
+    was = shortNow = gap;
     root.classList.toggle("page-short", gap > 0);
     if (gap > 0) root.style.setProperty("--page-gap", `${gap}px`);
     else root.style.removeProperty("--page-gap");
+    if (gap > 0) for (const fn of told) fn(gap);
   };
   // (Now, as the phone settles after it, and whenever the page's size can have changed.)
   const soon = () => {
