@@ -38,6 +38,7 @@ export const UPDATES: Update[] = [
       "On a touch screen, press and hold a face, an edge or a sketch's shape and lift without dragging: the list of what can be done with it opens by your finger, as a right-click gives. Hold and drag still pulls it.",
     ],
     fixed: [
+      "Big projects with many curved faces rebuild faster again. Each cut and join is checked by measuring the body, and every face was measured afresh each time; a face a step leaves as it was is now measured once. A project that had slowed to 55 seconds is back to 35, and an edit late in a long project went from 0.9 to 0.2 seconds.",
       "A Smooth (G2) fillet in an inside corner stays inside the corner. It was built longer than the edge and stood out past both ends, with a block hanging under each end where a face stopped short (the flat top of a round boss against a wall). It now ends where the two faces end.",
       "Smooth (G2) fillets leave alone what stands beside the edge. An edge that ends at a wall, or the foot of a rib, was refused as too big for the faces: it is rounded now, up to the wall. A wall or a pin standing nearer to the edge than the radius is no longer cut into, and the fill round a boss near a plate's edge no longer hangs over that edge.",
       "A project file with a mesh in it far over what can be brought in opens with that step switched off, and says so; inserted into another project, that mesh is left out. Either way it no longer runs the page out of memory.",
