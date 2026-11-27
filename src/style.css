@@ -6037,16 +6037,18 @@ body.items-open #items-btn {
 .quick-action {
   /* (All one size, beside the pick and in its list: a longer name - Construction - made a wider pill beside round
      ones, and the list's were smaller again. A long name is made smaller to fit instead: quickActions.ts fitNames.) */
-  width: 60px;
+  /* (52 by 40 on every screen: on a computer they were 60 by 48, big beside the part they are for. The names keep
+     their 9 px - a long one is narrowed, then made smaller, to stay inside - and the icon is 16 px over them.) */
+  width: 52px;
   flex: none;
-  height: 48px;
+  height: 40px;
   padding: 0 3px;
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
   gap: 1px;
-  border-radius: 24px;
+  border-radius: 20px;
   border: 1.5px solid rgba(120, 165, 255, 0.6);
   background: rgba(31, 33, 37, 0.95);
   color: var(--text);
@@ -6065,8 +6067,8 @@ body.items-open #items-btn {
   border-color: #8fbcff;
 }
 .quick-action svg {
-  width: 18px;
-  height: 18px;
+  width: 16px;
+  height: 16px;
   flex: none;
 }
 .quick-action span {
@@ -7368,19 +7370,19 @@ html[data-screen="phone"] body.sentence-ui #toast {
 .quick-actions {
   flex-direction: column;
   align-items: center;
-  gap: 8px;
+  gap: 6px;
 }
 .quick-row {
   display: flex;
-  gap: 8px;
+  gap: 6px;
 }
 .quick-rest {
   display: grid;
   /* (A little wider than round: a constraint's name - Perpendicular - fits in it, made smaller only as needed.) */
-  grid-template-columns: repeat(4, 60px);
-  gap: 8px;
+  grid-template-columns: repeat(4, 52px);
+  gap: 6px;
   justify-content: center;
-  padding: 8px;
+  padding: 7px;
   border-radius: 18px;
   background: rgba(24, 26, 30, 0.92);
   border: 1px solid rgba(255, 255, 255, 0.1);
@@ -7404,14 +7406,14 @@ html[data-screen="phone"] body.sentence-ui #toast {
 }
 .quick-glyph {
   font-style: normal;
-  font-size: 17px;
-  line-height: 18px;
-  height: 18px;
+  font-size: 15px;
+  line-height: 16px;
+  height: 16px;
   font-weight: 600;
 }
 .quick-swatch {
-  width: 18px;
-  height: 18px;
+  width: 16px;
+  height: 16px;
   flex: none;
   border-radius: 50%;
   border: 1px solid rgba(255, 255, 255, 0.35);
@@ -7438,6 +7440,10 @@ html[data-screen="phone"] .quick-action {
   height: 40px;
   border-radius: 20px;
 }
+html[data-screen="tablet"] .quick-action {
+  position: relative;
+}
+html[data-screen="tablet"] .quick-action::after,
 html[data-screen="phone"] .quick-action::after {
   content: "";
   position: absolute;

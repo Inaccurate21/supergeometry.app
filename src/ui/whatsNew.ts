@@ -19,6 +19,7 @@ export const UPDATES: Update[] = [
   {
     date: "2026-11-27",
     added: [
+      "On a computer and a tablet the round buttons beside a pick are smaller and closer together, the size they have on a phone (52 by 40). Their names stay the same size, a long one narrowed to stay inside its button, and the icon is over the name as before.",
       "Learn the app with Claude by building something: its course now makes one desk lamp from start to finish, in nine lessons. A base, a pole drawn on it, a flared hollow shade, a bulb shaped with Freeform, three feet as a pattern of holes, the head tilted, then the tilt, the wall and the number of feet as variables, and out to the printer. Three more lessons hold what the lamp does not need: exact sizes and constraints, Revolve, two parts that fit.",
       "File has Import file…, between Save project and the exports: it brings a STEP, STL, OBJ, 3MF, DXF or SVG file into the project that is open, as More > Insert > File does.",
       "Tools start at a size that fits what you use them on, so the change shows at once. A fillet or a chamfer starts at a tenth of the shortest edge picked (2 on a 20 mm edge, 100 on a metre), a shell at a twentieth of the body, an offset plane at a quarter of the face it starts from, and sketch text at a size that reads in the view until you type one. If a starting size does not fit, the tool steps down to one that does. Type or drag as before to change it.",
