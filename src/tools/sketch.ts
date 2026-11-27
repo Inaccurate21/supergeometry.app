@@ -1236,8 +1236,8 @@ export class SketchTool implements Tool {
       ...extra,
     });
     const icons: Partial<Record<Kind, string>> = { rect: "rect", trim: "trim", arc: "arc", circle: "circle", fillet: "sketchFillet" };
-    const variant = <T extends string>(kind: Kind, key: "rect" | "spline" | "trim" | "arc" | "circle" | "corner", options: [T, string][]): ToolItem[] =>
-      options.map(([v, l]) => ({ id: `${kind}-${v}`, label: l, icon: icons[kind] ?? "spline", active: memory[key] === v, run: () => (((memory as unknown as Record<string, string>)[key] = v), storeVariants(), this.setKind(kind)) }) as ToolItem);
+    const variant = <T extends string>(kind: Kind, key: "rect" | "spline" | "trim" | "arc" | "circle" | "corner", options: [T, string, string?][]): ToolItem[] =>
+      options.map(([v, l, s]) => ({ id: `${kind}-${v}`, label: l, ...(s ? { brief: s } : {}), icon: icons[kind] ?? "spline", active: memory[key] === v, run: () => (((memory as unknown as Record<string, string>)[key] = v), storeVariants(), this.setKind(kind)) }) as ToolItem);
     app.ui.setTools([
       exit,
       // (No Other plane for a new empty sketch: Exit leaves nothing behind, and Sketch again goes where it is wanted.)
@@ -1246,7 +1246,7 @@ export class SketchTool implements Tool {
       // An empty sketch with no drawing tool on: Line is the next step (it, and Draw round it, pulse).
       t("line", "Line", "line", "L", { pulse: !this.entities.length && this.kind === "select" }),
       t("arc", "Arc", "arc", "A", { sub: memory.arc === "center" ? "Center" : "3 Points", children: variant("arc", "arc", [["3pt", "3 Points"], ["center", "Center"]]) }),
-      t("spline", "Spline", "spline", "I", { sub: memory.spline === "fit" ? "Fit" : memory.spline === "draw" ? "Draw" : "Control", children: variant("spline", "spline", [["fit", "Fit points"], ["control", "Control points"], ["draw", "Draw (freehand)"]]) }),
+      t("spline", "Spline", "spline", "I", { sub: memory.spline === "fit" ? "Fit" : memory.spline === "draw" ? "Draw" : "Control", children: variant("spline", "spline", [["fit", "Fit points", "Fit"], ["control", "Control points", "Control"], ["draw", "Draw (freehand)", "Freehand"]]) }),
       t("rect", "Rectangle", "rect", "R", { sub: { diagonal: "Diagonal", center: "Center", "3pt": "3 Points" }[memory.rect], children: variant("rect", "rect", [["center", "Center"], ["diagonal", "Diagonal"], ["3pt", "3 Points"]]) }),
       t("circle", "Circle", "circle", "C", { sub: { center: "Center", "2pt": "2 Points", "3pt": "3 Points" }[memory.circle], children: variant("circle", "circle", [["center", "Center"], ["2pt", "2 Points"], ["3pt", "3 Points"]]) }),
       t("ellipse", "Ellipse", "ellipse"),

@@ -182,6 +182,9 @@ function spreadOut(its: ToolItem[]): ToolItem[] {
 
 /** The sketch tools that draw a shape: while one is on, the line is that shape's alone. */
 const SK_SHAPES = new Set(["line", "rect", "circle", "arc", "spline", "polygon", "ellipse"]);
+/** The room one way of a sketch tool takes on the line at its narrowest (CSS px), and what Sketch view and the tick at the line's end take. */
+const WAY_MIN = 56;
+const WAY_END = 130;
 
 const SK_GROUPS: { id: string; label: string; icon: IconName; tools: string[] }[] = [
   // (Construction last: the switch for the lines drawn next - under More it was not found.)
@@ -564,11 +567,17 @@ export class Sentence {
     // The ways the tool that is on can be used (Circle: Center, 2 Points, 3 Points), right on the line: the one in
     // use lit, another a tap away - not back through Draw > Circle. (More than three, or a line too narrow to give
     // each a finger's width - a phone held upright: one word, named for the one in use, that opens them.)
-    const ways = (at?.children ?? []).filter(notSep).map((c) => this.verb(c, "k"));
-    const tight = (5 + ways.length) * 44 + 124 > window.innerWidth;
-    if (ways.length > 3 || (ways.length > 1 && tight)) words.push({ key: "k-ways", kind: "choice", cap: at!.label, label: ways.find((w) => w.on)?.label ?? ways[0].label, icon: at!.icon, on: true, kids: ways });
-    else if (ways.length > 1) words.push(...ways);
+    const named = (at?.children ?? []).filter(notSep);
+    // (Side by side on the line each has its brief name, if it has one: Fit, Control, Freehand.)
+    const ways = named.map((c) => ({ ...this.verb(c, "k"), label: c.brief ?? c.short ?? c.label }));
     const mine = panel ? this.said(panel) : [];
+    // (The room they take, with what else is on the line while the tool is on - Draw
+    // beside a shape, the tool's own values, Sketch view and the tick. It was counted as if Draw, Modify, Transform,
+    // Delete and Exit were still there, so a phone always got the one word, with half the line empty.)
+    const tight = (ways.length + (shaping ? 1 : 0)) * WAY_MIN + mine.length * 64 + WAY_END > window.innerWidth;
+    // (In the list the one word opens, each has its whole name.)
+    if (ways.length > 3 || (ways.length > 1 && tight)) words.push({ key: "k-ways", kind: "choice", cap: at!.label, label: (named.find((c) => c.active) ?? named[0]).label, icon: at!.icon, on: true, kids: ways.map((w, i) => ({ ...w, label: named[i].label })) });
+    else if (ways.length > 1) words.push(...ways);
     words.push(...mine);
     // (Said once: the window's own Delete, not the column's too.)
     const said = new Set(mine.map((w) => w.label));

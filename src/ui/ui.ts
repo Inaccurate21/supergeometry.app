@@ -34,6 +34,8 @@ export interface ToolItem {
    * it while it's the one in use opens the variants.
    */
   variantsWhenActive?: boolean;
+  /** Its name where there is little room and what it belongs to is plain (a tool's way beside its others on the bottom line). */
+  brief?: string;
   /** Show a colour circle instead of the icon (colour choices). */
   swatch?: string;
   /** A sign in its icon's place (a constraint's ∥ ⟂ =). */
