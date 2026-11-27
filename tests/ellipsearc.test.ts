@@ -28,9 +28,15 @@ const s2 = sketch("s2", XY(), [whole]);
 const r2 = await after([s2, extrude("E2", s2, 2)], "E2");
 check("... and extrudes as before", !r2.err && near(volume(r2.body), Math.PI * 8 * 4 * 2, 0.05), volume(r2.body));
 
-// Offset: the same part, 2 bigger.
+// Offset: the curve 2 outside it all along. (Not the same quarter of an ellipse 22 by 12, as this once asked: that
+// is 2 away only where the axes cross it - see tests/offsetellipse.test.ts.) An open spline from (22, 0) to (0, 12),
+// its middle further out than that ellipse's is.
 const off = offsetEntity(arc, 2);
-check("offset by 2: the same quarter of an ellipse 22 by 12", off?.kind === "ellipse" && near(off.rx, 22) && near(off.ry, 12) && near(off.sweep ?? 0, Math.PI / 2), off);
+{
+  const pts = off?.kind === "spline" ? off.points : [];
+  const [first, last] = [pts[0], pts[pts.length - 1]];
+  check("offset by 2: an open curve from 2 beyond one end to 2 beyond the other", off?.kind === "spline" && !off.closed && !!first && near(first[0], 22, 1e-9) && near(first[1], 0, 1e-9) && near(last[0], 0, 1e-9) && near(last[1], 12, 1e-9), off);
+}
 // A sketch that follows a round edge seen at a slant: the curve is part of an ellipse with two ends, and stays
 // that when the body changes. (A half disc 20 round, 10 thick; a sketch on a plane tipped 60 degrees about x.)
 {
