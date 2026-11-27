@@ -2169,9 +2169,12 @@ export class App implements AppContext {
     // The open one with its picture as it looks now (starting: nothing has changed, nor is it drawn yet).
     if (this.projectId && !starting) await this.keepInLibrary(JSON.stringify(this.store.doc), true);
     const entries = await libraryEntries();
+    // The Tutorial button is for someone new: nothing kept on this device yet, and the tutorial never offered on
+    // it. Anyone who has been here before has it under More > Tutorial - not in this window each time it opens.
+    const someoneNew = !entries.length && !this.tutorialOffered(false);
     showLibrary(entries, this.projectId, {
       open: (id) => void this.openKept(id),
-      tutorial: () => (this.tutorialAsked(), this.startTutorial()),
+      ...(someoneNew ? { tutorial: () => (this.tutorialAsked(), this.startTutorial()) } : {}),
       newProject: () => void this.newProject(),
       openFile: () => this.open(),
       download: (id) => void this.downloadKept(id),
@@ -2196,18 +2199,22 @@ export class App implements AppContext {
     }
   }
 
+  /** Has it been? `unknown`: what to take it for where nothing can be kept (a browser with no storage). */
+  private tutorialOffered(unknown: boolean): boolean {
+    try {
+      return localStorage.getItem("sg.tutorialAsked") === "1";
+    } catch {
+      return unknown;
+    }
+  }
+
   /**
    * The first time the app is opened on a device, once the welcome window is closed: would they like the tutorial?
    * Asked once, whatever the answer (More > Tutorial has it from then on).
    */
   private offerTutorial(): void {
-    let asked = true;
-    try {
-      asked = localStorage.getItem("sg.tutorialAsked") === "1";
-    } catch {
-      /* no storage: not offered (it would be offered every time) */
-    }
-    if (asked) return;
+    // (No storage: not offered - it would be offered every time.)
+    if (this.tutorialOffered(true)) return;
     this.tutorialAsked();
     // (After what closing the window started - a new project, a file being opened - has had its turn.)
     setTimeout(() => {

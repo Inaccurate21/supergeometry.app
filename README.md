@@ -32,8 +32,8 @@ think in 3D: brackets, boxes, vases, knobs, threads, enclosures, furniture parts
 
 Inside the app, **More → Help** shows what every button does, and **More →
 Tutorial** builds a first part with you: an M10 bolt and the nut that fits it,
-one lit tap at a time (the first time the app is opened, it is offered once
-the welcome window is closed).
+one lit tap at a time (the first time the app is opened, the welcome window
+has a Tutorial button, and it is offered once more when that window is closed).
 
 ---
 

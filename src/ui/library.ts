@@ -10,7 +10,7 @@ import { el, twoTap } from "./ui";
 
 export interface LibraryActions {
   open(id: string): void;
-  /** The tutorial: a first part, built one tap at a time (offered in the window's head). */
+  /** The tutorial: a first part, built one tap at a time. Given for someone new only: its button is in the window's head then. */
   tutorial?(): void;
   newProject(): void;
   openFile(): void;
@@ -136,7 +136,8 @@ export function showLibrary(entries: LibraryEntry[], currentId: string | null, a
     paintFull();
     head.append(fsBtn);
   }
-  // The tutorial: where someone new starts - the button that stands out while there are no projects yet.
+  // The tutorial: where someone new starts - the button that stands out while there are no projects yet. (Not
+  // there for anyone who has opened the app before: More > Tutorial has it.)
   if (act.tutorial) {
     const tutBtn = el("button", entries.length ? "text-btn" : "text-btn primary", "Tutorial");
     tutBtn.type = "button";

@@ -43,6 +43,7 @@ export const UPDATES: Update[] = [
       "iPhone, the app opened from the Home Screen: Fullscreen is off the More menu and off the opening window. The app has the screen already there, and the button only said to add it to the Home Screen.",
       "iPhone on iOS 26.1 or later, the app opened from the Home Screen: the phone lays the page out shorter than the screen and leaves an empty strip along the bottom. That is a fault in iOS itself, still open with Apple. The app now works round it as far as a page can: its bottom line sits lower, and the 3D view goes on down through the strip where the phone shows it.",
       "More > Install app is off the menu where the app is installed already or the browser cannot install it. It was always shown.",
+      "The opening window has its Tutorial button on a first visit only. After that the tutorial is under More > Tutorial.",
     ],
   },
   {
