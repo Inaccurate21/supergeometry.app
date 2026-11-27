@@ -43,6 +43,7 @@ import {
   mirrorXf,
   offsetEntity,
   offsetSeveral,
+  splineEnds,
   leanSpline, projectPolyline,
   rotateXf,
   scaleXf,
@@ -5373,7 +5374,7 @@ export class SketchTool implements Tool {
     if (!id || !src) return [];
     // (From a body's edge: the guide it is made from is dashed, the offset is a curve like any other.)
     const real = (es: SketchEntity[]) => (this.edit.offsetEdge ? es.map((e) => ({ ...e, construction: this.construction || undefined })) : es);
-    if (memory.offsetMode === "chain" && (src.kind === "line" || src.kind === "arc" || (src.kind === "spline" && !src.closed))) {
+    if (memory.offsetMode === "chain" && (src.kind === "line" || src.kind === "arc" || (src.kind === "spline" && !src.closed) || (src.kind === "ellipse" && src.sweep !== undefined))) {
       // (A chain is walked along the sketch's own curves, not its dashed ones: the guides of this edge count as its own here.)
       const guides = new Set(this.edit.offsetEdge ? (this.edit.offsetGuides ?? []) : []);
       const pool = guides.size ? this.entities.map((e) => (guides.has(e.id) ? { ...e, construction: undefined } : e)) : this.entities;
@@ -5692,7 +5693,8 @@ export class SketchTool implements Tool {
       const srcId = this.edit.offsetOf;
       const src = this.entities.find((e) => e.id === srcId);
       const linkable = (e: SketchEntity) => e.kind === "line" || e.kind === "arc" || e.kind === "circle" || e.kind === "rect" || e.kind === "polygon" || e.kind === "ellipse";
-      if (made.length === 1 && src && linkable(src) && made[0].kind === src.kind && JSON.stringify({ ...offsetEntity(src, d), id: "" }) === JSON.stringify({ ...made[0], id: "", construction: src.construction })) {
+      // (An ellipse's offset is a spline: no ellipse is the same distance from another all round. It follows it too.)
+      if (made.length === 1 && src && linkable(src) && (made[0].kind === src.kind || src.kind === "ellipse") && JSON.stringify({ ...offsetEntity(src, d), id: "" }) === JSON.stringify({ ...made[0], id: "", construction: src.construction })) {
         cs.push({ id: uid(), type: "follow", curves: [src.id, made[0].id], how: { offset: d } });
       } else {
         const tol = 1e-6 * Math.max(1, Math.abs(d));
@@ -5725,11 +5727,20 @@ export class SketchTool implements Tool {
         }
       }
     }
+    // (A spline among them - a spline's offset, or that of part of an ellipse - is joined by its end points too: it
+    // was left loose, and the outline came apart there at the first drag.)
+    const tip = (e: SketchEntity, last: boolean): { p: string; at: Vec2 } | null => {
+      if (e.kind === "line" || e.kind === "arc") return { p: last ? "b" : "a", at: last ? e.b : e.a };
+      const ends = splineEnds(e);
+      if (!ends || e.kind !== "spline") return null;
+      const k = last ? e.points.length - 1 : 0;
+      // (Only where the curve does end on its end point.)
+      return Math.hypot(e.points[k][0] - ends[last ? 1 : 0][0], e.points[k][1] - ends[last ? 1 : 0][1]) < 1e-9 ? { p: `k${k}`, at: e.points[k] } : null;
+    };
     for (let i = 0; i < made.length; i++) {
-      const a = made[i];
-      const b = made[(i + 1) % made.length];
-      if (made.length > 1 && (a.kind === "line" || a.kind === "arc") && (b.kind === "line" || b.kind === "arc") && Math.hypot(a.b[0] - b.a[0], a.b[1] - b.a[1]) < 1e-9)
-        cs.push({ id: uid(), type: "coincident", pts: [{ e: a.id, p: "b" }, { e: b.id, p: "a" }] });
+      const [a, b] = [made[i], made[(i + 1) % made.length]];
+      const [ta, tb] = [tip(a, true), tip(b, false)];
+      if (made.length > 1 && a !== b && ta && tb && Math.hypot(ta.at[0] - tb.at[0], ta.at[1] - tb.at[1]) < 1e-9) cs.push({ id: uid(), type: "coincident", pts: [{ e: a.id, p: ta.p }, { e: b.id, p: tb.p }] });
     }
     this.commitAdd(made, cs);
     this.edit.offsetOf = this.edit.offsetEdge = undefined;
