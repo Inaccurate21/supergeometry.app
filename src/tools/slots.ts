@@ -1,5 +1,6 @@
 // Reusable pick slots: axis, plane, direction, path, faces, profiles.
 
+import { modelSnapAt } from "./modelSnap";
 import type { AxisFeature, AxisRef, EdgeRef, ExtrudeSource, FaceRef, PathRef, PlaneDef, SketchFeature, Vec3 } from "../doc/types";
 import { cross, dot, len, norm, scale, sub, add, toPlane, toWorld } from "../geom";
 import { closestOnPrim, entityPrims } from "../sketch/curves";
@@ -381,9 +382,18 @@ export function pointSlot(app: AppContext, label: string, get: () => Vec3 | null
     filled: () => !!get(),
     pick: { profiles: false, curves: true, planes: true, origin: true },
     shows: () => (shown ? [shown] : []),
+    // OSNAP (the step's mode: smart, all, as in the sketch, off) - shown by the pointer, and taken by the tap.
+    snapAt: (hit, x, y, tol) => modelSnapAt(app, hit, x, y, tol),
     accept(hit) {
       let at: Vec3 | null = "point" in hit ? hit.point : null;
       if (!at) return false;
+      const sp = app.view.toScreen(new Vector3(...at));
+      const snapped = sp ? modelSnapAt(app, hit, sp[0], sp[1], 12) : null;
+      if (snapped) {
+        set(snapped.at);
+        shown = hit.kind === "vertex" ? { kind: "vertex", body: hit.body, vertex: hit.vertex } : hit.kind === "edge" ? { kind: "edge", body: hit.body, edge: hit.edge } : hit.kind === "face" ? { kind: "face", body: hit.body, face: hit.face } : null;
+        return true;
+      }
       // Snap to the obvious points when close on screen.
       const near = (q: Vec3) => {
         const a = app.view.toScreen(new Vector3(...q));

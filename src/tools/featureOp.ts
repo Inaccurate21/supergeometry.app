@@ -1,6 +1,7 @@
+import { settings } from "../settings";
 import { getPath, setPath } from "../doc/params";
 import { BETA_TYPES } from "../doc/store";
-import type { ExtrudeSource, Feature, SketchFeature, Vec2 } from "../doc/types";
+import type { ExtrudeSource, Feature, SketchFeature, Vec2, Vec3 } from "../doc/types";
 import type { FieldKind, PanelItem, ToolItem } from "../ui/ui";
 import { isExpression } from "../ui/ui";
 import type { ToolPointer } from "../view/input";
@@ -29,6 +30,8 @@ export interface Slot {
   originPlanes?: boolean;
   /** Said when a tap hits something this slot can't take. */
   rejectHint?: string;
+  /** A point slot: the OSNAP point the pointer is caught on (shown by it before the tap). */
+  snapAt?(hit: PickHit | null, x: number, y: number, tol: number): { at: Vec3; what: string } | null;
 }
 
 /**
@@ -176,6 +179,9 @@ export abstract class FeatureOp<F extends Feature> implements Tool {
   }
 
   exit(): void {
+    this.snapMark?.remove();
+    this.snapMark = null;
+    this.app.ui.setLabel(0, 0, null);
     clearTimeout(this.settle);
     window.removeEventListener("pointerdown", this.onDown, true);
     window.removeEventListener("pointerup", this.onUp, true);
@@ -195,6 +201,34 @@ export abstract class FeatureOp<F extends Feature> implements Tool {
     const hit = this.app.view.pick(p.x, p.y, { edgeTolPx: p.tol, ...slot.pick });
     this.lastHover = { x: p.x, y: p.y, hit };
     this.app.setHover(hitToSel(hit));
+    this.showSnap(slot.snapAt?.(hit, p.x, p.y, p.tol) ?? null);
+  }
+
+  /** A step with a point to pick: its OSNAP mode, in its window (the same choice as Hole's). */
+  private osnapItems(): PanelItem[] {
+    if (!this.slots.some((sl) => sl.snapAt)) return [];
+    return [{ type: "choice", label: "OSNAP", options: [{ id: "smart", label: "Smart" }, { id: "own", label: "As in the sketch" }, { id: "off", label: "Off" }], value: settings.value.modelOsnap === "all" ? "smart" : (settings.value.modelOsnap ?? "smart"), onChange: (id) => (settings.set("modelOsnap", id as "smart"), this.render()) }];
+  }
+
+  /** The OSNAP mark by the pointer (a point slot waiting): a small square on the point, its name beside. */
+  private snapMark: HTMLElement | null = null;
+  protected showSnap(s: { at: Vec3; what: string } | null): void {
+    const q = s && this.app.view.toScreen(s.at);
+    if (!s || !q) {
+      if (this.snapMark) this.snapMark.hidden = true;
+      return;
+    }
+    if (!this.snapMark) {
+      this.snapMark = document.createElement("div");
+      this.snapMark.className = "measure-snap";
+      document.body.append(this.snapMark);
+    }
+    const r = this.app.view.canvas.getBoundingClientRect();
+    this.snapMark.hidden = false;
+    this.snapMark.style.left = `${r.left + q[0]}px`;
+    this.snapMark.style.top = `${r.top + q[1]}px`;
+    this.snapMark.title = s.what;
+    this.app.ui.setLabel(r.left + q[0] + 14, r.top + q[1] - 14, s.what);
   }
 
   /** What hover highlighted: a tap at the same spot takes exactly that. */
@@ -380,7 +414,7 @@ export abstract class FeatureOp<F extends Feature> implements Tool {
     this.app.ui.showPanel({
       title: this.feature.name,
       beta: BETA_TYPES.has(this.feature.type),
-      items: [...slotItems, ...this.items()],
+      items: [...slotItems, ...this.osnapItems(), ...this.items()],
       actions: this.actions(),
       onDone: () => this.done(),
       onCancel: () => this.cancel(),

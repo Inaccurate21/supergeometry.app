@@ -20,6 +20,14 @@ interface Update {
 
 export const UPDATES: Update[] = [
   {
+    date: "2026-11-27",
+    version: "0.10.3.0",
+    added: [
+      "OSNAP in the other body tools too: wherever a point is picked on the model (a plane through 3 points, an axis through 2, Move or Scale from a point to a point, a joint's place), corners, the ends and middles of edges, the centres of round edges and flat faces, and a sketch's points are caught - a square by the pointer shows which before the tap. Its mode (Smart, As in the sketch, Off) is in the tool's window.",
+      "Changes from the original app: More → GitHub, Color and Fade in the round buttons by a picked body, and a course for an AI assistant to teach the app.",
+    ],
+  },
+  {
     date: "2026-11-26",
     added: [
       "More → GitHub opens the project's page: the code, the open issues and where to report one.",
