@@ -46,6 +46,11 @@ export interface Settings {
   degrees: "decimal" | "fractional";
   /** Value boxes use the on-screen numpad instead of the system keyboard. */
   numpad: boolean;
+  /**
+   * Quick buttons: the round buttons beside what is picked, and a tool's own beside the face it works on (Extrude's
+   * Add and Cut). Off: none are shown, and the line at the bottom is where the tools are.
+   */
+  quickButtons: boolean;
   /** The guide text (what to tap next) - switched in More. */
   showHints: boolean;
   /** Offline mode: the app's files are kept on this device (More → Offline mode). */
@@ -200,6 +205,7 @@ const DEFAULTS: Settings = {
   showConstraintGlyphs: true,
   // On by default on touch screens (phones, tablets, headsets).
   numpad: isTouchDevice,
+  quickButtons: true,
   showHints: true,
   offline: false,
   sentence: true,

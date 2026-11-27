@@ -3,7 +3,7 @@ import { QuickActions } from "./quickActions";
 import { isTouchDevice } from "../device";
 import { simplifyStroke } from "../sketch/freehand";
 import { Box3, BufferGeometry, DoubleSide, Line, LineBasicMaterial, LineDashedMaterial, Mesh, MeshBasicMaterial, Points, PointsMaterial, ShapeUtils, Vector2, Vector3 } from "three";
-import type { EdgeLink, FaceRef, OutlineOffset, PlaneDef, PointRef, SketchConstraint, SketchEntity, SketchFeature, SketchFill, SketchRef, SketchRepeat, Vec2, Vec3 } from "../doc/types";
+import type { EdgeLink, ExtrudeSource, FaceRef, OutlineOffset, PlaneDef, PointRef, SketchConstraint, SketchEntity, SketchFeature, SketchFill, SketchRef, SketchRepeat, Vec2, Vec3 } from "../doc/types";
 import { add as add3, dot, GROUND, niceStep as niceStepOf, originOnPlane, patternSpacing, planeY, roundSig, scale as scale3, sub as sub3, toPlane } from "../geom";
 import { addForUser, addStrict, constraintError, constraintName, LINKED, pointOf, pointsOf, refsOf, setValueStrict, sizeOf as sizeOfFn, solve, touchingEnds } from "../sketch/constraints";
 import { isExpression } from "../ui/ui";
@@ -2690,6 +2690,8 @@ export class SketchTool implements Tool {
   private quickSig = "";
 
   private showQuick(at: Vec3): void {
+    // (Switched off in Settings: none - nor are the constraints that fit worked out each time the gimbal is placed.)
+    if (!settings.value.quickButtons) return this.clearQuick();
     const sel = this.entities.filter((e) => this.selected.has(e.id));
     const cons = sel.length > 0 && sel.every((e) => e.construction);
     // (Made again only when the pick, its type or its place changed: this runs while it is dragged.)
@@ -2715,6 +2717,15 @@ export class SketchTool implements Tool {
     this.quick?.dispose();
     this.quick = null;
     this.quickSig = "";
+  }
+
+  /** Quick buttons switched on or off in Settings: the ones beside what is picked are made again, or go. */
+  quickSwitched(): void {
+    this.clearQuick();
+    this.refreshGimbal();
+    const sel = this.regionArrow?.sel;
+    const src = sel && sourcesOf(this.app, sel)[0];
+    if (sel && src) this.showRegionQuick(sel, src, sourceFrame(this.app, src));
   }
 
   /**
@@ -4872,7 +4883,15 @@ export class SketchTool implements Tool {
     handle.set(fr.base, fr.normal);
     this.regionArrow = { sel, handle };
     this.app.setSelection(sel);
-    // What the shape can be made into, beside it. Each leaves the sketch and starts on the shapes picked.
+    this.showRegionQuick(sel, src, fr);
+  }
+
+  /**
+   * What the shape tapped can be made into, beside it: each leaves the sketch and starts on the shapes picked. With
+   * Quick buttons switched off (Settings) there are none: the arrow pulls the shape up, the other three are under
+   * Create once the sketch is left, and the guide text says so.
+   */
+  private showRegionQuick(sel: Sel[], src: ExtrudeSource, fr: { base: Vec3; normal: Vec3 }): void {
     const app = this.app;
     const start = (make: () => Tool) => () => {
       this.hideRegionArrow();
@@ -4891,7 +4910,7 @@ export class SketchTool implements Tool {
       fr.base,
       { facing: fr.normal, gap: 70 },
     );
-    this.setHint("Drag the arrow to pull the shape into 3D, or pick what to make of it.");
+    this.setHint(this.regionQuick ? "Drag the arrow to pull the shape into 3D, or pick what to make of it." : "Drag the arrow to pull the shape into 3D. For Revolve, Sweep or Loft, tap Exit: they are under Create.");
   }
 
   /** The tools for the shape tapped in the sketch (Extrude, Revolve, Sweep, Loft), beside it. */

@@ -326,6 +326,12 @@ export class ExtrudeOp extends FeatureOp<ExtrudeFeature> {
     this.ops = QuickActions.of(this.app.view, items, this.frame.base, { facing: out ? n : [-n[0], -n[1], -n[2]], hideBack: false });
   }
 
+  /** Quick buttons switched on or off in Settings: these come, or go, at once (Operation on the line says the same). */
+  quickSwitched(): void {
+    this.opsSig = "?";
+    this.showOps();
+  }
+
   /**
    * Where it ends (a set distance, through everything, or up to a face or
    * plane), where it starts, and how much its sides lean (a draft).

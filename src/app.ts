@@ -265,6 +265,13 @@ export class App implements AppContext {
     this.ui.variableNames = () => this.store.doc.variables.map((v) => v.name);
     numpadVariables({ names: () => this.store.doc.variables.map((v) => v.name), create: (value) => createVariable(this, value) });
     settings.onChange(() => this.showPins());
+    // Quick buttons switched on or off (Settings): the tool in use shows its own, or takes them away, at once.
+    let quick = settings.value.quickButtons;
+    settings.onChange((s) => {
+      if (s.quickButtons === quick) return;
+      quick = s.quickButtons;
+      this.tool.quickSwitched?.();
+    });
     this.items = new ItemsPanel(this.store, {
       // A phone: like taps in the view, each body tapped in Items joins the
       // selection (tapped again, it leaves) - Subtract needs two bodies, and

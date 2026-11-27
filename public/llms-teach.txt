@@ -32,6 +32,7 @@ For an AI assistant working in the person's tab, when they want to **learn** the
 ## When they are stuck
 
 - Nothing happens on a tap: a tool is still open (finish it with the tick, or the cross), or they are still in a sketch (**Exit** at the end of the line; with a drawing tool on, the tick first: it puts the tool down, and Exit is there again).
+- No round buttons beside a pick: **Quick buttons** is switched off in **Settings** (the gear at the right edge). The same tools are on the line: use those, or have them switch it on.
 - The tool they want is not on the line: the line shows what fits the pick. Tap empty space to drop the pick; every tool is then there and asks for its own pick.
 - A step shows a red mark in History: `sg.now()` gives `errors` with the reason in words. Read it to them and fix that step.
 - They cannot hit a small thing: zoom in, or tap near it. A double tap on the model picks the whole body.

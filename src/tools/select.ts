@@ -62,6 +62,11 @@ export class SelectTool implements Tool {
     this.refresh();
   }
 
+  /** Quick buttons switched on or off in Settings: what is picked gets its own or loses them, and the guide text follows. */
+  quickSwitched(): void {
+    this.refresh();
+  }
+
   exit(): void {
     // Another tool started: a tool that was waiting for a pick (Plane's Offset Plane) waits no more.
     this.pending = null;
@@ -1181,7 +1186,8 @@ export class SelectTool implements Tool {
    */
   private showQuick(items: ToolItem[]): void {
     const sel = this.picks;
-    if (!sel.length || this.pending) return;
+    // (Switched off in Settings: none - nor is where they would stand worked out.)
+    if (!sel.length || this.pending || !settings.value.quickButtons) return;
     const view = this.app.view;
     const s = sel[sel.length - 1];
     const show = (kind: QuickKind, at: Vec3 | undefined, place?: QuickPlace) => {

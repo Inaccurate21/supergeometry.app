@@ -228,11 +228,15 @@ export function setupRightColumn(ui: UI, view: Viewport, store: DocStore, onUnit
         return row;
       };
       const snaps = Object.values(s.snap).filter(Boolean).length;
+      // The round buttons beside what is picked: off for working from the line at the bottom alone.
+      const quick = toggleRow("Quick buttons", s.quickButtons, (v) => settings.set("quickButtons", v));
+      quick.title = "The round buttons beside what you pick";
       host.append(
         heading("Settings"),
         nav("Units & grid", `${UNIT_LABEL[units()]}${s.gridLocked ? ` · grid ${s.gridStep} mm` : ""}`, "units"),
         nav("Snapping", snaps ? `${snaps} of ${Object.keys(s.snap).length} on` : "Off", "snap"),
         toggleRow("Number pad on screen", s.numpad, (v) => settings.set("numpad", v)),
+        quick,
         nav("Appearance", `${s.ortho ? "Orthographic" : "Perspective"}${s.showGrid ? "" : " · no grid"}`, "appearance"),
       );
       if (matchMedia("(any-pointer: fine)").matches) host.append(nav("Mouse", mousePreset(s.mouse).apps.split(",")[0], "mouse"));

@@ -8,8 +8,13 @@
 // ones. On the model the row ends with Delete and More, which opens every
 // other tool the pick has (Shell among them); they are the very tools the line
 // at the bottom offers for the pick (the same ToolItems).
+//
+// Settings > Quick buttons switches them off: none are made then, for a pick or
+// for a tool's own choices (Extrude's Add and Cut beside the face), and the
+// line at the bottom is where the tools are.
 
 import type { Vec3 } from "../doc/types";
+import { settings } from "../settings";
 import { icons } from "../ui/icons";
 import type { ToolItem } from "../ui/ui";
 import type { Viewport } from "../view/viewport";
@@ -64,6 +69,8 @@ export class QuickActions {
 
   /** `items`: what the pick offers (the wheel's own list, its kinds' items too); `at`: the point it is shown beside. */
   static show(view: Viewport, kind: QuickKind, items: ToolItem[], at: Vec3, place: QuickPlace = {}, all = false): QuickActions | null {
+    // (Switched off in Settings: none, whatever is picked.)
+    if (!settings.value.quickButtons) return null;
     const byId = new Map<string, ToolItem>();
     const walk = (its: ToolItem[]) => {
       for (const it of its) {
@@ -103,9 +110,9 @@ export class QuickActions {
     return row.length || rest.length ? new QuickActions(view, row, at, place, rest) : null;
   }
 
-  /** These very buttons (a tool's own choices, the one in use lit), beside `at`. */
-  static of(view: Viewport, items: ToolItem[], at: Vec3, place: QuickPlace = {}): QuickActions {
-    return new QuickActions(view, items, at, place);
+  /** These very buttons (a tool's own choices, the one in use lit), beside `at`. None with Quick buttons switched off. */
+  static of(view: Viewport, items: ToolItem[], at: Vec3, place: QuickPlace = {}): QuickActions | null {
+    return settings.value.quickButtons ? new QuickActions(view, items, at, place) : null;
   }
 
   private readonly facing?: Vec3;

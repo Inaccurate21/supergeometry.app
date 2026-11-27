@@ -162,11 +162,12 @@ runs between, a row or a ring of copies for a pattern.
 tools (a flat face Sketch and Move, a round face Thread and Fillet, an edge
 Chamfer and Move, a body Fillet and Mirror), then **Delete**, then **More**,
 which opens every other tool that pick has. In a sketch: Construction and
-Delete.
+Delete. **Settings → Quick buttons** switches them off, for working from the
+line at the bottom alone: every one of those tools is on it too.
 
 **Right edge** - **Fit**, **Display** (shaded, wireframe, X-ray) and
-**Settings**: one sheet with Units & grid, Snapping, the number pad and
-Appearance, each row saying how it is set now.
+**Settings**: one sheet with Units & grid, Snapping, the number pad, the
+quick buttons and Appearance, each row saying how it is set now.
 
 **Bottom left** - Undo / Redo.
 
