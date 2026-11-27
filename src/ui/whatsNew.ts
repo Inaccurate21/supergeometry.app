@@ -19,6 +19,7 @@ export const UPDATES: Update[] = [
   {
     date: "2026-11-27",
     added: [
+      "Several shapes of a sketch picked and pulled up together are a body each, where they stand apart: two circles give Body 1 and Body 2, not one body in two pieces to split by hand. Shapes that touch are still one body, and adding to a body or cutting is as before. Extrudes in projects you made earlier stay as they were.",
       "On a computer and a tablet the round buttons beside a pick are smaller and closer together, the size they have on a phone (52 by 40). Their names stay the same size, a long one narrowed to stay inside its button, and the icon is over the name as before.",
       "Learn the app with Claude by building something: its course now makes one desk lamp from start to finish, in nine lessons. A base, a pole drawn on it, a flared hollow shade, a bulb shaped with Freeform, three feet as a pattern of holes, the head tilted, then the tilt, the wall and the number of feet as variables, and out to the printer. Three more lessons hold what the lamp does not need: exact sizes and constraints, Revolve, two parts that fit.",
       "File has Import file…, between Save project and the exports: it brings a STEP, STL, OBJ, 3MF, DXF or SVG file into the project that is open, as More > Insert > File does.",

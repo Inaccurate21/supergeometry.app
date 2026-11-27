@@ -88,7 +88,7 @@ export class ExtrudeOp extends FeatureOp<ExtrudeFeature> {
     const label = source.kind === "face" && mode !== "new" ? "Offset Face" : undefined;
     super(app, { ...app.store.newIdentity("extrude", label), type: "extrude", source, distance: opts.distance ?? 0, mode, target: targetOf(app, source) }, existing);
     // Auto by the way it goes: + a new body (or added to the body it is drawn on), - a cut.
-    if (!existing) this.feature.byDirection = true;
+    if (!existing) (this.feature.byDirection = true), (this.feature.separate = true);
     this.frame = sourceFrame(app, this.feature.source);
     this.handle = new Handle(app.view, "arrow");
     if (this.feature.extent === "to") this.slots = [this.upToSlot()];

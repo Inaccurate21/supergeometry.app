@@ -1134,6 +1134,11 @@ async function apply(f: Feature, ctx: Ctx): Promise<void> {
         distance = way * reach;
       }
       const plain = ext === "distance" && !f.start && !f.draft;
+      // (A point just inside each shape's own solid, in the order the shapes were picked: which body is which.)
+      const apartFrom = (): Vec3[] | undefined =>
+        f.separate
+          ? startFaces().map(({ face, normal }) => add(pointOnFace(face as unknown as Shape3D, face).p, scale(normal, (Math.sign(distance) || 1) * Math.min(1e-3, Math.abs(distance) / 2))))
+          : undefined;
       // Pushing/pulling a face of its own body offsets it: the neighbouring faces
       // extend along their own surfaces (a round side stays round).
       const tapered = f.taper !== undefined && Math.abs(f.taper - 1) > 1e-9;
@@ -1164,7 +1169,7 @@ async function apply(f: Feature, ctx: Ctx): Promise<void> {
             throw new Error("This shape can't be tapered");
           }
         });
-        combine(f.id, f.mode, f.target, fuseAll(parts), distance < 0, ctx);
+        combine(f.id, f.mode, f.target, fuseAll(parts), distance < 0, ctx, apartFrom());
         return;
       }
       if (plain && f.source.kind === "face" && f.mode !== "new" && f.mode !== "intersect" && f.target === f.source.face.body && !f.symmetric) {
@@ -1226,7 +1231,7 @@ async function apply(f: Feature, ctx: Ctx): Promise<void> {
         }
         if (hit.length && !f.target) return;
       }
-      combine(f.id, f.mode, f.target, solid, distance < 0, ctx);
+      combine(f.id, f.mode, f.target, solid, distance < 0, ctx, apartFrom());
       return;
     }
 
@@ -3948,7 +3953,22 @@ const PINCHED = "This only touches the body along an edge, so the two hang toget
 export const AUTO_CUT_INSIDE = "Auto cut this out of the body it starts inside - what reaches past that body isn't added. To add it (a branch, a boss), pick Add.";
 const MISSED_CUT = "This cut doesn't reach the body, so nothing was cut - check which way it goes (Flip), or make it longer.";
 
-function combine(id: string, mode: string, target: string | undefined, solid: Shape3D, negative: boolean, ctx: Ctx): void {
+/**
+ * The solids of a new body that stand apart, each by itself, in the order of the shapes they were made from
+ * (`from`: a point inside each shape's own solid): the first shape's is the body, the rest are bodies of their own.
+ * Shapes that touch or overlap are one solid, and so one body.
+ */
+function apartSolids(solid: Shape3D, from: Vec3[]): Shape3D[] {
+  const pieces = subShapes(solid, "SOLID").map((x) => cast(x) as Shape3D);
+  if (pieces.length < 2) return [solid];
+  const rank = pieces.map((p) => {
+    const i = insideOf(p, from).indexOf(true);
+    return i < 0 ? from.length : i;
+  });
+  return pieces.map((p, i) => ({ p, r: rank[i], i })).sort((a, b) => a.r - b.r || a.i - b.i).map((x) => x.p);
+}
+
+function combine(id: string, mode: string, target: string | undefined, solid: Shape3D, negative: boolean, ctx: Ctx, apart?: Vec3[]): void {
   // (A mode that isn't one - a damaged file: the body was left as it was, and nothing said so.)
   if (typeof mode === "string" && !["auto", "new", "join", "cut", "intersect"].includes(mode)) throw new Error(DAMAGED_TEXT);
   const m = mode === "auto" ? (target ? (negative ? "cut" : "join") : "new") : mode;
@@ -3982,7 +4002,10 @@ function combine(id: string, mode: string, target: string | undefined, solid: Sh
   }
   if (!target && m === "join") target = touching(solid, ctx)[0];
   if (m === "new" || !target) {
-    ctx.bodies.set(id, solid);
+    // (Shapes that stand apart: a body each. They were one body in pieces, to be split apart by hand.)
+    const pieces = apart ? apartSolids(solid, apart) : [solid];
+    ctx.bodies.set(id, pieces[0]);
+    pieces.slice(1).forEach((p, k) => ctx.bodies.set(`${id}:${k + 2}`, p));
     return;
   }
   const t = need(ctx.bodies, target);

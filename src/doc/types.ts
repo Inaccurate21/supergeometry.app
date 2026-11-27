@@ -267,6 +267,13 @@ export interface ExtrudeFeature extends FeatureBase {
    */
   byDirection?: boolean;
   /**
+   * Shapes that stand apart are a body each (extrudes made since this was added): two circles pulled up as a
+   * new body are two bodies, the first shape picked keeping this step's id and the others `id:2`, `id:3`...
+   * Without it, as before: one body in several pieces - kept so that projects made then come out as they were
+   * (a later step may name that one body and mean all its pieces).
+   */
+  separate?: boolean;
+  /**
    * How big the far end is, as a fraction of the shape (1 or missing: straight
    * sides; 0.5: half size; near 0: to a point - a spire, a pyramid, a cone).
    */
