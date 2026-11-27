@@ -8,6 +8,7 @@
 // whole list. `sg.guide` gives one part of the reference (public/llms-full.txt), not all of it.
 import type { App } from "./app";
 import type { Feature, ProjectDoc } from "./doc/types";
+import type { BodyMesh } from "./kernel/protocol";
 import { parseProject } from "./doc/store";
 import { newProjectId } from "./doc/library";
 import { headFor, holeFor, screwSize } from "./doc/holeSizes";
@@ -27,6 +28,110 @@ const r4 = (x: number) => Math.round(x * 1e4) / 1e4;
 const r3 = (x: number) => Math.round(x * 1e3) / 1e3;
 const v4 = (v: number[]) => v.map(r4) as V3;
 const same = (a: string, b: string) => a.trim().toLowerCase() === b.trim().toLowerCase();
+
+/**
+ * A body's box from what the page has of it - nothing asked of the engine: every point of its surface and its
+ * edges as drawn, and for its round edges the circle itself. (Drawn, a circle is a many-sided shape just inside
+ * it: by the points alone a cylinder 16 across came out 15.98. By the two ends and the middle of each edge, as it
+ * was first, a whole circle is two points, and the cylinder was "16 x 0".)
+ */
+export function meshBox(b: BodyMesh): [V3, V3] | null {
+  const lo: V3 = [Infinity, Infinity, Infinity];
+  const hi: V3 = [-Infinity, -Infinity, -Infinity];
+  const add = (p: ArrayLike<number>, i = 0) => {
+    for (let a = 0; a < 3; a++) {
+      const v = p[i + a];
+      if (v < lo[a]) lo[a] = v;
+      if (v > hi[a]) hi[a] = v;
+    }
+  };
+  for (const ps of [b.positions, b.edgePositions]) for (let i = 0; i + 2 < ps.length; i += 3) add(ps, i);
+  const sub = (p: V3, q: V3): V3 => [p[0] - q[0], p[1] - q[1], p[2] - q[2]];
+  const cross = (p: V3, q: V3): V3 => [p[1] * q[2] - p[2] * q[1], p[2] * q[0] - p[0] * q[2], p[0] * q[1] - p[1] * q[0]];
+  const dot = (p: V3, q: V3) => p[0] * q[0] + p[1] * q[1] + p[2] * q[2];
+  const len = (p: V3) => Math.hypot(p[0], p[1], p[2]);
+  for (const g of b.edgeGroups) {
+    const e = b.edges[g.edge];
+    if (e?.type === "ELLIPSE" && g.count >= 6) {
+      // An ellipse's edge: where it turns back along each axis lies between two of the points it is drawn through -
+      // found from the three points round the furthest one (the curve is smooth there).
+      const pts: V3[] = [];
+      for (let k = 0; k < g.count; k += 2) pts.push([b.edgePositions[(g.start + k) * 3], b.edgePositions[(g.start + k) * 3 + 1], b.edgePositions[(g.start + k) * 3 + 2]]);
+      const last = g.start + g.count - 1;
+      pts.push([b.edgePositions[last * 3], b.edgePositions[last * 3 + 1], b.edgePositions[last * 3 + 2]]);
+      const closed = len(sub(pts[0], pts[pts.length - 1])) < 1e-6 * Math.max(1, e.length);
+      const ring = closed ? pts.slice(0, -1) : pts;
+      for (let a = 0; a < 3; a++)
+        for (const s of [1, -1]) {
+          let k = 0;
+          for (let i = 1; i < ring.length; i++) if (s * ring[i][a] > s * ring[k][a]) k = i;
+          if (!closed && (k === 0 || k === ring.length - 1)) continue;
+          const [p0, p1, p2] = [ring[(k + ring.length - 1) % ring.length], ring[k], ring[(k + 1) % ring.length]];
+          // (How far along the curve each of the three is, measured across this axis: they are not evenly spaced.)
+          const across: V3 = sub(p2, p0);
+          across[a] = 0;
+          const al = len(across);
+          if (!(al > 0)) continue;
+          const [x0, x2] = [dot(sub(p0, p1), across) / al, dot(sub(p2, p1), across) / al];
+          if (!(x0 < 0 && x2 > 0)) continue;
+          const [d1, d2] = [(p1[a] - p0[a]) / -x0, (p2[a] - p1[a]) / x2];
+          const bend = (d2 - d1) / (x2 - x0);
+          if (!(s * bend < 0)) continue;
+          const slope = d1 + bend * -x0;
+          const p: V3 = [...p1];
+          p[a] = p1[a] - (slope * slope) / (4 * bend);
+          add(p);
+        }
+      continue;
+    }
+    if (e?.type !== "CIRCLE" || g.count < 3) continue;
+    const at = (k: number): V3 => [b.edgePositions[(g.start + k) * 3], b.edgePositions[(g.start + k) * 3 + 1], b.edgePositions[(g.start + k) * 3 + 2]];
+    const whole = len(sub(e.start, e.end)) < 1e-7 * Math.max(1, e.length);
+    // Its circle: a whole one from its start and the point across from it (and the way it lies from how it is
+    // drawn); an arc from its two ends and its middle.
+    let c: V3, r: number, n: V3;
+    if (whole) {
+      c = [(e.start[0] + e.mid[0]) / 2, (e.start[1] + e.mid[1]) / 2, (e.start[2] + e.mid[2]) / 2];
+      r = len(sub(e.start, e.mid)) / 2;
+      n = cross(sub(at(Math.floor(g.count / 3)), at(0)), sub(at(Math.floor((2 * g.count) / 3)), at(0)));
+    } else {
+      const [u, v] = [sub(e.mid, e.start), sub(e.end, e.start)];
+      n = cross(u, v);
+      const nn = dot(n, n);
+      if (!(nn > 1e-24)) continue;
+      const [uu, vv] = [dot(u, u), dot(v, v)];
+      const [w1, w2] = [cross(v, n), cross(n, u)];
+      c = [e.start[0] + (uu * w1[0] + vv * w2[0]) / (2 * nn), e.start[1] + (uu * w1[1] + vv * w2[1]) / (2 * nn), e.start[2] + (uu * w1[2] + vv * w2[2]) / (2 * nn)];
+      r = len(sub(e.start, c));
+    }
+    const nl = len(n);
+    if (!(nl > 1e-12) || !(r > 0)) continue;
+    n = [n[0] / nl, n[1] / nl, n[2] / nl];
+    // Where it reaches furthest each way: on a whole circle always; on an arc only where the arc passes.
+    const x = sub(e.start, c).map((t) => t / r) as V3;
+    const y = cross(n, x);
+    const angle = (p: V3) => {
+      const t = Math.atan2(dot(sub(p, c), y), dot(sub(p, c), x));
+      return t < 0 ? t + 2 * Math.PI : t;
+    };
+    const [tm, te] = whole ? [0, 0] : [angle(e.mid), angle(e.end)];
+    const onArc = (p: V3) => whole || (tm < te ? angle(p) <= te + 1e-9 : angle(p) >= te - 1e-9);
+    for (let a = 0; a < 3; a++) {
+      const reach = r * Math.sqrt(Math.max(0, 1 - n[a] * n[a]));
+      if (!(reach > 0)) continue;
+      // (The way along this axis, laid in the circle's own plane.)
+      const axis: V3 = [0, 0, 0];
+      axis[a] = 1;
+      const d: V3 = [axis[0] - n[a] * n[0], axis[1] - n[a] * n[1], axis[2] - n[a] * n[2]];
+      const dl = len(d);
+      for (const s of [1, -1]) {
+        const p: V3 = [c[0] + (s * r * d[0]) / dl, c[1] + (s * r * d[1]) / dl, c[2] + (s * r * d[2]) / dl];
+        if (onArc(p)) add(p);
+      }
+    }
+  }
+  return lo[0] <= hi[0] ? [lo, hi] : null;
+}
 
 /**
  * A step as an assistant may write it, made the step the app stores. The short ways:
@@ -67,7 +172,9 @@ export function fullStep(step: Loose): Loose {
     };
   }
   if (s.type === "sketch" && Array.isArray(s.entities)) {
-    s.entities = (s.entities as Loose[]).map((e) => (e.kind === "rect" && e.rotation === undefined ? { ...e, rotation: 0 } : e.kind === "polygon" && e.angle === undefined ? { ...e, angle: 0 } : e));
+    // (An ellipse too: without its rotation it was taken in, drew nothing, and the extrude of it then said a profile
+    // "no longer exists in its sketch".)
+    s.entities = (s.entities as Loose[]).map((e) => ((e.kind === "rect" || e.kind === "ellipse") && e.rotation === undefined ? { ...e, rotation: 0 } : e.kind === "polygon" && e.angle === undefined ? { ...e, angle: 0 } : e));
     // Each curve has what it needs, or the step is refused with what is missing: an arc given as a centre and
     // angles was saved, and every sketch of the project failed to draw from then on.
     for (const e of s.entities as Loose[]) {
@@ -388,8 +495,8 @@ export function assistMethods(app: App, idle: () => Promise<boolean>) {
         steps: fs.length,
         ...(last ? { last: `${last.name}: ${about(last)}` } : {}),
         bodies: app.view.bodyList.map((b) => {
-          const pts = b.edges.flatMap((e) => [e.start, e.end, e.mid]);
-          const size = pts.length ? [0, 1, 2].map((i) => n(Math.max(...pts.map((q) => q[i])) - Math.min(...pts.map((q) => q[i])))) : [];
+          const box = meshBox(b);
+          const size = box ? [0, 1, 2].map((a) => n(box[1][a] - box[0][a])) : [];
           return { id: b.id, size, faces: b.faces.length };
         }),
         ...(ui.hintText ? { says: ui.hintText } : {}),

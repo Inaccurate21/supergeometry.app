@@ -195,11 +195,11 @@ Script - or **Import font…** a .ttf / .otf / .woff of your own; each letter ke
 a few lines, arcs and smooth curves, so extruded text has a face per side, not hundreds), Project
 (copies body edges or other sketches' curves here).
 
-**Exact points on touch screens:** right after the first tap of a line,
-rectangle, circle, polygon or ellipse the line has **X / Y** for that point
-(a fingertip can't hit a 1 mm grid). A line then takes **Length and Angle**,
-or **Across and Up** for a slope ("in 10, up 12"); an arc by centre takes the
-centre, Radius and the Start and End angles. Grid snapping follows the zoom
+**Exact sizes on touch screens:** after the first tap of a line, rectangle,
+circle, polygon or ellipse the line has the shape's sizes (on a phone, behind
+**Values**): a line's **Length and Angle**, a rectangle's Width and Height, a
+circle's Diameter; an arc by centre takes its Radius and the Start and End
+angles. Type them, and the tick puts the shape in. Grid snapping follows the zoom
 (1 / 5 / 10 mm) so a tap lands where a fingertip can tell apart. A typed shape
 is placed with Enter or Done.
 
@@ -208,10 +208,11 @@ perpendicular, where two cross) are kept as constraints. Dragging a point onto
 another joins them.
 
 **Fill Pattern:** a closed shape filled with lines from edge to edge (straight, crossed, zigzag, waves) or with
-small shapes (dots, honeycomb, squares, diamonds), its spacing, size and angle set; the strips and cells are
-shapes to extrude or cut, for textures.
+small shapes (dots, honeycomb, squares, diamonds). One tap inside the shape fills it; its spacing and size are a
+share of the shape, in percent (5 gives about twenty rows on a shape of any size), and the pattern follows when
+they or its angle are changed. The strips and cells are shapes to extrude or cut, for textures.
 
-**Edit tools:** Offset Edge (parallel copy; whole outlines too), Fillet and
+**Edit tools:** Offset Edge (parallel copy; several edges together, or whole outlines), Fillet and
 Chamfer (round or bevel a corner where lines or arcs meet; tap the next corner
 to go on), Mirror (the selected shapes, across a line or an axis), Trim (cut
 away between crossings - tap, or swipe across several - or *Join* two lines
@@ -220,6 +221,9 @@ on along their circle), Split, Move/Rotate (gimbal, or Rotate About a tapped
 centre), Scale, Pattern (linear with an arrow you drag, or circular around a
 centre), Delete. Tools with options start with the option you used last.
 Tapping empty space finishes Offset, Move, Scale, Pattern, Rotate and Mirror.
+So does the blue tick: while a tool is on, the line at the bottom holds only that tool's own
+buttons, Sketch view and the tick. The tick finishes what the tool has set up and puts it down,
+and Draw, Modify, Transform, Delete and Exit are on the line again.
 
 **Select** (in a sketch): tap curves to select them, double-tap for a whole
 shape. Drag points or curves, or use the gimbal. Tap an arc or circle to type
@@ -497,8 +501,10 @@ can't be rebuilt after a change, it's marked and the reason is shown.
 - **Something is hidden**: check the eyes in **Items**, and whether
   **Isolate** is on.
 - **A "Working…" spinner**: the geometry engine is busy; complex steps can
-  take a moment. **Stop** next to it drops the work and takes back the change
-  that started it (like an undo).
+  take a moment. **Stop** next to it ends the work before its next step and
+  takes back the change that started it (like an undo). On a project just
+  opened there is no change to take back: the steps not reached yet are rolled
+  back in **History**, to build again when you remove the breakpoint.
 - **A change you expected isn't there yet**: when a newer version is out,
   **More** pulses and its **Update** item says NEW. **More → Update** loads the newest
   version right away (your project is kept).

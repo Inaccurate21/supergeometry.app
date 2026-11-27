@@ -29,6 +29,11 @@ export const UPDATES: Update[] = [
       "Polygon: Across flats is gone. Radius sets its size.",
       "Constraints list: the links a mirror, an offset or a pattern keeps between a copy and its original are no longer buttons named follow or pattern that one tap removed. They are in List all, by name.",
       "The bottom line no longer stays stretched after the Constraints list has been open.",
+      "Opening another project while one is still being built: the new one is built right away. With a slow step under way it could stay unbuilt, the old model still on screen under the new project's name.",
+      "Stop: a project whose slow step comes first can be stopped (it was built again from the start each time). Pressed while a project is opening, or after the page was loaded again, it rolls the steps not reached yet back in History and leaves your last change alone. What you do while it says Stopping… stays as you did it.",
+      "Stop ends the rebuild only: an export or a drawing under way at that moment is not what stops.",
+      "Learning with Claude: the size it reads for a round part is right (a cylinder was read as having no width one way, and a turned knob too). An ellipse it draws without saying how it is turned is taken as level.",
+      "Help, the README and the lessons say what the bottom line shows now: the tick, Constraints as one button, Fill Pattern in percent.",
     ],
   },
   {

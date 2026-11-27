@@ -1740,7 +1740,7 @@ export class SketchTool implements Tool {
     // still waited for a second tap, which on a phone lands wherever the finger is.
     const typed = this.pts.length > 0 && ["rect", "circle", "polygon", "ellipse", "line", "arc"].includes(k);
     // Phones: no card over the drawing while a shape is drawn - its values
-    // (X / Y of the first point, Length, Angle, Radius…) wait behind a small
+    // (Length, Angle, Radius…) wait behind a small
     // Values chip, and the finished curve's card shows when it's tapped in
     // Select. A spline keeps its Done beside the chip.
     if (!this.pts.length) this.valuesOpen = false;

@@ -9,7 +9,10 @@ import { resolveDoc } from "../src/doc/params";
 import type { Feature } from "../src/doc/types";
 import { after, check, done, health, near, volume } from "./kit";
 
-const page = readFileSync(new URL("../public/llms-full.txt", import.meta.url), "utf8");
+// (Read with the line ends the project keeps: a checkout on Windows has the other kind, and the patterns below found
+// nothing in it - the test stopped at its first check, and what follows never ran there.)
+const read = (file: string) => readFileSync(new URL(file, import.meta.url), "utf8").replace(/\r\n/g, "\n");
+const page = read("../public/llms-full.txt");
 
 // ---------------------------------------------------------------- the complete examples
 const examples = [...page.matchAll(/<!-- example: (\w+)((?: \w+=[\d.]+)*) -->\s*```json\n([\s\S]*?)\n```/g)];
@@ -172,7 +175,7 @@ const build = async (features: unknown[], body: string) => after(features as Fea
 // ---------------------------------------------------------------- the short page, and steps written short
 {
   // The start page (public/llms.txt) is what an assistant in the tab reads first, and pays for: it stays short.
-  const start = readFileSync(new URL("../public/llms.txt", import.meta.url), "utf8");
+  const start = read("../public/llms.txt");
   check("the start page is short: under 6000 characters", start.length < 6000, start.length);
   check("the start page names the full reference, and the commands", /llms-full\.txt/.test(start) && ["sg.make", "sg.add", "sg.change", "sg.remove", "sg.vars", "sg.check", "sg.ref.faces", "sg.ref.edges", "sg.guide"].every((w) => start.includes(w)), "");
   const { fullStep } = await import("../src/assist");
@@ -207,6 +210,38 @@ const build = async (features: unknown[], body: string) => after(features as Fea
   said = "";
   try { fullStep({ type: "hole", face: top, size: "M7" }); } catch (e) { said = (e as Error).message; }
   check("a screw size there is not: says which there are", /M2, M2\.5, M3/.test(said), said);
+  // An ellipse written without its rotation: level, as a rectangle without one is. (It was taken in, drew nothing,
+  // and the extrude of it said a profile no longer existed.)
+  const oval = await after(full([{ id: "s", type: "sketch", plane: "XY", entities: [{ id: "e", kind: "ellipse", center: [0, 0], rx: 20, ry: 10 }] }, { id: "E", type: "extrude", source: { sketch: "s", regions: ["e"] }, distance: 5 }]), "E");
+  check("an ellipse without its rotation: level, and it builds", !oval.err && near(volume(oval.body), Math.PI * 20 * 10 * 5, 1e-2), `${volume(oval.body)} ${oval.errors}`);
+}
+
+// ---------------------------------------------------------------- sg.now(): a body's size, read off what is drawn
+{
+  // What the person has just made is said without asking the engine: a body's size from its mesh and its edges.
+  // Round bodies are where that goes wrong - a circle drawn is a many-sided shape just inside it, and its two ends
+  // are one point - so each is checked against the size worked out by hand.
+  const { fullStep, meshBox } = await import("../src/assist");
+  const full = (steps: Record<string, unknown>[]) => parseProject(JSON.stringify({ format: "super", version: 2, name: "x", features: steps.map((s, i) => ({ id: `x${i}`, name: `x${i}`, ...fullStep(s) })) })).features as Feature[];
+  const sizeOf = async (steps: Record<string, unknown>[]) => {
+    const r: any = await regenerate(full(steps));
+    const box = meshBox(r.bodies[0]);
+    return box ? [0, 1, 2].map((a) => Math.round((box[1][a] - box[0][a]) * 1e3) / 1e3) : [];
+  };
+  const solid = (plane: string, entity: Record<string, unknown>, distance: number, more: Record<string, unknown> = {}) => [{ id: "s", type: "sketch", plane, entities: [{ id: "e", ...entity }] }, { id: "E", type: "extrude", source: { sketch: "s", regions: ["e"] }, distance, ...more }];
+  const says = async (name: string, steps: Record<string, unknown>[], want: number[], tol = 1e-3) => {
+    const got = await sizeOf(steps);
+    check(name, got.length === 3 && got.every((v, i) => near(v, want[i], tol + 1e-9)), `${got.join(" x ")} for ${want.join(" x ")}`);
+  };
+  await says("a block 40 x 30 x 20", solid("XY", { kind: "rect", center: [0, 0], w: 40, h: 30 }, 20), [40, 30, 20], 0);
+  await says("a cylinder 16 across and 20 tall: 16 both ways (it was 16 x 0)", solid("XY", { kind: "circle", center: [0, 0], radius: 8 }, 20), [16, 16, 20], 0);
+  await says("one off the origin, of an odd size", solid("XY", { kind: "circle", center: [13.7, -4.2], radius: 7.35 }, 11.1), [14.7, 14.7, 11.1], 0);
+  await says("one lying down (drawn on the front plane)", solid("XZ", { kind: "circle", center: [5, 9], radius: 6.5 }, 30), [13, 30, 13], 0);
+  await says("a cone: its wide end", solid("XY", { kind: "circle", center: [0, 0], radius: 10 }, 15, { taper: 0.4 }), [20, 20, 15], 0);
+  await says("an ellipse 40 x 20", solid("XY", { kind: "ellipse", center: [0, 0], rx: 20, ry: 10 }, 5), [40, 20, 5]);
+  await says("an ellipse turned 30 degrees (to a thousandth)", solid("XY", { kind: "ellipse", center: [3, 4], rx: 20, ry: 10, rotation: Math.PI / 6 }, 5), [2 * Math.hypot(20 * Math.cos(Math.PI / 6), 10 * Math.sin(Math.PI / 6)), 2 * Math.hypot(20 * Math.sin(Math.PI / 6), 10 * Math.cos(Math.PI / 6)), 5], 2e-3);
+  // A knob turned round the upright axis: as wide both ways as twice its outline's reach (what lesson 5 checks).
+  await says("a turned knob: as wide both ways as twice its outline's reach", [{ id: "s", type: "sketch", plane: "XZ", entities: [{ id: "p", kind: "polyline", points: [[0, 0], [12, 0], [12, 6], [6, 20], [0, 20]], closed: true }] }, { id: "K", type: "revolve", source: { sketch: "s", regions: ["p"] }, axis: { origin: [0, 0, 0], dir: [0, 0, 1] }, angle: 360, mode: "new" }], [24, 24, 20], 0);
 }
 
 // ---------------------------------------------------------------- the course for teaching the app
@@ -214,7 +249,7 @@ const build = async (features: unknown[], body: string) => after(features as Fea
   // public/llms-teach.txt: read a lesson at a time by an assistant that guides while the person taps. Every word
   // it prints in bold as "on the screen" must be a word the app has - a tool renamed must be renamed here too.
   const { readdirSync, statSync } = await import("node:fs");
-  const teach = readFileSync(new URL("../public/llms-teach.txt", import.meta.url), "utf8");
+  const teach = read("../public/llms-teach.txt");
   const parts = teach.split(/\n(?=## Lesson \d+)/);
   const lessons = parts.slice(1);
   check("the course: an opening and eight lessons, numbered in order", lessons.length === 8 && lessons.every((l, i) => l.startsWith(`## Lesson ${i + 1}:`)), lessons.map((l) => l.split("\n")[0]));
@@ -222,7 +257,7 @@ const build = async (features: unknown[], body: string) => after(features as Fea
   check("each lesson is short (under 2200 characters) and says what to check", lessons.every((l) => l.length < 2200 && /\nCheck/.test(l)), lessons.map((l) => l.length));
   check("the opening lists each lesson, and says how to look without a screenshot", lessons.every((_, i) => new RegExp(`\\n${i + 1}\\. `).test(parts[0])) && parts[0].includes("sg.now()") && parts[0].includes("sg.teach("), "");
   // The app's own words: everything in its source and its page.
-  let words = readFileSync(new URL("../index.html", import.meta.url), "utf8");
+  let words = read("../index.html");
   const walk = (dir: URL) => {
     for (const n of readdirSync(dir)) {
       const u = new URL(n + (statSync(new URL(n, dir)).isDirectory() ? "/" : ""), dir);
@@ -238,10 +273,10 @@ const build = async (features: unknown[], body: string) => after(features as Fea
   const missing = bold.filter((w) => !own(w) && ![`"${w}"`, `>${w}<`, `'${w}'`, `\`${w}\``, `"${w} `, `>${w} `, `"${w}…`].some((x) => words.includes(x)));
   check(`every word the course shows as on the screen is a word of the app (${bold.length} of them)`, bold.length > 40 && !missing.length, missing);
   // The start page sends an assistant here, and stays short itself.
-  const start = readFileSync(new URL("../public/llms.txt", import.meta.url), "utf8");
+  const start = read("../public/llms.txt");
   // The page's own text is what an assistant in the tab reads first: it must send a request to be taught to the
   // course (asked "teach me the lessons", an assistant that had read only of making models found the bolt tutorial).
-  const pageText = readFileSync(new URL("../index.html", import.meta.url), "utf8");
+  const pageText = read("../index.html");
   check("the page's own text tells an assistant about teaching: sg.teach(), and that More > Tutorial is another thing", /learn or be\s+taught/.test(pageText) && pageText.includes("await sg.teach()") && /More &gt; Tutorial/.test(pageText), "");
   check("the start page says: to teach, sg.teach() - and is still short", start.includes("sg.teach()") && start.includes("offerLessons") && start.length < 6000, start.length);
 }

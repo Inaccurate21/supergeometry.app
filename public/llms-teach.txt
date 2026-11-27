@@ -31,7 +31,7 @@ For an AI assistant working in the person's tab, when they want to **learn** the
 
 ## When they are stuck
 
-- Nothing happens on a tap: a tool is still open (finish it with the tick, or the cross), or they are still in a sketch (**Exit** at the end of the line).
+- Nothing happens on a tap: a tool is still open (finish it with the tick, or the cross), or they are still in a sketch (**Exit** at the end of the line; with a drawing tool on, the tick first: it puts the tool down, and Exit is there again).
 - The tool they want is not on the line: the line shows what fits the pick. Tap empty space to drop the pick; every tool is then there and asks for its own pick.
 - A step shows a red mark in History: `sg.now()` gives `errors` with the reason in words. Read it to them and fix that step.
 - They cannot hit a small thing: zoom in, or tap near it. A double tap on the model picks the whole body.
@@ -79,9 +79,9 @@ Needs: a block. Teaches: a sketch on a face, exact sizes, constraints, and cutti
 
 1. Tap the top face, then **Sketch** (the round button beside it, or on the line). The view turns to face it.
 2. **Draw**, **Circle**: click a centre on the face, move out, type `8` and Enter.
-3. **Draw**, **Line**: draw a few lines; each click is a point, and clicking the first point again closes the shape and ends the line. Press Esc to stop early.
+3. **Draw**, **Line**: draw a few lines; each click is a point, and clicking the first point again closes the shape and ends the line. To stop early, tap the tick: it ends the line and puts the tool down.
 4. Tap one of the lines. The line now shows its size on the line at the bottom: tap **Length**, type a number, Enter. That size is now a dimension: it is drawn on the sketch with arrows, and it holds. Click a dimension on the drawing to change it.
-5. Pick two lines (Shift + click the second). The line offers constraints such as Parallel, Perpendicular and Equal: tap one. A small mark appears on both lines; point at a mark to see what it ties together.
+5. Pick two lines (Shift + click the second), then **Constraints** on the line: its list has the ones that fit, such as Parallel, Perpendicular and Equal. Tap one. A small mark appears on both lines; point at a mark to see what it ties together.
 6. **Exit**. Tap inside the circle: it turns blue with an arrow. Drag the arrow down into the block, or type `-10`: on a face, in cuts and out adds. Tap the tick.
 
 Check: while they draw, `inSketch` is the sketch's name and `drawn` lists their shapes with sizes; `sizes` counts the dimensions and constraints. After step 6 `last` is an extrude with a negative distance (or "(cut)") and the body has more faces.
@@ -94,7 +94,7 @@ Needs: a block or a plate. Teaches: **Hole**, **Shell**.
 1. Tap the top face about where a screw should go. On the line: **Create**, then **Hole**.
 2. On the line: **Screw** (M2 to M12) and **Head**: None, Counterbore (a cap screw's head sunk in) or Countersink. **Through** goes right through; switch it off for a **Depth**.
 3. Placing it: two sizes show from the nearest edges; tap one and type it. Or drag the hole's dot: it catches on the middle of the face, on the centre of a round edge, on the point where an axis passes through the face, and on a sketch drawn on the face (a line's end, where lines cross, a circle's centre). Tap the tick.
-4. For a pattern of holes: draw a sketch on the face first with a point for each hole (crossing lines or small circles), **Exit**, then make each hole by tapping near its mark.
+4. For a pattern of holes: draw a sketch on the face first with a point for each hole (crossing lines or small circles), the tick and **Exit**, then make each hole by tapping near its mark.
 5. Hollow it: tap the face that should be open, **Modify**, **Shell**. Type the wall's **Thickness**. Tap more faces to open them as well. Tap the tick.
 
 Check: `last` reads like "Hole 01: hole M4, through at 10, 10, 20"; after Shell, "shell, walls 2, 1 face(s) open".
