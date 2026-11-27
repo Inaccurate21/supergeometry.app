@@ -35,6 +35,8 @@ export const UPDATES: Update[] = [
       "On a touch screen, press and hold a face, an edge or a sketch's shape and lift without dragging: the list of what can be done with it opens by your finger, as a right-click gives. Hold and drag still pulls it.",
     ],
     fixed: [
+      "A mesh with too many triangles (an STL, OBJ or 3MF over 250,000) is refused as it is picked, with its count, before it is put into the project. It used to be taken in first and could run the page out of memory; saved by then, it crashed the app again at every start.",
+      "If the page does die while building a file you brought in, the next start opens the project with that step switched off and says so, instead of dying again. The step is still in History: delete it, or tap its eye to try once more. A project already stuck this way opens again too.",
       "Scale shows its three ways again: Uniform, X / Y / Z (each direction by itself) and By reference (two points, and the distance they should be). They are on the line the moment Scale is open, and it starts the way you used last. From the bottom line it had only opened by a factor, with nothing to say there were two more.",
       "The guide text is shorter: the longest ones (Move/Rotate, Fillet, Chamfer, Shell, Scale, Loft, Offset, the sketch tools and others, 35 in all) say what to do next in a line or two, without the asides.",
       "A hole's flat bottom starts a pattern of the hole, as its round wall does. A shallow recess has a wall too thin to tap, and a pattern started from its bottom made copies of the whole body.",

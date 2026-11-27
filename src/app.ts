@@ -14,7 +14,7 @@ import { findAction, openCommandSearch, showShortcuts } from "./ui/commands";
 import type { EdgeFeature, EdgeRef, ExtrudeFeature, ExtrudeSource, Feature, FillToPlaneFeature, ImageFeature, LoftFeature, PathRef, PinDef, PlaneDef, PlaneFeature, ProjectDoc, RevolveFeature, ShellFeature, SketchEntity, SketchFeature, SplitFeature, SweepFeature, TransformFeature, Units, Vec3 } from "./doc/types";
 import { emptyDoc } from "./doc/types";
 import { editedStep } from "./doc/freeformEdits";
-import { createVariable, insertFile, insertImage, acceptFor } from "./io/insert";
+import { createVariable, insertFile, insertImage, acceptFor, MESH_MAX } from "./io/insert";
 import { RefImages } from "./ui/refImages";
 import { WebWindow } from "./ui/webWindow";
 import { numpadVariables } from "./ui/numpad";
@@ -334,7 +334,10 @@ export class App implements AppContext {
     this.tool.enter?.();
 
     this.ui.setStatus("Loading geometry kernel…");
-    const loaded = this.store.load().then(() => this.attachLibrary());
+    const loaded = this.store
+      .load()
+      .then(() => this.afterCrash())
+      .then(() => this.attachLibrary());
     // Every visit starts at the projects, with a welcome: shown as soon as the
     // projects are read, while the geometry kernel is still loading behind it.
     void loaded.then(() => this.showProjects(true, true));
@@ -843,15 +846,90 @@ export class App implements AppContext {
   private async regenerate(): Promise<void> {
     const features = this.store.doc.features;
     this.regenerating++;
+    // A build that may be too much for the page - the first of a project just opened, or one with a file in it that
+    // has not been built yet - is marked as under way. If the page dies in it, the next start finds the mark.
+    const files = features.filter((f) => f.type === "import" && !f.suppressed && !this.builtFiles.has(f.id)).map((f) => f.id);
+    const risky = files.length > 0 || !this.builtOnce;
+    const mark = risky ? `${Date.now()}-${Math.random().toString(36).slice(2, 8)}` : "";
+    if (risky) setBuilding({ mark, files, drawing: false });
     let r: RegenResult | null = null;
     try {
       r = await this.kernel.regenerate(features, true);
     } finally {
       this.regenerating--;
     }
-    if (r) ((this.made = r), this.apply(r, features));
+    if (r) {
+      this.made = r;
+      this.apply(r, features);
+      this.builtOnce = true;
+      for (const id of files) this.builtFiles.add(id);
+    }
     // (Not made - stopped, or overtaken: the next change asks again, whatever it is.)
     else this.madeFor = "";
+    // Built: what is left is drawing it. The mark says so, and goes once a frame or two have been drawn - or a
+    // moment later where frames are not being drawn (the page out of sight), or when the page is put out of sight.
+    // (Stopped before it was made: no build is under way, and none died.)
+    if (risky && !r && readBuilding()?.mark === mark) setBuilding(null);
+    if (risky && r && readBuilding()?.mark === mark) {
+      setBuilding({ mark, files, drawing: true });
+      const clear = () => {
+        if (readBuilding()?.mark !== mark) return;
+        setBuilding(null);
+        setDied(0);
+      };
+      requestAnimationFrame(() => requestAnimationFrame(clear));
+      setTimeout(clear, 2500);
+    }
+  }
+
+  /** The mark a build left behind before this start, if the page died in it: read, and taken away, before anything is built now. */
+  private readonly diedBefore = takeBuilding();
+
+  /** The project has been built once since it was opened; the files in it that have been built. */
+  private builtOnce = false;
+  private builtFiles = new Set<string>();
+
+  /**
+   * At the start: did the page die building this project last time (it ran out of memory on a file brought in)?
+   * Then it would die again now, and at every start after: the project could not be opened at all. The step it
+   * died on is switched off - still in History, to delete or to try again - and that is said. So is a mesh far
+   * over what can be brought in, from before files were checked on the way in.
+   */
+  private afterCrash(): void {
+    // (The mark was read as the app was made - see diedBefore - not here: by now this start's own first build
+    // has put its mark there, and that was taken for a death at every start.)
+    const died = this.diedBefore;
+    const fs = this.store.doc.features;
+    const off = new Set<string>();
+    // How sure it is. The page died while the engine was building a file that had not been built before: that file,
+    // at once. Anything less plain - it died with no such file, or after the build, while drawing - may as well
+    // have been a phone putting the page away, or a reload at the wrong moment: nothing is switched off for one
+    // such start (a harmless Extrude was, after an ordinary reload). Twice running is no accident.
+    const again = died ? readDied() + 1 : 0;
+    setDied(again);
+    const sure = !!died && ((!died.drawing && died.files.length > 0) || again >= 2);
+    for (const f of fs) {
+      if (f.type !== "import" || f.suppressed) continue;
+      // (A binary STL as text: four letters to three bytes, fifty bytes a triangle.)
+      if (f.format === "stl" && (f.data.length * 0.75) / 50 > MESH_MAX * 1.5) off.add(f.id);
+      if (sure && died!.files.includes(f.id)) off.add(f.id);
+    }
+    // (Died twice with no file to blame: the last step that is on.)
+    if (sure && !off.size) {
+      const last = [...fs].reverse().find((f) => !f.suppressed && !f.rolledBack);
+      if (last) off.add(last.id);
+    }
+    if (!off.size) return;
+    setDied(0);
+    const names = fs.filter((f) => off.has(f.id)).map((f) => (f.type === "import" && f.fileName) || f.name);
+    this.store.adopt((d) => {
+      for (const f of d.features) if (off.has(f.id)) f.suppressed = true;
+    });
+    void this.store.flush();
+    const what = names.length === 1 ? names[0] : `${names.length} steps`;
+    // (A window to close, not a line that is gone in a moment: it is why something of theirs is not there.)
+    const note = `It ran out of memory, most likely. ${what} is switched off so that the project opens. In History, delete that step, or tap its eye to try it again.`;
+    setTimeout(() => void this.ui.ask("This project did not finish opening last time", note, [{ id: "ok", label: "OK", primary: true }]), 1500);
   }
 
   /** Sketches the engine moved the curves of (they follow a body): those curves, by the sketch as it was sent. */
@@ -2187,6 +2265,8 @@ export class App implements AppContext {
     // The id and the document change together: an autosave due meanwhile went to the old project.
     this.projectId = id;
     this.projectKept = kept;
+    // (Its first build is one that may be too much: marked, as at the start.)
+    this.builtOnce = false;
     // The last one's rebuild, if it is still going, is no use now: dropped, not waited for
     // (opening a small project while a guitar was still being built took the guitar's 90 s).
     // (Its own rebuild waits behind that one: built as soon as the engine lets go - between two steps, at once
@@ -2516,6 +2596,52 @@ function canShare(file: File): boolean {
 function canShareType(ext: string): boolean {
   return canShare(new File(["x"], `x.${ext}`, { type: MIME[ext] ?? "application/octet-stream" }));
 }
+
+/** The mark of a build under way (see App.regenerate): kept where a page that dies leaves it behind. */
+const BUILDING = "sg.building";
+type Building = { mark: string; files: string[]; /** Built: it was being drawn. */ drawing: boolean };
+/** How many starts running found a build that had died. */
+const DIED = "sg.died";
+function readDied(): number {
+  try {
+    return Number(localStorage.getItem(DIED)) || 0;
+  } catch {
+    return 0;
+  }
+}
+function setDied(n: number): void {
+  try {
+    if (n > 0) localStorage.setItem(DIED, String(n));
+    else localStorage.removeItem(DIED);
+  } catch {
+    /* no storage */
+  }
+}
+function setBuilding(v: Building | null): void {
+  try {
+    if (v) localStorage.setItem(BUILDING, JSON.stringify(v));
+    else localStorage.removeItem(BUILDING);
+  } catch {
+    /* no storage: no mark */
+  }
+}
+function readBuilding(): Building | null {
+  try {
+    const v = JSON.parse(localStorage.getItem(BUILDING) ?? "null") as { mark?: unknown; files?: unknown; drawing?: unknown } | null;
+    return v && typeof v.mark === "string" && Array.isArray(v.files) ? { mark: v.mark, files: v.files.filter((x): x is string => typeof x === "string"), drawing: v.drawing === true } : null;
+  } catch {
+    return null;
+  }
+}
+function takeBuilding(): Building | null {
+  const v = readBuilding();
+  setBuilding(null);
+  return v;
+}
+// (The page left in the ordinary way - closed, reloaded, another site: not a build that died.)
+window.addEventListener("pagehide", () => setBuilding(null));
+// (Put out of sight with the build done and only the drawing marked: nothing is being drawn now.)
+document.addEventListener("visibilitychange", () => document.visibilityState === "hidden" && readBuilding()?.drawing && setBuilding(null));
 
 function download(blob: Blob, name: string): void {
   const a = document.createElement("a");
