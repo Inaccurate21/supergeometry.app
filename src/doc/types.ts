@@ -247,6 +247,12 @@ export interface SketchFill {
   angle: number;
   /** Shapes: how big each is. Zigzag, waves: how big a tooth or a wave is (mm). */
   size: number;
+  /**
+   * `spacing` and `size` are shares of the shape, not mm: hundredths of the side of a square as big as the shape
+   * (5: a twentieth of it). The pattern then has about as many rows whatever the shape's size, and grows with it -
+   * 2 mm apart filled a big shape with thousands of lines. Missing: mm (fills made before).
+   */
+  rel?: boolean;
 }
 
 export interface ExtrudeFeature extends FeatureBase {
@@ -264,6 +270,13 @@ export interface ExtrudeFeature extends FeatureBase {
    * projects made then come out as they were.
    */
   byDirection?: boolean;
+  /**
+   * Shapes that stand apart are a body each (extrudes made since this was added): two circles pulled up as a
+   * new body are two bodies, the first shape picked keeping this step's id and the others `id:2`, `id:3`...
+   * Without it, as before: one body in several pieces - kept so that projects made then come out as they were
+   * (a later step may name that one body and mean all its pieces).
+   */
+  separate?: boolean;
   /**
    * How big the far end is, as a fraction of the shape (1 or missing: straight
    * sides; 0.5: half size; near 0: to a point - a spire, a pyramid, a cone).
@@ -1157,4 +1170,9 @@ export interface OutlineOffset {
   at: Vec2;
   /** Just the edge nearest `at`, not the whole loop it is part of (Offset Edge's "Edge"). */
   single?: boolean;
+  /**
+   * With `single`: more edges of the outline, each the one nearest its point, offset together with the first -
+   * those that join end to end as one run, their corners kept (several edges, not the whole loop).
+   */
+  also?: Vec2[];
 }

@@ -2,14 +2,14 @@ import { acceptFor } from "../io/insert";
 import { QuickActions } from "./quickActions";
 import { isTouchDevice } from "../device";
 import { simplifyStroke } from "../sketch/freehand";
-import { Box3, BufferGeometry, Line, LineBasicMaterial, LineDashedMaterial, Points, PointsMaterial, Vector3 } from "three";
-import type { EdgeLink, FaceRef, OutlineOffset, PlaneDef, PointRef, SketchConstraint, SketchEntity, SketchFeature, SketchFill, SketchRef, SketchRepeat, Vec2, Vec3 } from "../doc/types";
-import { add as add3, dot, GROUND, niceStep as niceStepOf, originOnPlane, patternSpacing, planeY, roundSig, scale as scale3, sub as sub3, toPlane } from "../geom";
-import { addForUser, addStrict, constraintError, constraintName, LINKED, pointOf, pointsOf, refsOf, setValueStrict, sizeOf as sizeOfFn, solve, touchingEnds } from "../sketch/constraints";
+import { Box3, BufferGeometry, DoubleSide, Line, LineBasicMaterial, LineDashedMaterial, Mesh, MeshBasicMaterial, Points, PointsMaterial, ShapeUtils, Vector2, Vector3 } from "three";
+import type { EdgeLink, ExtrudeSource, FaceRef, OutlineOffset, PlaneDef, PointRef, SketchConstraint, SketchEntity, SketchFeature, SketchFill, SketchRef, SketchRepeat, Vec2, Vec3 } from "../doc/types";
+import { add as add3, dot, GROUND, niceStep as niceStepOf, originOnPlane, patternSpacing, planeY, roundSig, scale as scale3, startSize, sub as sub3, toPlane } from "../geom";
+import { addForUser, addStrict, constraintError, constraintName, copiedConstraints, LINKED, pointOf, pointsOf, refsOf, setValueStrict, sizeOf as sizeOfFn, solve, touchingEnds } from "../sketch/constraints";
 import { el, isExpression } from "../ui/ui";
 import { caretToEnd, selectAll, textField, type TextField } from "../ui/textField";
 import { nearestSnap } from "../sketch/snapPick";
-import { arrangement } from "../sketch/regions";
+import { arrangement, type Region } from "../sketch/regions";
 import { Gimbal, IN_PLANE, type GimbalPart } from "./gimbal";
 import { curvesNear } from "./selectOther";
 import { tr } from "../i18n";
@@ -45,6 +45,8 @@ import {
   guidePoints,
   mirrorXf,
   offsetEntity,
+  offsetSeveral,
+  splineEnds,
   leanSpline, projectPolyline,
   rotateXf,
   scaleXf,
@@ -67,7 +69,7 @@ import { evaluate, fmtLen, toDisplay, trim as trimNum, UNIT_LABEL, units } from 
 import { showConstraintList, type ConstraintRow } from "./constraintList";
 import type { ToolPointer } from "../view/input";
 import { dotMaterial, sketchToWorld, snapGlyphMaterial, type SnapGlyph } from "../view/viewport";
-import { FILL_KINDS, FILL_PREFIX, fillCurves, fillRegion, refill, withoutFills } from "../sketch/fill";
+import { FILL_KINDS, FILL_PREFIX, fillCurves, fillUnit, refill, regionAt, withoutFills } from "../sketch/fill";
 import { applyRepeats } from "../sketch/repeat";
 import { edgeRefOf, edgesOfFace, hitToSel, sourceFrame, sourcesOf, type AppContext, type Sel, type Tool } from "./tool";
 
@@ -112,8 +114,8 @@ const CENTRE_HINT = {
 };
 
 const HINTS: Record<Kind, string> = {
-  select: "Tap a line or curve to change its size. Double-tap to pick a whole shape.",
-  line: "Tap to place points. Closing a shape ends the line (double-tap ends it sooner).",
+  select: "Tap a line to set its size. Tap a second to tie them together. Double-tap picks a whole shape.",
+  line: "Tap to place points. Closing a shape ends the line; a double tap ends it sooner.",
   arc: isCoarse ? "Drag from one end of the arc to the other, then drag to bend it." : "Click where the arc starts and ends, then a third point to bend it.",
   spline: "Tap points for the curve to pass through. Tap the first point to close it, or double-tap to stop.",
   rect: "Tap one corner, then the opposite corner.",
@@ -125,17 +127,17 @@ const HINTS: Record<Kind, string> = {
   break: "Tap a curve where another crosses it: it is cut there, and every piece stays (Trim would take one away).",
   polygon: "Tap the centre, then where a corner should be.",
   text: "Tap where the text should start, then type it in the card.",
-  project: "Tap edges of a body, or lines of another sketch, to copy them into this sketch. Double-tap copies a whole sketch.",
+  project: "Tap edges of a body, or lines of another sketch, to copy them here. Double-tap copies a whole sketch.",
   offset: "Tap a line or shape - or an edge of a body - to draw a copy of it a set distance away.",
-  fill: "Tap inside a closed shape to fill it with a pattern. Tap a shape that has one to change it.",
+  fill: "Tap inside a closed shape: it is filled with the pattern. Tap a shape that has one to change it.",
   fillet: "Tap a corner to round it, or two lines that meet. Then drag or type the radius.",
-  move: "Tap what to move, then drag the arrows to move it or the ring to turn it (or type exact values).",
-  scale: "Tap what to resize, then drag the middle square (or an arrow's square end for one way only), or type how many times bigger.",
+  move: "Tap what to move, then drag the arrows to move it or the ring to turn it, or type.",
+  scale: "Tap what to resize, then drag the middle square (an arrow's end: one way only), or type a factor.",
   patternLinear: "Tap what to repeat, then drag an arrow to space the copies, and set how many.",
   patternCircular: "Tap what to repeat (double-tap for a whole shape), then tap the centre to repeat it around.",
-  rotate: "Tap what to turn (double-tap for a whole shape), then tap the point to turn it around, and set the angle.",
+  rotate: "Tap what to turn (double-tap: a whole shape), then the point to turn it about, and set the angle.",
   mirror: "Tap a shape, then tap the line to flip it across. Any line works, even one of its own.",
-  trim: "Tap the piece of a line to cut away, or swipe across several pieces. (Join: tap a line to merge it with the one it continues.)",
+  trim: "Tap the piece of a line to cut away, or swipe across several.",
   align: "Tap the line to move, then the line it should line up with.",
   extend: "Tap a line near the end to lengthen, then tap the line it should reach.",
   delete: "Tap lines or shapes to delete them.",
@@ -171,7 +173,7 @@ function hintOf(kind: Kind): string {
   if (kind === "circle" && memory.circle === "2pt") return "Tap two points on opposite sides of the circle.";
   if (kind === "circle" && memory.circle === "3pt") return "Tap three points on the circle's edge.";
   if (kind === "fillet" && memory.corner === "chamfer") return "Tap a corner where two lines meet to cut it off straight.";
-  if (kind === "spline" && memory.spline === "control") return "Tap points that pull the curve towards them (it passes through the first and last). Tap the first point to close it, or double-tap to stop.";
+  if (kind === "spline" && memory.spline === "control") return "Tap points that pull the curve towards them. Tap the first to close it, or double-tap to stop.";
   if (kind === "trim" && memory.trim === "join") return "Tap a line to merge it with the one it continues.";
   if (kind === "spline" && memory.spline === "draw") return isTouchDevice ? "Draw with one finger, like a pencil (two move the view). End where you began to close it." : "Press and drag to draw, like a pencil. End where you began to close it.";
   return HINTS[kind];
@@ -190,7 +192,8 @@ function describePieces(es: SketchEntity[]): string {
 const memory = { arc: "3pt" as "3pt" | "center", circle: "center" as "center" | "2pt" | "3pt", corner: "round" as "round" | "chamfer", textFont: "roboto", trim: "cut" as "cut" | "join", offsetMode: "chain" as "edge" | "chain", pattern: "patternLinear" as "patternLinear" | "patternCircular", rect: "center" as "diagonal" | "center" | "3pt", ellipse: "center" as "center" | "axis" | "box", slot: "cc" as "cc" | "overall" | "center", spline: "fit" as "fit" | "control" | "draw", sides: 6, fillet: 2, offset: 2, textSize: storedTextSize(), textAlign: "left" as TextAlign };
 
 /** Fill Pattern as it was last used: the next shape filled starts the same. */
-const fillMemory: Omit<SketchFill, "id" | "at"> = { kind: "lines", spacing: 2, angle: 45, size: 3 };
+// (Its sizes are shares of the shape filled, in hundredths: 5 is about twenty rows across a shape of any size.)
+const fillMemory: Omit<SketchFill, "id" | "at"> = { kind: "lines", spacing: 5, angle: 45, size: 8, rel: true };
 
 /**
  * The way each tool draws (Rectangle: Center, Diagonal...) survives a reload:
@@ -229,16 +232,22 @@ function storeVariants(): void {
   }
 }
 
+/** A text size has been typed (now or before a reload): until then Text starts at a size that shows in the view. */
+// (Declared with no value here on purpose: the size is read from storage above this line, as the file loads.)
+var textSizeChosen: boolean | undefined;
+
 /** The text size survives a reload (a ruler's 3.5 mm numbers came back at 10 mm after one). */
 function storedTextSize(): number {
   try {
     const v = Number(localStorage.getItem("sg.textSize"));
+    if (v > 0) textSizeChosen = true;
     return v > 0 ? v : 10;
   } catch {
     return 10;
   }
 }
 function storeTextSize(v: number): void {
+  textSizeChosen = true;
   try {
     localStorage.setItem("sg.textSize", String(v));
   } catch {
@@ -381,6 +390,8 @@ export class SketchTool implements Tool {
     offsetEdge?: { body: string; edge: number };
     /** ... and the guides brought in for it (the edge's own, and with Chain the rest of its face's outline). */
     offsetGuides?: string[];
+    /** Offset Edge, Edge: more edges tapped after the first, offset with it (each: the curve, where it was tapped, and - of a face's outline - the body's edge there). */
+    offsetMore?: { id: string; at: Vec2; edge?: { body: string; edge: number } | null }[];
     /** Extend: the first curve half picked (its nearer end will meet the second pick). */
     extendFrom?: { id: string; at: Vec2 };
     /** Align: the line that will move. */
@@ -402,7 +413,7 @@ export class SketchTool implements Tool {
     mirrorCopy: boolean;
   } = { dx: 10, dy: 0, moveRot: 0, angle: 90, patAngle: 360, factor: 2, count: 3, copy: false, mirrorCopy: true };
   private text = "Text";
-  private overlays: (Line | Points)[] = [];
+  private overlays: (Line | Points | Mesh)[] = [];
   private prevOrtho = false;
   /** Selected sketch points (curves are in `selected`). */
   private selPts: PointRef[] = [];
@@ -584,7 +595,7 @@ export class SketchTool implements Tool {
         if (best && info?.plane) {
           this.plane = originOnPlane({ origin: info.plane.origin, normal: info.plane.normal, xDir });
           this.attachedTo = { body: best.body, center: info.center, normal: info.normal, area: info.area, ...(info.step ? { step: info.step } : {}), ...(info.curve ? { curve: info.curve } : {}) };
-          this.app.ui.toast("Sketching on the face in front of you (Other plane: in the tools)");
+          this.app.ui.toast("Sketching on the face in front of you. For another: the tick, Exit, then tap that face and Sketch.");
         } else if (view.construction.planes.some((c) => Math.abs(dot(c.plane.normal, normal)) > 0.9999)) {
           // Planes of the project's own face this way (a blade's tip plane,
           // seen from the top): pick one in the card, not the origin plane.
@@ -593,31 +604,12 @@ export class SketchTool implements Tool {
         } else {
           // Which one, in the names the plane buttons use: "the origin plane" left people guessing.
           const name = ["YZ (side)", "XZ (front)", "XY (floor)"][k];
-          this.app.ui.toast(this.app.store.features.some((f) => f.type === "extrude" || f.type === "revolve" || f.type === "import") ? `Sketching on ${name}, through the origin. For a face of the model: Exit, then tap the face first.` : `Sketching on ${name}`);
+          this.app.ui.toast(this.app.store.features.some((f) => f.type === "extrude" || f.type === "revolve" || f.type === "import") ? `Sketching on ${name}, through the origin. For a face of the model: the tick, Exit, then tap the face first.` : `Sketching on ${name}`);
         }
       }
     }
     if (this.phase === "plane") this.showPlaneChoice();
     else this.beginDrawing();
-  }
-
-  /**
-   * A new sketch, nothing drawn yet: another plane than the one it started on
-   * (seen square-on, the face in front was taken - the side plane through the
-   * origin was a trip to the Views menu away).
-   */
-  private choosePlane(): void {
-    // (Only while it's empty: what's drawn stays on the plane it was drawn on.)
-    if (this.sketchId || this.entities.length) return this.updateMenu();
-    // A shape started (its first point placed): dropped, it was on the old plane.
-    this.resetDrawing();
-    this.plane = null;
-    this.attachedTo = undefined;
-    this.onPlane = undefined;
-    // The face's outline came with a preview of the sketch on it: not on the new plane.
-    if (this.pending) ((this.pending = null), void this.app.preview([...this.app.store.features]));
-    this.phase = "plane";
-    this.showPlaneChoice();
   }
 
   private showPlaneChoice(): void {
@@ -853,7 +845,7 @@ export class SketchTool implements Tool {
     // Typing a value digit by digit: say it once, not on every key.
     if (performance.now() - this.refusedAt < 2000) return;
     this.refusedAt = performance.now();
-    this.app.ui.toast("That contradicts constraints already on the sketch - remove one first (Constraints → tap it → Delete)", "error");
+    this.app.ui.toast("That contradicts constraints already on the sketch - remove one first (Constraints → tap the one in use)", "error");
   }
 
   /** Constraints on the selected curves (any that names one of them): sizes, angles, joins, locks. */
@@ -872,6 +864,8 @@ export class SketchTool implements Tool {
     if (this.kind !== "select" || (!this.selected.size && !this.selPts.length)) return [];
     const curves = this.pickedCurves();
     const chips: Extract<PanelItem, { type: "chips" }>["chips"] = [];
+    const shown = new Set<string>();
+    const lit = new Set<string>();
     for (const b of CONSTRAINT_BUTTONS) {
       // Curves whose ends touch but aren't joined (their constraints deleted):
       // Coincident joins them all again, in one tap.
@@ -881,6 +875,7 @@ export class SketchTool implements Tool {
         continue;
       }
       const have = existingConstraints(b.type, this.constraints, this.selPts, curves);
+      for (const c of have) shown.add(c.id), lit.add(c.type);
       const built = have.length ? [] : buildConstraints(b.type, this.selPts, curves, this.entities);
       if (!have.length && !built.length) continue;
       // H/V says which one it is (the line's nearer to one or the other).
@@ -895,7 +890,25 @@ export class SketchTool implements Tool {
         onClick: () => (have.length ? this.removeConstraints(have) : this.addConstraint(b.type)),
       });
     }
-    return chips.length ? [{ type: "chips", label: "Constraints", chips }] : [];
+    // In use on the pick, with something not picked: a line's Tangent to an arc, with the line alone picked. (Only
+    // those between what is picked were lit: the list of those in use had none of them.) Sizes are in List all.
+    const other = new Map<string, SketchConstraint[]>();
+    // (Not a second Tangent beside the one lit for the picked pair: the arc's Tangent to a line not picked is in List all.)
+    // (Nor what ties a copy to its original - a pattern's, a mirror's, an offset's: no constraint to take off with a
+    // tap. They stood here as "follow" and "pattern (6)", and one tap unlinked every copy. Nor a distance to
+    // something not picked: a size. All of them are in List all, by name, each with its own bin.)
+    const listed = (c: SketchConstraint) => c.type === "dim" || c.type === "distance" || c.type === "pattern" || c.type === "follow";
+    for (const c of this.selectionConstraints()) if (!listed(c) && !shown.has(c.id) && !lit.has(c.type)) other.set(c.type, [...(other.get(c.type) ?? []), c]);
+    for (const [type, list] of other) {
+      const b = CONSTRAINT_BUTTONS.find((x) => x.type === type || (x.type === "hv" && (type === "horizontal" || type === "vertical")));
+      const name = type === "horizontal" ? "Horizontal" : type === "vertical" ? "Vertical" : type === "fix" ? "Lock" : (b?.label ?? type);
+      const glyph = type === "horizontal" ? "H" : type === "vertical" ? "V" : b?.glyph;
+      chips.push({ label: list.length > 1 ? `${name} (${list.length})` : name, glyph, on: true, title: `Remove ${name.toLowerCase()}`, onClick: () => this.removeConstraints(list) });
+    }
+    // The whole list of those on the pick (each with its bin, sizes to type over), with the ones in use.
+    const n = this.selectionConstraints().length;
+    if (n) chips.push({ label: `List all (${n})`, used: true, title: "Every constraint on the pick, each to delete", onClick: () => this.openConstraintList() });
+    return chips.length ? [{ type: "chips", label: "Constraints", chips, split: ["In use (tap to take off)", "Add"] }] : [];
   }
 
   /**
@@ -921,16 +934,6 @@ export class SketchTool implements Tool {
     return this.selected.size ? touchingEnds(this.entities, this.constraints, this.selected) : [];
   }
 
-  /**
-   * "Constraints (n)" for the selection's card, when it has any: the list of them, each with its own bin and its
-   * size to type over, and all of them deleted at once from there. (It was "Delete constraints (n)", which took
-   * them all.)
-   */
-  private deleteConstraintsItem(): PanelItem[] {
-    const n = this.selectionConstraints().length;
-    if (!n) return [];
-    return [{ type: "button", label: `Constraints (${n})`, icon: "constraints", onClick: () => this.openConstraintList() }];
-  }
 
   private openConstraintList(): void {
     showConstraintList({
@@ -1118,6 +1121,10 @@ export class SketchTool implements Tool {
     }
     const curves = this.pickedCurves();
     let cs = buildConstraints(type, this.selPts, curves, this.entities);
+    // Tangent where the two meet end to end but aren't joined: joined too. Tangent alone keeps a line's endless
+    // run touching the arc's circle, and the arc's end slid off the line's end as soon as anything moved.
+    // (Only between the curves picked.)
+    if (type === "tangent" && cs.length && !this.selPts.length) cs = [...this.endGaps().filter(([a, b]) => this.selected.has(a.e) && this.selected.has(b.e)).map(([a, b]): SketchConstraint => ({ id: uid(), type: "coincident", pts: [a, b] })), ...cs];
     // Lock holds points where they are now.
     if (type === "fix") cs = cs.map((c) => (c.type === "fix" ? { ...c, at: pointOf(this.entities.find((e) => e.id === c.pts![0].e)!, c.pts![0].p) ?? [0, 0] } : c));
     if (!cs.length) return this.app.ui.toast("That constraint doesn't fit the selection");
@@ -1275,19 +1282,17 @@ export class SketchTool implements Tool {
       ...extra,
     });
     const icons: Partial<Record<Kind, string>> = { ellipse: "ellipse", slot: "slot", rect: "rect", trim: "trim", arc: "arc", circle: "circle", fillet: "sketchFillet" };
-    const variant = <T extends string>(kind: Kind, key: "rect" | "spline" | "trim" | "arc" | "circle" | "corner" | "ellipse" | "slot", options: [T, string][]): ToolItem[] =>
-      options.map(([v, l]) => ({ id: `${kind}-${v}`, label: l, icon: icons[kind] ?? "spline", active: memory[key] === v, run: () => (((memory as unknown as Record<string, string>)[key] = v), storeVariants(), this.setKind(kind)) }) as ToolItem);
-    // A new sketch with nothing in it yet can still go on another plane.
-    const fresh = !this.sketchId && !this.entities.length;
+    const variant = <T extends string>(kind: Kind, key: "rect" | "spline" | "trim" | "arc" | "circle" | "corner" | "ellipse" | "slot", options: [T, string, string?][]): ToolItem[] =>
+      options.map(([v, l, s]) => ({ id: `${kind}-${v}`, label: l, ...(s ? { brief: s } : {}), icon: icons[kind] ?? "spline", active: memory[key] === v, run: () => (((memory as unknown as Record<string, string>)[key] = v), storeVariants(), this.setKind(kind)) }) as ToolItem);
     app.ui.setTools([
       exit,
-      ...(fresh ? [{ id: "replane", label: "Other plane", icon: "plane", run: () => this.choosePlane() } as ToolItem] : []),
+      // (No Other plane for a new empty sketch: Exit leaves nothing behind, and Sketch again goes where it is wanted.)
       { id: "---1", label: "", icon: "line" },
       t("select", "Select", "pointer", "V"),
       // An empty sketch with no drawing tool on: Line is the next step (it, and Draw round it, pulse).
       t("line", "Line", "line", "L", { pulse: !this.entities.length && this.kind === "select" }),
       t("arc", "Arc", "arc", "A", { sub: memory.arc === "center" ? "Center" : "3 Points", children: variant("arc", "arc", [["3pt", "3 Points"], ["center", "Center"]]) }),
-      t("spline", "Spline", "spline", "I", { sub: memory.spline === "fit" ? "Fit" : memory.spline === "draw" ? "Draw" : "Control", children: variant("spline", "spline", [["fit", "Fit points"], ["control", "Control points"], ["draw", "Draw (freehand)"]]) }),
+      t("spline", "Spline", "spline", "I", { sub: memory.spline === "fit" ? "Fit" : memory.spline === "draw" ? "Draw" : "Control", children: variant("spline", "spline", [["fit", "Fit points", "Fit"], ["control", "Control points", "Control"], ["draw", "Draw (freehand)", "Freehand"]]) }),
       t("rect", "Rectangle", "rect", "R", { sub: { diagonal: "Diagonal", center: "Center", "3pt": "3 Points" }[memory.rect], children: variant("rect", "rect", [["center", "Center"], ["diagonal", "Diagonal"], ["3pt", "3 Points"]]) }),
       t("circle", "Circle", "circle", "C", { sub: { center: "Center", "2pt": "2 Points", "3pt": "3 Points" }[memory.circle], children: variant("circle", "circle", [["center", "Center"], ["2pt", "2 Points"], ["3pt", "3 Points"]]) }),
       t("ellipse", "Ellipse", "ellipse", undefined, { sub: { center: "Center", axis: "Axis ends", box: "In a box" }[memory.ellipse], children: variant("ellipse", "ellipse", [["center", "Center"], ["axis", "Axis ends"], ["box", "In a box (2 corners)"]]) }),
@@ -1297,7 +1302,7 @@ export class SketchTool implements Tool {
       t("polygon", "Polygon", "polygon", "G", {
         sub: POLYGON_NAMES[memory.sides] ?? `${memory.sides} sides`,
         // The usual ones a tap away (any other count: type it on the drawing).
-        children: [3, 4, 5, 6, 8].map((n) => ({ id: `polygon-${n}`, label: POLYGON_NAMES[n], icon: "polygon" as const, active: memory.sides === n, run: () => ((memory.sides = n), this.setKind("polygon")) })),
+        children: [3, 4, 5, 6, 8].map((n) => ({ id: `polygon-${n}`, label: POLYGON_NAMES[n], icon: (n === 6 ? "polygon" : `polygon${n}`) as "polygon" | "polygon3" | "polygon4" | "polygon5" | "polygon8", active: memory.sides === n, run: () => ((memory.sides = n), this.setKind("polygon")) })),
       }),
       t("text", "Text", "text"),
       t("project", "Project", "project", "P"),
@@ -1356,7 +1361,7 @@ export class SketchTool implements Tool {
         active: isCons,
         run: () => this.toggleConstruction(),
       } as ToolItem]),
-      { id: "look", label: "Normal to Sketch", icon: "normal", run: () => this.plane && app.view.cam.lookAlong(this.plane.normal, this.plane.xDir) },
+      { id: "look", label: "Sketch view", icon: "normal", run: () => this.plane && app.view.cam.lookAlong(this.plane.normal, this.plane.xDir) },
     ]);
   }
 
@@ -1418,10 +1423,10 @@ export class SketchTool implements Tool {
     this.arcM = this.arcBend = null;
     this.typedThisShape = false;
     this.edit.picking = kind === "mirror" ? undefined : this.edit.picking;
-    this.edit.offsetOf = this.edit.offsetEdge = this.edit.offsetGrip = undefined;
+    this.edit.offsetOf = this.edit.offsetEdge = this.edit.offsetGrip = this.edit.offsetMore = undefined;
     this.lightEdges(null);
     this.dropOffsetGrip();
-    this.fillAt = this.fillId = null;
+    this.fillAt = this.fillId = this.fillHot = null;
     this.edit.extendFrom = this.edit.alignFrom = undefined;
     this.edit.filletFrom = undefined;
     // A circular pattern always asks for its centre.
@@ -1431,6 +1436,9 @@ export class SketchTool implements Tool {
     if (kind === "move") ((this.edit.dx = 0), (this.edit.dy = 0), (this.edit.moveRot = 0));
     // A linear pattern starts with its first copy just clear of the selection.
     if (kind === "patternLinear") this.autoPatternSpacing();
+    // Text, no size typed yet: a twentieth of the height of what the view shows (10 mm letters on a sketch two
+    // metres across were a speck, and on one 5 mm across they filled the screen).
+    if (kind === "text" && !textSizeChosen) memory.textSize = startSize(this.app.view.cam.worldPerPixel(this.app.view.height) * this.app.view.height, 0.05, 10);
     this.finishFillet();
     this.clearPreviewJoin();
     this.edit.mirrorLine = undefined;
@@ -1469,7 +1477,7 @@ export class SketchTool implements Tool {
   private journeyHint(): string | undefined {
     // (The sentence bar: Exit is at the end of the line, the drawing tools are under Draw.)
     if (document.body.classList.contains("sentence-ui")) {
-      if (this.exitPulse && this.kind === "select") return "Shape closed. Tap Exit (pulsing, at the end of the line): its arrow is ready to pull it into 3D.";
+      if (this.exitPulse && this.kind === "select") return "Shape closed. Tap Exit (pulsing): its arrow is ready to pull it into 3D.";
       if (!this.entities.length && this.kind === "select") return "Tap Draw, then Line: tap points, and end on the first one to close the shape.";
     }
     if (this.exitPulse && this.kind === "select") return "Shape closed. Tap Exit Sketch (pulsing) - then pull the shape into 3D.";
@@ -1547,28 +1555,7 @@ export class SketchTool implements Tool {
     };
     const selCount = this.selected.size;
     const apply = (label: string, fn: () => void): PanelItem => ({ type: "button", label, icon: "check", onClick: fn, primary: true });
-    // A finger lands a few pixels off and the grid there can be 5 px a step:
-    // where the first point is, typed (X / Y), right after it's tapped.
-    const firstAt = (): PanelItem[] =>
-      isTouchDevice && this.pts.length === 1
-        ? ([0, 1] as const).map((i) => ({
-            type: "number" as const,
-            label: i ? "Y" : "X",
-            value: Math.round(this.pts[0][i] * 100) / 100,
-            kind: "length" as const,
-            onExpr: (text: string) => (this.firstExprs[i] = text && isExpression(text) ? { v: evaluate(text, "length") ?? NaN, text } : undefined),
-            onInput: (v: number) => {
-              this.pts[0] = i ? [this.pts[0][0], v] : [v, this.pts[0][1]];
-              // Typed: no longer on what it snapped to.
-              this.startRef = this.startSnap = this.firstSnap = null;
-              // Nor does the finger's spot say which way a typed size goes: an
-              // ellipse's Length went up because the tap had snapped 2 below
-              // the centre typed. With no pointer, it goes along X (0°).
-              if (isTouchDevice) this.cursor = null;
-              this.refreshPreview();
-            },
-          }))
-        : [];
+    // (Not where the first point is, typed X and Y: on a phone they crowded the line before the sizes that matter.)
     switch (k) {
       case "line":
         // With the numpad, the length is typed in the box by the line itself.
@@ -1577,8 +1564,8 @@ export class SketchTool implements Tool {
         // A finger can't hover: after the first tap there's no line to type a
         // length on (and the next point is often off the screen) - so the card
         // takes the length and the direction (0° right, 90° up), Done places it.
-        // Or how far across and up it goes: a slope ("in 10, up 12") with no angle to work out.
-        else if (this.pts.length && isTouchDevice) items.push(...firstAt(), lock("len", "Length"), lock("ang", "Angle", "angle"), lock("dx", "Across"), lock("dy", "Up"));
+        // (Only those two: the first point's X and Y, and how far across and up, made six values on a phone's line.)
+        else if (this.pts.length && isTouchDevice) items.push(lock("len", "Length"), lock("ang", "Angle", "angle"));
         break;
       case "arc":
         // By its centre, on a phone: where the centre is, the radius and where
@@ -1586,24 +1573,24 @@ export class SketchTool implements Tool {
         // - a nacelle's lip round a centre at 257 snapped to 260.
         // (Every device: values can be typed while it's drawn, not only once it's made.)
         if (memory.arc === "center") {
-          if (this.pts.length === 1) items.push(...firstAt(), lock("r", "Radius"), lock("a0", "Start angle", "angle"));
+          if (this.pts.length === 1) items.push(lock("r", "Radius"), lock("a0", "Start angle", "angle"));
           else if (this.pts.length === 2) items.push(lock("a1", "End angle", "angle"));
-        } else if (this.pts.length === 1) items.push(...firstAt(), lock("len", "Length"), lock("ang", "Angle", "angle"));
+        } else if (this.pts.length === 1) items.push(lock("len", "Length"), lock("ang", "Angle", "angle"));
         else if (this.pts.length === 2) items.push(lock("r", "Radius"));
         break;
       case "rect":
-        if (this.pts.length === 1 && memory.rect !== "3pt") items.push(...firstAt(), lock("w", "Width"), lock("h", "Height"));
-        else if (this.pts.length === 1) items.push(...firstAt(), lock("len", "Width"), lock("ang", "Angle", "angle"));
+        if (this.pts.length === 1 && memory.rect !== "3pt") items.push(lock("w", "Width"), lock("h", "Height"));
+        else if (this.pts.length === 1) items.push(lock("len", "Width"), lock("ang", "Angle", "angle"));
         else if (this.pts.length === 2 && memory.rect === "3pt") items.push(lock("h", "Height"));
         break;
       case "circle":
-        if (this.pts.length === 1 && memory.circle !== "3pt") items.push(...firstAt(), lock("r", "Diameter"));
-        else if (this.pts.length === 1) items.push(...firstAt(), lock("len", "Length"), lock("ang", "Angle", "angle"));
+        if (this.pts.length === 1 && memory.circle !== "3pt") items.push(lock("r", "Diameter"));
+        else if (this.pts.length === 1) items.push(lock("len", "Length"), lock("ang", "Angle", "angle"));
         break;
       case "polygon":
         items.push({ type: "number", label: "Sides", value: memory.sides, kind: "int", min: 3, onInput: (v) => ((memory.sides = Math.max(3, Math.min(64, v))), this.refreshPreview(), this.updateMenu()) });
-        // (A nut or a spanner's hex is sized across its flats: 10, not 5.7735 to a corner.)
-        if (this.pts.length === 1) items.push(...firstAt(), lock("r", "Radius"), lock("af", "Across flats"));
+        // (Its Radius only: Across flats beside it was a second size for the same thing.)
+        if (this.pts.length === 1) items.push(lock("r", "Radius"));
         break;
       case "spline":
         // The point just placed, typed exactly (no grid gets every point).
@@ -1623,7 +1610,7 @@ export class SketchTool implements Tool {
           );
         break;
       case "ellipse":
-        if (this.pts.length === 1) items.push(...firstAt(), lock("rx", "Length"));
+        if (this.pts.length === 1) items.push(lock("rx", "Length"));
         if (this.pts.length === 2) items.push(lock("ry", "Width"));
         break;
       case "text":
@@ -1633,15 +1620,16 @@ export class SketchTool implements Tool {
             items: [
               // Where the tapped point is (typed, it moves the text exactly) and
               // how the text sits on it: numbers along a ruler are centred on their tick.
-              { type: "number", label: "X", value: Math.round(this.pts[0][0] * 100) / 100, kind: "length", onInput: (v) => ((this.pts[0] = [v, this.pts[0][1]]), this.refreshPreview()) },
-              { type: "number", label: "Y", value: Math.round(this.pts[0][1] * 100) / 100, kind: "length", onInput: (v) => ((this.pts[0] = [this.pts[0][0], v]), this.refreshPreview()) },
+              // (X and Y in its window only: on the bottom line they stood before the things that are set more often.)
+              { type: "number", label: "X", value: Math.round(this.pts[0][0] * 100) / 100, kind: "length", aside: true, onInput: (v) => ((this.pts[0] = [v, this.pts[0][1]]), this.refreshPreview()) },
+              { type: "number", label: "Y", value: Math.round(this.pts[0][1] * 100) / 100, kind: "length", aside: true, onInput: (v) => ((this.pts[0] = [this.pts[0][0], v]), this.refreshPreview()) },
               { type: "choice", label: "Align", options: [{ id: "left", label: "Left" }, { id: "center", label: "Centre" }, { id: "right", label: "Right" }], value: memory.textAlign, onChange: (id) => ((memory.textAlign = id as TextAlign), this.refreshPreview()) },
               { type: "number", label: "Size", value: memory.textSize, kind: "length", min: 0.001, onInput: (v) => ((memory.textSize = v), storeTextSize(v), this.refreshPreview()) },
               // The font: the bundled ones and any imported.
               { type: "choice", label: "Font", list: true, options: FONTS.map((f) => ({ id: f.id, label: f.name })), value: memory.textFont, onChange: (id) => ((memory.textFont = id), this.refreshPreview()) },
               { type: "button", label: "Import font…", icon: "insert", onClick: () => void this.importFontFile() },
             ],
-            onDone: () => this.commitText(),
+            onDone: () => this.doneTool(),
             onCancel: () => this.setKind("text"),
           });
           this.addTextInput();
@@ -1667,23 +1655,21 @@ export class SketchTool implements Tool {
         });
         break;
       case "fill": {
-        // The pattern, then its sizes - each change shown at once on the shape tapped.
+        // The pattern, then its sizes: shares of the shape filled, in hundredths (see SketchFill.rel). Each change is
+        // put in at once on the shape tapped - nothing to apply.
         const kind = FILL_KINDS.find((k) => k.id === fillMemory.kind) ?? FILL_KINDS[0];
-        const again = () => (this.updatePanel(), this.refreshPreview());
-        items.push({ type: "choice", label: "Pattern", options: FILL_KINDS.map((k) => ({ id: k.id, label: k.label })), value: fillMemory.kind, onChange: (k) => ((fillMemory.kind = k as SketchFill["kind"]), again()) });
-        items.push({ type: "number", label: kind.lines ? "Spacing" : "Gap", value: fillMemory.spacing, kind: "length", min: 0.0001, onInput: (v) => ((fillMemory.spacing = v), this.refreshPreview()) });
-        if (kind.sized) items.push({ type: "number", label: kind.lines ? (kind.id === "zigzag" ? "Tooth" : "Wave") : "Size", value: fillMemory.size, kind: "length", min: 0.0001, onInput: (v) => ((fillMemory.size = v), this.refreshPreview()) });
-        items.push({ type: "number", label: "Angle", value: fillMemory.angle, kind: "angle", onInput: (v) => ((fillMemory.angle = v), this.refreshPreview()) });
-        if (this.fillAt) {
-          items.push(apply("Apply", () => this.applyFill()));
-          if (this.sketch?.fills?.some((f) => f.id === this.fillId)) items.push({ type: "button", label: "Remove pattern", icon: "trash", onClick: () => this.applyFill(true) });
-        }
+        items.push({ type: "choice", label: "Pattern", options: FILL_KINDS.map((k) => ({ id: k.id, label: k.label })), value: fillMemory.kind, onChange: (k) => ((fillMemory.kind = k as SketchFill["kind"]), this.fillChanged()) });
+        items.push({ type: "number", label: kind.lines ? "Spacing %" : "Gap %", value: fillMemory.spacing, kind: "number", min: 0.01, onInput: (v) => ((fillMemory.spacing = v), this.fillChanged()) });
+        if (kind.sized) items.push({ type: "number", label: kind.lines ? (kind.id === "zigzag" ? "Tooth %" : "Wave %") : "Size %", value: fillMemory.size, kind: "number", min: 0.01, onInput: (v) => ((fillMemory.size = v), this.fillChanged()) });
+        items.push({ type: "number", label: "Angle", value: fillMemory.angle, kind: "angle", onInput: (v) => ((fillMemory.angle = v), this.fillChanged()) });
+        if (this.fillAt && this.sketch?.fills?.some((f) => f.id === this.fillId)) items.push({ type: "button", label: "Remove pattern", icon: "trash", onClick: () => this.applyFill(true) });
         break;
       }
       case "offset":
         // Edge: just the tapped curve. Chain: the whole connected outline, kept closed.
         items.push({ type: "choice", options: [{ id: "edge", label: "Edge" }, { id: "chain", label: "Chain" }], value: memory.offsetMode, onChange: (m) => {
           memory.offsetMode = m as "edge" | "chain";
+          this.edit.offsetMore = undefined;
           // (A body's edge was tapped: Chain is the whole outline of its face, brought in now.)
           if (this.edit.offsetEdge && m === "chain") return this.offsetFromEdge(this.edit.offsetEdge, this.edit.offsetAt);
           if (this.edit.offsetEdge) this.lightEdges(this.edit.offsetEdge);
@@ -1808,7 +1794,7 @@ export class SketchTool implements Tool {
                 : [];
           return ui.showPanel({
             title: this.selPts.length === 1 ? (lift ? "Spline point" : "Point") : `${this.selPts.length} points`,
-            items: [...xy, ...height, ...this.constraintChips(), ...this.deleteConstraintsItem()],
+            items: [...xy, ...height, ...this.constraintChips()],
             onDone: () => this.clearSelection(),
           });
         }
@@ -1828,7 +1814,6 @@ export class SketchTool implements Tool {
               ...angle,
               ...this.constraintChips(),
               { type: "button", label: "Construction", icon: "construction", onClick: () => this.toggleConstruction() },
-              ...this.deleteConstraintsItem(),
               { type: "button", label: "Delete", icon: "trash", onClick: () => this.deleteSelected() },
             ],
           });
@@ -1840,7 +1825,7 @@ export class SketchTool implements Tool {
     // still waited for a second tap, which on a phone lands wherever the finger is.
     const typed = this.pts.length > 0 && ["rect", "circle", "polygon", "ellipse", "line", "arc"].includes(k);
     // Phones: no card over the drawing while a shape is drawn - its values
-    // (X / Y of the first point, Length, Angle, Radius…) wait behind a small
+    // (Length, Angle, Radius…) wait behind a small
     // Values chip, and the finished curve's card shows when it's tapped in
     // Select. A spline keeps its Done beside the chip.
     if (!this.pts.length) this.valuesOpen = false;
@@ -1849,7 +1834,7 @@ export class SketchTool implements Tool {
       ui.showPanel({
         title: titleOf(k),
         items: [{ type: "button", label: "Values", icon: "numpad", onClick: () => ((this.valuesOpen = true), this.updatePanel(), this.refreshPreview()) }],
-        onDone: k === "spline" && this.pts.length >= 2 ? () => this.finishSpline(false) : undefined,
+        onDone: () => this.doneTool(),
       });
       return;
     }
@@ -1860,7 +1845,56 @@ export class SketchTool implements Tool {
       const key = it.type === "number" ? lockOf.get(it) : undefined;
       if (key && it.type === "number") this.liveLabels.set(key, { label: it.label, angle: it.kind === "angle" });
     }
-    ui.showPanel(items.length ? { title: k === "fillet" && memory.corner === "chamfer" ? "Chamfer" : titleOf(k), items, onCancel: this.pts.length ? () => this.resetDrawing() : undefined, onDone: k === "spline" && this.pts.length >= 2 ? () => this.finishSpline(false) : typed ? () => this.finishTyped() : undefined } : null);
+    // A tool that is on (not Select): the tick does what it has set up and puts it down, Cancel drops what is under
+    // way. (There with nothing to set too, while something is under way: a spline's points drawn with a mouse had no
+    // tick of their own, and the line's tick threw them away.)
+    const pending = k !== "select" && this.pendingWork();
+    ui.showPanel(items.length || pending ? { title: k === "fillet" && memory.corner === "chamfer" ? "Chamfer" : titleOf(k), items, onCancel: pending ? () => this.dropWork() : undefined, onDone: k !== "select" ? () => this.doneTool() : undefined } : null);
+  }
+
+  /** Has the tool that is on something under way: a point placed, a curve picked for it, values set and not applied? */
+  private pendingWork(): boolean {
+    const e = this.edit;
+    if (this.pts.length || this.filletEdit) return true;
+    if (e.offsetOf || e.extendFrom || e.alignFrom || e.filletFrom) return true;
+    // Curves picked for a move, a turn, a mirror or a pattern, with something set for it.
+    return this.isSelectionTool() && this.selected.size > 0 && (this.transformPending() || !!e.pivot);
+  }
+
+  /** Cancel while a tool is on: what it has under way is dropped. (Curves picked for a pattern or a move: the tool is put down, they stay picked.) */
+  private dropWork(): void {
+    if (this.isSelectionTool()) return this.setKind("select");
+    this.resetDrawing();
+    this.refreshPreview();
+  }
+
+  /**
+   * The tick while a tool is on. What the tool has set up is done - a typed size put in, a spline made of its
+   * points, the text set down, an offset or a pattern applied - and the tool is put down, so Draw, Modify,
+   * Transform and Delete are on the line again. (Enter does the first half and leaves the tool on, for the next.)
+   */
+  private doneTool(): void {
+    const k = this.kind;
+    if (k === "text") {
+      if (!this.pts.length || !this.text.trim()) return this.setKind("select");
+      return void this.commitText().then(() => this.kind === "text" && this.setKind("select"));
+    }
+    if (k === "spline") {
+      if (this.pts.length >= 2) this.finishSpline(false);
+      return this.setKind("select");
+    }
+    if (k === "line" || k === "rect" || k === "circle" || k === "arc" || k === "polygon" || k === "ellipse") {
+      // A size typed for the shape (or being typed, its values open on a phone): put in. The shape is made; a
+      // line carries on from there.
+      if (this.pts.length && (Object.keys(this.locks).length || this.valuesOpen || document.querySelector("input.invalid"))) return this.finishTyped();
+      return this.setKind("select");
+    }
+    if (k === "offset" && this.edit.offsetOf) {
+      this.applyOffset();
+      // (It could not be made: said, and still there to change.)
+      if (this.edit.offsetOf) return;
+    } else if (this.isSelectionTool() && this.selected.size && this.transformPending()) this.applyTransform();
+    this.setKind("select");
   }
 
   /** Pick a .ttf / .otf / .woff file and use it for the text. */
@@ -1931,6 +1965,7 @@ export class SketchTool implements Tool {
     // The pointer left the view: its snap hint ("Aligned", "Midpoint"...) goes
     // with it - it stayed up, stuck where the pointer last was.
     if (!p && this.phase === "draw") this.app.ui.clearPointerLabel();
+    if (!p && this.fillHot) ((this.fillHot = null), this.refreshPreview());
     if (!p || this.phase !== "draw" || this.dragging || this.sdrag) return;
     if (this.kind === "patternLinear" && this.patGimbal) {
       const g = this.patGimbal.hit(p);
@@ -1971,6 +2006,15 @@ export class SketchTool implements Tool {
       this.app.setHover(
         hit?.kind === "edge" ? { kind: "edge", body: hit.body, edge: hit.edge } : hit?.kind === "curve" ? { kind: "curve", sketch: hit.sketch, entity: hit.entity } : null,
       );
+      return;
+    }
+    if (this.kind === "fill") {
+      // Fill Pattern: the closed shape under the pointer lights up - that is what a tap fills. (No snap dot: no
+      // point is placed, and the dot said one would be.)
+      this.cursor = null;
+      const uv = this.uvAt(p);
+      const hot = uv ? this.fillRegionAt(uv) : null;
+      if (hot !== this.fillHot) ((this.fillHot = hot), this.refreshPreview());
       return;
     }
     this.cursor = this.snap(p);
@@ -2030,6 +2074,9 @@ export class SketchTool implements Tool {
     this.dragging = true;
     this.updatePanel();
     this.setHint();
+    // (Drawn now, its dot with it: a finger that only tapped left nothing on the grid where the centre went. No size
+    // label by the finger: there is no size yet.)
+    this.refreshPreview();
     return true;
   }
 
@@ -2703,7 +2750,9 @@ export class SketchTool implements Tool {
       this.dragBase = null;
       this.typing.reset();
       this.app.ui.setLabel(0, 0, null);
-      this.commit([...base, ...copies]);
+      // (The copy keeps what held its curves together: joined corners, level and upright lines, sizes.)
+      const all = [...base, ...copies];
+      this.commit(all, [...this.constraints, ...copiedConstraints(this.constraints, new Map(moved.map((e, i) => [e.id, copies[i].id])), all, uid)]);
       // The copies are selected: the next drag copies them again.
       this.selected = new Set(copies.map((e) => e.id));
       this.selPts = [];
@@ -2844,16 +2893,25 @@ export class SketchTool implements Tool {
   private quickSig = "";
 
   private showQuick(at: Vec3): void {
+    // (Switched off in Settings: none - nor are the constraints that fit worked out each time the gimbal is placed.)
+    if (!settings.value.quickButtons) return this.clearQuick();
     const sel = this.entities.filter((e) => this.selected.has(e.id));
     const cons = sel.length > 0 && sel.every((e) => e.construction);
     // (Made again only when the pick, its type or its place changed: this runs while it is dragged.)
-    const sig = `${this.kind}|${[...this.selected].join()}|${this.selPts.map((r) => r.e + r.p).join()}|${cons}|${at.map((v) => v.toFixed(4)).join()}`;
+    // (And when a constraint is put on or taken off: its button's list says which are on.)
+    const sig = `${this.kind}|${[...this.selected].join()}|${this.selPts.map((r) => r.e + r.p).join()}|${cons}|${at.map((v) => v.toFixed(4)).join()}|${this.constraints.map((c) => c.id).join()}`;
     if (sig === this.quickSig && this.quick) return;
     this.clearQuick();
     this.quickSig = sig;
+    // The constraints that fit what is picked (the same as on the line), a tap away beside it.
+    const chips = this.constraintChips().flatMap((p) => (p.type === "chips" ? p.chips : []));
+    const constraints: ToolItem[] = chips.length
+      ? [{ id: "constraints", label: "Constraints", icon: "constraints", children: chips.map((c, i): ToolItem => ({ id: `constraint-${i}`, label: c.label, icon: "constraints", glyph: c.glyph, active: !!c.on, run: () => c.onClick() })) }]
+      : [];
     const items: ToolItem[] = [
       ...(sel.length ? [{ id: "construction", label: cons ? "Regular" : "Construction", icon: cons ? "line" : "lineDashed", run: () => this.toggleConstruction() } as ToolItem] : []),
       ...(sel.length && this.kind !== "move" ? [{ id: "move", label: "Move", icon: "move", run: () => this.setKind("move") } as ToolItem] : []),
+      ...constraints,
       { id: "delete", label: "Delete", icon: "trash", run: () => this.deleteSelected() },
     ];
     this.quick = QuickActions.show(this.app.view, sel.length ? "curve" : "point", items, at, { gap: 110 });
@@ -2863,6 +2921,15 @@ export class SketchTool implements Tool {
     this.quick?.dispose();
     this.quick = null;
     this.quickSig = "";
+  }
+
+  /** Quick buttons switched on or off in Settings: the ones beside what is picked are made again, or go. */
+  quickSwitched(): void {
+    this.clearQuick();
+    this.refreshGimbal();
+    const sel = this.regionArrow?.sel;
+    const src = sel && sourcesOf(this.app, sel)[0];
+    if (sel && src) this.showRegionQuick(sel, src, sourceFrame(this.app, src));
   }
 
   /**
@@ -3007,30 +3074,42 @@ export class SketchTool implements Tool {
       case "dimension":
         return this.tapDimension(p);
       case "fill": {
-        // Inside a closed shape: that shape is the one to fill (one with a pattern already: that pattern, to change).
+        // Inside a closed shape: it is filled at once, as the pattern is set now - one tap, and its sizes can be
+        // changed after. (It took a second tap, on Apply, for the pattern to stay.) One with a pattern already:
+        // that pattern, to change.
         const uv = this.uvAt(p);
-        const region = uv && fillRegion(this.entities, uv);
+        const region = uv && this.fillRegionAt(uv);
         if (!uv || !region) return void this.app.ui.toast("Tap inside a closed shape");
-        const had = (this.sketch?.fills ?? []).find((f) => fillRegion(this.entities, f.at)?.index === region.index);
-        // (Another shape tapped with one waiting: the one waiting is put in first.)
-        if (this.fillAt && this.fillId !== (had?.id ?? null) && !this.sketch?.fills?.some((f) => f.id === this.fillId)) this.applyFill(false, true);
-        if (had) Object.assign(fillMemory, { kind: had.kind, spacing: had.spacing, angle: had.angle, size: had.size });
-        this.fillAt = had?.at ?? uv;
-        this.fillId = had?.id ?? uid();
-        this.updatePanel();
-        this.refreshPreview();
-        return this.setHint(had ? "Change its pattern or its sizes, then Apply - or Remove pattern." : "Pick the pattern and its sizes, then Apply. Or tap another shape.");
+        const had = (this.sketch?.fills ?? []).find((f) => this.fillRegionAt(f.at)?.index === region.index);
+        if (had) {
+          // (Its sizes as shares of the shape: one made in mm is shown as what that comes to.)
+          const k = had.rel ? 1 : 1 / fillUnit(region);
+          Object.assign(fillMemory, { kind: had.kind, spacing: had.spacing * k, angle: had.angle, size: had.size * k, rel: true });
+          this.fillAt = had.at;
+          this.fillId = had.id;
+          this.updatePanel();
+          this.refreshPreview();
+          return this.setHint("Change its pattern or its sizes: it follows at once. Or Remove pattern.");
+        }
+        this.fillAt = uv;
+        this.fillId = uid();
+        // (Not put in - too fine, or nothing fits: said, and it is this shape's still, once a size is changed.)
+        if (!this.applyFill()) (this.updatePanel(), this.refreshPreview());
+        return;
       }
       case "offset":
         // The face's own edge too (it isn't a curve of the sketch the view picks) -
         // also when an offset of it made before runs close by and the tap is
         // nearer the edge (a second lip line 2 mm further in).
         {
+          // (Edge, with an offset set up: another edge tapped goes with it.)
+          if (this.addOffsetEdge(p)) return;
           const c = this.curveAt(p);
           const o = this.outlineAt(p);
           const link = c?.id.startsWith("lnk-") ? this.boundary.find((x) => x.id === c.id) : undefined;
           const nearer = o && link && o.d <= Math.min(...entityPrims(link).map((pr) => closestOnPrim(pr, o.uv).d));
           if (o && (!c || nearer)) {
+            this.edit.offsetMore = undefined;
             this.edit.offsetAt = o.uv;
             this.edit.offsetOf = o.e.id;
             memory.offset = this.inward(Math.abs(defaultOffset(o.e)));
@@ -3051,6 +3130,7 @@ export class SketchTool implements Tool {
           }
         }
         return this.tapCurve(p, (id, uv) => {
+          this.edit.offsetMore = undefined;
           // An offset of the face's edge, offset again: another offset of that same edge, this much further from it
           // - it follows the face too. (It was
           // refused: "an offset of the face's edge already".)
@@ -3067,7 +3147,7 @@ export class SketchTool implements Tool {
             this.lightEdges(null);
             this.updatePanel();
             this.refreshPreview();
-            return this.setHint("Another offset of the same edge: set how much further, then Apply. Flip puts it on the other side of this line.");
+            return this.setHint("Another offset of the same edge: set how much further, then Apply. Flip: the other side.");
           }
           // The face's own edge: its whole outline, offset inward to start, and
           // linked - it's made again from the face when the face changes.
@@ -3087,6 +3167,7 @@ export class SketchTool implements Tool {
           this.lightEdges(null);
           this.updatePanel();
           this.refreshPreview();
+          if (memory.offsetMode === "edge") this.setHint("Set the distance (Flip for the other side). Tap more edges to offset them with it; then the tick.");
         });
       case "fillet":
         return this.tapFillet(p);
@@ -3890,7 +3971,7 @@ export class SketchTool implements Tool {
     if (this.kind === "spline") return this.finishSpline(false);
     if (this.kind === "text" && this.pts.length) return void this.commitText();
     if (this.kind === "offset" && this.edit.offsetOf) return this.applyOffset();
-    if (this.kind === "fill" && this.fillAt) return this.applyFill();
+    if (this.kind === "fill" && this.fillAt) return void this.applyFill();
     if (this.isSelectionTool() && this.selected.size) return this.applyTransform();
     // A size typed: placed as Done would (the first point typed on a phone
     // leaves no pointer to go by - the shape went, before).
@@ -4096,7 +4177,7 @@ export class SketchTool implements Tool {
     this.lockIndex = 0;
     this.typing.reset();
     this.edit.picking = undefined;
-    this.edit.offsetOf = this.edit.offsetEdge = this.edit.offsetGrip = undefined;
+    this.edit.offsetOf = this.edit.offsetEdge = this.edit.offsetGrip = this.edit.offsetMore = undefined;
     this.lightEdges(null);
     this.dropOffsetGrip();
     this.edit.extendFrom = this.edit.alignFrom = undefined;
@@ -4286,6 +4367,13 @@ export class SketchTool implements Tool {
       else if (this.pts.length === 1) this.drawGhosts([{ id: "slot-axis", kind: "line", a: this.pts[0], b: c }], 0xffc23d, true);
     }
     if (!keepLineDim && !(this.kind === "line" && this.pts.length && c)) this.hideLineDim();
+    // The points a shape has so far, each a yellow dot: on a phone a rectangle's centre was not shown once the finger
+    // came up (the dot went with the finger, and nothing else was drawn till the next tap).
+    if (["arc", "rect", "circle", "polygon", "ellipse", "spline"].includes(this.kind) && this.pts.length) {
+      const m = new Points(new BufferGeometry().setFromPoints(this.pts.map((q) => sketchToWorld(this.plane!, q, 0.015))), dotMaterial({ color: 0xffc23d, size: 10 }));
+      m.renderOrder = 10;
+      this.addOverlay(m);
+    }
     if (this.kind === "text" && this.pts.length) {
       void textEntities(this.text || " ", this.pts[0], memory.textSize, 0, memory.textFont, memory.textAlign).then((es) => {
         if (this.kind !== "text" || !this.pts.length) return;
@@ -4293,7 +4381,7 @@ export class SketchTool implements Tool {
       });
     }
     if (this.kind === "offset" && this.edit.offsetOf) ghosts.push(...this.offsetResult());
-    if (this.kind === "fill" && this.fillAt) ghosts.push(...(this.fillNow()?.curves ?? []));
+    if (this.kind === "fill" && this.fillHot) this.drawRegion(this.fillHot);
     if (this.isSelectionTool() && this.selected.size) ghosts.push(...this.transformed(true));
     // Rotate About: the point it turns around, and the path the selection's centre takes round it.
     if ((this.kind === "rotate" || this.kind === "patternCircular") && this.edit.pivot && this.selected.size) {
@@ -4328,7 +4416,7 @@ export class SketchTool implements Tool {
       if (axis) this.drawMirrorAxis(axis);
     }
     // Midpoints of lines and sides: snap targets, shown so you can aim for them.
-    if (settings.value.showGuidePoints) {
+    if (settings.value.showGuidePoints && this.kind !== "fill") {
       const mids = [...this.entities, ...this.boundary].flatMap((e) => guidePoints(e).filter((g) => g.kind === "mid").map((g) => sketchToWorld(this.plane!, g.p, 0.01)));
       if (mids.length) {
         const m = new Points(new BufferGeometry().setFromPoints(mids), new PointsMaterial({ color: 0x9fb4d6, size: 6, sizeAttenuation: false, depthTest: false, transparent: true, opacity: 0.85 }));
@@ -4596,7 +4684,7 @@ export class SketchTool implements Tool {
     this.addOverlay(m);
   }
 
-  private addOverlay(o: Line | Points): void {
+  private addOverlay(o: Line | Points | Mesh): void {
     this.overlays.push(o);
     this.app.view.overlay.add(o);
   }
@@ -5257,7 +5345,15 @@ export class SketchTool implements Tool {
     handle.set(fr.base, fr.normal);
     this.regionArrow = { sel, handle };
     this.app.setSelection(sel);
-    // What the shape can be made into, beside it. Each leaves the sketch and starts on the shapes picked.
+    this.showRegionQuick(sel, src, fr);
+  }
+
+  /**
+   * What the shape tapped can be made into, beside it: each leaves the sketch and starts on the shapes picked. With
+   * Quick buttons switched off (Settings) there are none: the arrow pulls the shape up, the other three are under
+   * Create once the sketch is left, and the guide text says so.
+   */
+  private showRegionQuick(sel: Sel[], src: ExtrudeSource, fr: { base: Vec3; normal: Vec3 }): void {
     const app = this.app;
     const start = (make: () => Tool) => () => {
       this.hideRegionArrow();
@@ -5276,7 +5372,7 @@ export class SketchTool implements Tool {
       fr.base,
       { facing: fr.normal, gap: 70 },
     );
-    this.setHint("Drag the arrow to pull the shape into 3D, or pick what to make of it.");
+    this.setHint(this.regionQuick ? "Drag the arrow to pull the shape into 3D, or pick what to make of it." : "Drag the arrow to pull the shape into 3D. Revolve, Sweep and Loft: tap Exit, then Create.");
   }
 
   /** The tools for the shape tapped in the sketch (Extrude, Revolve, Sweep, Loft), beside it. */
@@ -5385,6 +5481,7 @@ export class SketchTool implements Tool {
     this.app.setSelection([
       ...[...this.selected].map((entity) => ({ kind: "curve" as const, sketch: this.sketchId!, entity })),
       ...this.selPts.map((r) => ({ kind: "point" as const, sketch: this.sketchId!, entity: r.e, p: r.p })),
+      ...this.offsetPicked().map((entity) => ({ kind: "curve" as const, sketch: this.sketchId!, entity })),
       ...this.offsetLit,
     ]);
     this.refreshGimbal();
@@ -5745,6 +5842,9 @@ export class SketchTool implements Tool {
     if (this.kind === "patternCircular" && !this.edit.pivot) return this.app.ui.toast("Tap the centre of the pattern first");
     if (this.kind === "mirror" && !this.edit.mirrorLine) return this.app.ui.toast("Pick the mirror line");
     let results = this.transformed(false);
+    // (Each curve picked and what was made of it, in that order: a copy takes its original's constraints.)
+    const from = this.entities.filter((e) => this.selected.has(e.id));
+    const made = results;
     // Mirroring across one of the shape's own edges: that edge maps onto itself - don't double it.
     const ml = this.edit.mirrorLine;
     if (this.kind === "mirror" && ml) {
@@ -5794,6 +5894,14 @@ export class SketchTool implements Tool {
       });
     }
     const base = keepOriginals ? this.entities : this.entities.filter((e) => !this.selected.has(e.id));
+    // A copy that stands by itself - moved, turned or scaled with Copy on - keeps what held its curves together:
+    // joined corners, level and upright lines, sizes. (A pattern's copies and a mirror's follow their originals.)
+    if (keepOriginals && (this.kind === "move" || this.kind === "rotate" || this.kind === "scale") && made.length === from.length) {
+      const kept = new Set(results);
+      const ids = new Map<string, string>();
+      from.forEach((e, i) => kept.has(made[i]) && ids.set(e.id, made[i].id));
+      links.push(...copiedConstraints(this.constraints, ids, [...base, ...results], uid));
+    }
     // Moved (not copied): ties between what moves and what stays let go, and
     // so do pins holding the moved curves in place - an arch's circle snapped
     // to its window's corner dragged the window along when moved to the middle.
@@ -5868,28 +5976,68 @@ export class SketchTool implements Tool {
     return got ? { fill, ...got } : null;
   }
 
-  /** The pattern put in the sketch (or taken out of it); the tool stays on for the next shape. */
-  private applyFill(remove = false, quiet = false): void {
+  /**
+   * The pattern put in the sketch (or taken out of it). It stays the one being set - a size changed next is its -
+   * and the tool stays on for the next shape. False: it could not be put in (said why).
+   */
+  private applyFill(remove = false): boolean {
     const now = this.fillNow();
     const others = (this.sketch?.fills ?? []).filter((f) => f.id !== this.fillId);
     if (!remove) {
-      if (!now) return void this.app.ui.toast("That shape is no longer closed");
-      if (now.tooMany) return void this.app.ui.toast("That is too fine: thousands of curves. Make the spacing bigger.");
-      if (!now.curves.length) return void this.app.ui.toast("Nothing fits in the shape at these sizes. Make them smaller.");
+      if (!now) return this.app.ui.toast("That shape is no longer closed"), false;
+      if (now.tooMany) return this.app.ui.toast("That is too fine: thousands of curves. Make the spacing bigger."), false;
+      if (!now.curves.length) return this.app.ui.toast("Nothing fits in the shape at these sizes. Make them smaller."), false;
     }
     this.opLabel = remove ? "Remove pattern" : "Fill Pattern";
     this.commit(this.entities, this.constraints, [], remove ? others : [...others, now!.fill]);
-    this.fillAt = this.fillId = null;
-    if (quiet) return;
+    if (remove) this.fillAt = this.fillId = null;
     this.updatePanel();
     this.refreshPreview();
-    this.setHint(remove ? "Pattern removed. Tap inside a closed shape to fill it." : "Filled. The strips and cells are shapes of their own now: exit the sketch to extrude or cut them. Or tap another shape.");
+    this.setHint(remove ? "Pattern removed. Tap inside a closed shape to fill it." : "Filled. Change its pattern or sizes here, or tap another shape. Exit the sketch to extrude the strips.");
+    return true;
+  }
+
+  /** Its pattern or one of its sizes changed: the shape being set is filled again at once (nothing to apply). */
+  private fillChanged(): void {
+    if (this.fillAt && this.applyFill()) return;
+    this.updatePanel();
+    this.refreshPreview();
+  }
+
+  /** Fill Pattern: the closed shape under the pointer (lit: a tap fills it). */
+  private fillHot: Region | null = null;
+  /** The sketch's closed shapes - its own curves, fills' left out - for the curves as they are (asked on every move of the pointer). */
+  private fillShapes: { of: SketchEntity[]; regions: Region[] } | null = null;
+  private fillRegionAt(uv: Vec2): Region | null {
+    if (this.fillShapes?.of !== this.entities) this.fillShapes = { of: this.entities, regions: arrangement(withoutFills(this.entities)).regions };
+    return regionAt(this.fillShapes.regions, uv);
+  }
+
+  /** A closed shape lit: tinted, its outline drawn over. */
+  private drawRegion(r: Region): void {
+    const plane = this.plane!;
+    const loops = [r.outer.poly, ...r.holes.map((h) => h.poly)];
+    const flat = (lift: number) => loops.flat().map((q) => sketchToWorld(plane, q, lift));
+    const faces = ShapeUtils.triangulateShape(r.outer.poly.map((q) => new Vector2(q[0], q[1])), r.holes.map((h) => h.poly.map((q) => new Vector2(q[0], q[1]))));
+    const geo = new BufferGeometry().setFromPoints(flat(0.012));
+    geo.setIndex(faces.flat());
+    const tint = new Mesh(geo, new MeshBasicMaterial({ color: 0x7fb2ff, transparent: true, opacity: 0.3, depthTest: false, side: DoubleSide }));
+    tint.renderOrder = 8;
+    this.addOverlay(tint);
+    for (const loop of loops) {
+      const line = new Line(new BufferGeometry().setFromPoints([...loop, loop[0]].map((q) => sketchToWorld(plane, q, 0.02))), new LineBasicMaterial({ color: 0x7fb2ff, depthTest: false }));
+      line.renderOrder = 9;
+      this.addOverlay(line);
+    }
   }
 
   private offsetResult(): SketchEntity[] {
     const id = this.edit.offsetOf;
     // (Of the face's own outline: Edge is just the edge tapped, Chain the whole loop it is part of.)
-    if (id?.startsWith("bnd-") && this.edit.offsetAt) return outlineOffsetCurves(this.outline, [{ id: "new", distance: memory.offset, at: this.edit.offsetAt, ...(memory.offsetMode === "edge" ? { single: true } : {}) }]);
+    if (id?.startsWith("bnd-") && this.edit.offsetAt) {
+      const also = this.offsetExtras().map((m) => m.at);
+      return outlineOffsetCurves(this.outline, [{ id: "new", distance: memory.offset, at: this.edit.offsetAt, ...(memory.offsetMode === "edge" ? { single: true, ...(also.length ? { also } : {}) } : {}) }]);
+    }
     // (Of an offset of the face's edge: that edge offset again, this much further than the first.)
     if (id?.startsWith("lnk-") && this.edit.offsetLink) {
       const first = this.edit.offsetLink;
@@ -5899,15 +6047,77 @@ export class SketchTool implements Tool {
     if (!id || !src) return [];
     // (From a body's edge: the guide it is made from is dashed, the offset is a curve like any other.)
     const real = (es: SketchEntity[]) => (this.edit.offsetEdge ? es.map((e) => ({ ...e, construction: this.construction || undefined })) : es);
-    if (memory.offsetMode === "chain" && (src.kind === "line" || src.kind === "arc" || (src.kind === "spline" && !src.closed))) {
+    if (memory.offsetMode === "chain" && (src.kind === "line" || src.kind === "arc" || (src.kind === "spline" && !src.closed) || (src.kind === "ellipse" && src.sweep !== undefined))) {
       // (A chain is walked along the sketch's own curves, not its dashed ones: the guides of this edge count as its own here.)
       const guides = new Set(this.edit.offsetEdge ? (this.edit.offsetGuides ?? []) : []);
       const pool = guides.size ? this.entities.map((e) => (guides.has(e.id) ? { ...e, construction: undefined } : e)) : this.entities;
       const all = offsetChain(pool, id, memory.offset);
       if (all) return real(all.slice(pool.length));
     }
+    // Edge, with more edges tapped: all of them at this distance - those that join end to end as one run, their
+    // corners kept (not the whole outline, as Chain takes).
+    const more = this.offsetExtras().map((m) => this.entities.find((e) => e.id === m.id)).filter((e): e is SketchEntity => !!e);
+    if (more.length) {
+      const made = offsetSeveral([src, ...more], memory.offset);
+      // (Dashed ones only: what is made of them is dashed too.)
+      return [src, ...more].every((e) => e.construction) ? made.map((e) => ({ ...e, construction: true })) : made;
+    }
     const o = offsetEntity(src, memory.offset);
     return o ? real([o]) : [];
+  }
+
+  /** Offset Edge, Edge: the edges tapped after the first, while an offset of a curve of the sketch or of the face's outline is set up. */
+  private offsetExtras(): { id: string; at: Vec2; edge?: { body: string; edge: number } | null }[] {
+    const of = this.edit.offsetOf;
+    return this.kind === "offset" && memory.offsetMode === "edge" && of && !of.startsWith("lnk-") && !this.edit.offsetEdge ? (this.edit.offsetMore ?? []) : [];
+  }
+
+  /** ... and all of them that are curves of the sketch, the first too, once there is more than one (shown picked). */
+  private offsetPicked(): string[] {
+    const more = this.offsetExtras();
+    const of = this.edit.offsetOf;
+    return more.length && of && !of.startsWith("bnd-") ? [of, ...more.map((m) => m.id)] : [];
+  }
+
+  /**
+   * Offset Edge, Edge, with an offset set up and another edge tapped: that edge goes with it (tapped again, it is
+   * let go) - several edges at one distance, where Chain takes the whole outline. True: the tap was that.
+   */
+  private addOffsetEdge(p: ToolPointer): boolean {
+    const seed = this.edit.offsetOf;
+    if (this.kind !== "offset" || memory.offsetMode !== "edge" || !seed || seed.startsWith("lnk-") || this.edit.offsetEdge) return false;
+    const outline = seed.startsWith("bnd-");
+    const c = this.curveAt(p);
+    const own = !!c && !c.id.startsWith("bnd-") && !c.id.startsWith("lnk-");
+    let hit: { id: string; at: Vec2; edge?: { body: string; edge: number } | null };
+    if (outline) {
+      // (Of the face's own outline: another of its edges - not a curve drawn on the face.)
+      const o = own ? null : this.outlineAt(p);
+      if (!o) return false;
+      const under = this.app.view.pick(p.x, p.y, { profiles: false, planes: false, axes: false, curves: false, edgeTolPx: p.tol });
+      hit = { id: o.e.id, at: o.uv, edge: under?.kind === "edge" ? { body: under.body, edge: under.edge } : null };
+    } else {
+      if (!c || !own) return false;
+      hit = { id: c.id, at: c.uv };
+    }
+    const more = this.offsetExtras();
+    if (hit.id === seed) {
+      // The first one tapped again: let go, and the next of them is the first. (Alone: as ever - it starts over.)
+      if (!more.length) return false;
+      const [next, ...rest] = more;
+      this.edit.offsetOf = next.id;
+      if (outline) ((this.edit.offsetAt = next.at), (this.outlineEdge = next.edge ?? null));
+      else this.edit.offsetGrip = next.at;
+      this.edit.offsetMore = rest;
+      this.dropOffsetGrip();
+    } else this.edit.offsetMore = more.some((m) => m.id === hit.id) ? more.filter((m) => m.id !== hit.id) : [...more, hit];
+    this.lightEdges(outline ? this.outlineEdge : null);
+    this.showSelection();
+    this.updatePanel();
+    this.refreshPreview();
+    const n = this.offsetExtras().length + 1;
+    this.setHint(n > 1 ? `${n} edges, offset together. Tap another to add it, one of them again to let it go; then the tick.` : "Set the distance (Flip for the other side). Tap more edges to offset them with it; then the tick.");
+    return true;
   }
 
   /**
@@ -6051,8 +6261,9 @@ export class SketchTool implements Tool {
   /** The body edges an offset is being made from, lit while it is set up (what was tapped - a finger has no pointer to hover with). */
   private offsetLit: Sel[] = [];
   private lightEdges(hit: { body: string; edge: number } | null): void {
-    if (!hit && !this.offsetLit.length) return;
-    this.offsetLit = hit ? this.edgesFor(hit).map((edge) => ({ kind: "edge" as const, body: hit.body, edge })) : [];
+    const more = hit || this.offsetExtras().length ? this.offsetExtras().flatMap((m) => (m.edge ? [{ kind: "edge" as const, body: m.edge.body, edge: m.edge.edge }] : [])) : [];
+    if (!hit && !more.length && !this.offsetLit.length) return;
+    this.offsetLit = [...(hit ? this.edgesFor(hit).map((edge) => ({ kind: "edge" as const, body: hit.body, edge })) : []), ...more];
     this.showSelection();
   }
 
@@ -6096,6 +6307,7 @@ export class SketchTool implements Tool {
     if (!src) return;
     this.edit.offsetEdge = hit;
     this.edit.offsetGuides = guides;
+    this.edit.offsetMore = undefined;
     this.edit.offsetAt = at;
     this.edit.offsetOf = seed;
     // (A whole outline starts inside it - a lip, a pocket's edge - as the face's own outline does; one edge keeps the side it went last.)
@@ -6103,7 +6315,7 @@ export class SketchTool implements Tool {
     this.updatePanel();
     this.refreshPreview();
     this.lightEdges(hit);
-    this.setHint("Set the distance (Flip for the other side), then Apply. The dashed line is the body's edge: the offset is made from it.");
+    this.setHint("Set the distance (Flip: the other side), then Apply. The dashed line is the body's edge.");
   }
 
   private applyOffset(): void {
@@ -6124,7 +6336,8 @@ export class SketchTool implements Tool {
     }
     // Of the face's outline: kept as a link to it, not as curves of their own.
     if (this.edit.offsetOf?.startsWith("bnd-") && this.edit.offsetAt) {
-      const link = { id: uid(), distance: memory.offset, at: this.edit.offsetAt, ...(memory.offsetMode === "edge" ? { single: true } : {}) };
+      const also = this.offsetExtras().map((m) => m.at);
+      const link = { id: uid(), distance: memory.offset, at: this.edit.offsetAt, ...(memory.offsetMode === "edge" ? { single: true, ...(also.length ? { also } : {}) } : {}) };
       // (Nothing drawn on it yet: the sketch is made with the offset in it - one step.)
       if (!this.sketchId) {
         const f: SketchFeature = { ...(this.pending ?? this.app.store.newIdentity("sketch")), type: "sketch", plane: this.plane!, attachedTo: this.attachedTo, onPlane: this.onPlane, entities: [], constraints: [], outlineOffsets: [link] };
@@ -6153,7 +6366,8 @@ export class SketchTool implements Tool {
       const srcId = this.edit.offsetOf;
       const src = this.entities.find((e) => e.id === srcId);
       const linkable = (e: SketchEntity) => e.kind === "line" || e.kind === "arc" || e.kind === "circle" || e.kind === "rect" || e.kind === "polygon" || e.kind === "ellipse";
-      if (made.length === 1 && src && linkable(src) && made[0].kind === src.kind && JSON.stringify({ ...offsetEntity(src, d), id: "" }) === JSON.stringify({ ...made[0], id: "", construction: src.construction })) {
+      // (An ellipse's offset is a spline: no ellipse is the same distance from another all round. It follows it too.)
+      if (made.length === 1 && src && linkable(src) && (made[0].kind === src.kind || src.kind === "ellipse") && JSON.stringify({ ...offsetEntity(src, d), id: "" }) === JSON.stringify({ ...made[0], id: "", construction: src.construction })) {
         cs.push({ id: uid(), type: "follow", curves: [src.id, made[0].id], how: { offset: d } });
       } else {
         const tol = 1e-6 * Math.max(1, Math.abs(d));
@@ -6186,11 +6400,20 @@ export class SketchTool implements Tool {
         }
       }
     }
+    // (A spline among them - a spline's offset, or that of part of an ellipse - is joined by its end points too: it
+    // was left loose, and the outline came apart there at the first drag.)
+    const tip = (e: SketchEntity, last: boolean): { p: string; at: Vec2 } | null => {
+      if (e.kind === "line" || e.kind === "arc") return { p: last ? "b" : "a", at: last ? e.b : e.a };
+      const ends = splineEnds(e);
+      if (!ends || e.kind !== "spline") return null;
+      const k = last ? e.points.length - 1 : 0;
+      // (Only where the curve does end on its end point.)
+      return Math.hypot(e.points[k][0] - ends[last ? 1 : 0][0], e.points[k][1] - ends[last ? 1 : 0][1]) < 1e-9 ? { p: `k${k}`, at: e.points[k] } : null;
+    };
     for (let i = 0; i < made.length; i++) {
-      const a = made[i];
-      const b = made[(i + 1) % made.length];
-      if (made.length > 1 && (a.kind === "line" || a.kind === "arc") && (b.kind === "line" || b.kind === "arc") && Math.hypot(a.b[0] - b.a[0], a.b[1] - b.a[1]) < 1e-9)
-        cs.push({ id: uid(), type: "coincident", pts: [{ e: a.id, p: "b" }, { e: b.id, p: "a" }] });
+      const [a, b] = [made[i], made[(i + 1) % made.length]];
+      const [ta, tb] = [tip(a, true), tip(b, false)];
+      if (made.length > 1 && a !== b && ta && tb && Math.hypot(ta.at[0] - tb.at[0], ta.at[1] - tb.at[1]) < 1e-9) cs.push({ id: uid(), type: "coincident", pts: [{ e: a.id, p: ta.p }, { e: b.id, p: tb.p }] });
     }
     this.commitAdd(made, cs);
     this.edit.offsetOf = this.edit.offsetEdge = undefined;
@@ -6641,9 +6864,8 @@ export class SketchTool implements Tool {
     }
     items.push(
       ...this.constraintChips(),
-      { type: "toggle", label: "Construction", value: !!e.construction, onChange: () => this.toggleConstruction() },
+      { type: "toggle", label: "Construction", icon: "construction", value: !!e.construction, onChange: () => this.toggleConstruction() },
       ...(e.kind === "rect" || e.kind === "polygon" ? [{ type: "button", label: "Explode", icon: "line", onClick: () => this.explodeShape(id) } as PanelItem] : []),
-      ...this.deleteConstraintsItem(),
       { type: "button", label: "Delete", icon: "trash", onClick: () => this.deleteSelected() },
     );
     this.app.ui.showPanel({ title: titleOf(e.kind as Kind), items, onDone: () => this.clearSelection() });

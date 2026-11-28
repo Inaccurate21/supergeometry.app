@@ -19,11 +19,13 @@ export interface SnapCandidate {
  * (nothing to keep) and stayed behind when the line moved.
  */
 export function nearestSnap<T extends SnapCandidate>(cands: T[], tol: number): T | null {
-  const keeps = (x: SnapCandidate) => !!(x.ref || x.mid || x.model);
+  // (A curve's own point first: it can be joined to. The origin is held to as well, but where a line ends on the
+  // origin, an arc drawn from there was held to the origin and not joined to the line - it came off it.)
+  const keeps = (x: SnapCandidate) => (x.ref ? 2 : x.mid || x.model ? 1 : 0);
   let best: T | null = null;
   for (const c of cands) {
     if (c.d >= tol) continue;
-    if (!best || c.d < best.d - 0.5 || (c.d < best.d + 0.5 && keeps(c) && !keeps(best))) best = c;
+    if (!best || c.d < best.d - 0.5 || (c.d < best.d + 0.5 && keeps(c) > keeps(best))) best = c;
   }
   return best;
 }

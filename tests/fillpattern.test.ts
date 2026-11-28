@@ -119,4 +119,26 @@ for (const kind of ["zigzag", "waves"] as const) {
   const cell = (Math.sqrt(3) / 2) * 16;
   check("a honeycomb's cells extruded 3: each cell's area times 3", !r3.errors.length && near(v3, cells.length * cell * 3, 1e-2), `${cells.length} cells, ${v3.toFixed(2)} for ${(cells.length * cell * 3).toFixed(2)} ${r3.errors.join("; ")}`);
 }
+
+// ---- sizes as a share of the shape (rel): the same pattern on a shape of any size
+{
+  const sq = (s: number) => [rect("r", 0, 0, s, s)];
+  const rows = (s: number, extra: Partial<SketchFill> = {}) => fillCurves(sq(s), { id: "f1", at: [s / 2, s / 2], kind: "lines", spacing: 5, angle: 0, size: 8, rel: true, ...extra })!.curves;
+  const small = rows(100);
+  const ys = small.map((e) => (e as { a: Vec2 }).a[1]).sort((a, b) => a - b);
+  check("5 % on a square 100 across: lines 5 apart, nineteen of them", small.length === 19 && near(ys[1] - ys[0], 5, 1e-9), `${small.length} lines, ${ys[1] - ys[0]} apart`);
+  const big = rows(5000);
+  const yb = big.map((e) => (e as { a: Vec2 }).a[1]).sort((a, b) => a - b);
+  check("  on one 5000 across: nineteen again, 250 apart (in mm it was thousands, refused as too fine)", big.length === 19 && near(yb[1] - yb[0], 250, 1e-6), `${big.length} lines, ${yb[1] - yb[0]} apart`);
+  check("  2 mm apart on the big one is still refused as too fine (fills made in mm keep their mm)", fillCurves(sq(5000), { id: "f1", at: [2500, 2500], kind: "lines", spacing: 2, angle: 0, size: 3 })!.tooMany === true);
+  // The shape made bigger: the pattern grows with it (as many rows as before).
+  const grown = refill(sq(300), [{ id: "f1", at: [50, 50], kind: "lines", spacing: 5, angle: 0, size: 8, rel: true }]).filter((e) => fillOf(e.id));
+  check("  the shape grown to 300: its nineteen lines are 15 apart now", grown.length === 19, grown.length);
+  // A long thin shape: by its area, not its longest side - 5 % of a 400 x 25 strip is 5 mm.
+  const strip = fillCurves([rect("r", 0, 0, 400, 25)], { id: "f1", at: [200, 12], kind: "lines", spacing: 5, angle: 0, size: 8, rel: true })!.curves;
+  check("  a strip 400 x 25 (as big as a square of 100): lines 5 apart across it", strip.length === 4 || strip.length === 5, strip.length);
+  // Shapes inside: their size and gap scale together.
+  const dots = (s: number) => fillCurves(sq(s), { id: "f1", at: [s / 2, s / 2], kind: "dots", spacing: 5, angle: 0, size: 8, rel: true })!.curves;
+  check("  dots: as many on a square of 100 as on one of 1000, ten times the size", dots(100).length > 20 && dots(100).length === dots(1000).length && near((dots(1000)[0] as { radius: number }).radius, 40, 1e-9), `${dots(100).length} / ${dots(1000).length}`);
+}
 done();

@@ -5,7 +5,7 @@ import type { ThreadFeature } from "../doc/types";
 import { fillEdgeKey } from "../doc/types";
 import { defaultPitch, threadLabel } from "../kernel/threads";
 import type { AxisFeature, AxisKind, AxisRef, ConnectFeature, EdgeFeature, EdgeRef, ExtrudeFeature, ExtrudeSource, FaceRef, FillFeature, FillToPlaneFeature, ImageFeature, LoftFeature, MoveFaceFeature, PathRef, PlaneDef, PlaneFeature, ReplaceFaceFeature, RevolveFeature, ScaleFaceFeature, ShellFeature, SketchFeature, SplitFeature, SweepFeature, TransformFeature, Vec3 } from "../doc/types";
-import { FRONT, GROUND, RIGHT, add, cross, dot, len, norm, niceStep, patternSpacing, roundSig, scale, sub, xDirFor } from "../geom";
+import { FRONT, GROUND, RIGHT, add, cross, dot, len, norm, niceStep, patternSpacing, roundSig, scale, startSize, sub, xDirFor } from "../geom";
 import type { PanelItem, ToolItem } from "../ui/ui";
 import { QuickActions } from "./quickActions";
 import { evaluate, fmtLen } from "../units";
@@ -72,7 +72,13 @@ export interface ExtrudeOptions {
  * face) or Offset (how far the face moves). Negative offsets cut.
  */
 /** The last extrude distance used: a new one from the Extrude button starts there. */
-export const lastExtrude = { distance: 10 };
+/**
+ * `chosen`: the Operation chosen by hand for a shape of a sketch - the next shapes of that sketch start with it.
+ * (Several shapes of one sketch made bodies one after another: New body had to be chosen again for each, where
+ * a shape touched the body made before and Auto would add to it.) Of that sketch only: a Cut chosen once does
+ * not wait in ambush for an extrude somewhere else.
+ */
+export const lastExtrude: { distance: number; set?: boolean; chosen?: { sketch: string; mode: ExtrudeFeature["mode"] } } = { distance: 10 };
 
 export class ExtrudeOp extends FeatureOp<ExtrudeFeature> {
   readonly id = "extrude";
@@ -88,7 +94,10 @@ export class ExtrudeOp extends FeatureOp<ExtrudeFeature> {
     const label = source.kind === "face" && mode !== "new" ? "Offset Face" : undefined;
     super(app, { ...app.store.newIdentity("extrude", label), type: "extrude", source, distance: opts.distance ?? 0, mode, target: targetOf(app, source) }, existing);
     // Auto by the way it goes: + a new body (or added to the body it is drawn on), - a cut.
-    if (!existing) this.feature.byDirection = true;
+    if (!existing) (this.feature.byDirection = true), (this.feature.separate = true);
+    // (Started with no Operation asked for, on a sketch one was chosen for by hand: that one.)
+    const kept = lastExtrude.chosen;
+    if (!existing && mode === "auto" && source.kind === "profile" && kept && kept.sketch === source.sketch && kept.mode !== "auto") this.feature.mode = kept.mode;
     this.frame = sourceFrame(app, this.feature.source);
     this.handle = new Handle(app.view, "arrow");
     if (this.feature.extent === "to") this.slots = [this.upToSlot()];
@@ -201,7 +210,7 @@ export class ExtrudeOp extends FeatureOp<ExtrudeFeature> {
     if (this.feature.extent === "through") return "It goes through every body in its way. Flip direction turns it the other way.";
     if (this.feature.extent === "to") return "It stops at the face or plane picked (a round face too).";
     // (A bin drafted 5 came out narrowing to the top: which way a sign leans wasn't said.)
-    if (this.feature.draft) return `Draft ${Math.abs(this.feature.draft)}°: the sides lean ${this.feature.draft > 0 ? "in" : "out"} towards the far end - type ${this.feature.draft > 0 ? "a minus angle to lean them out" : "a plus angle to lean them in"}.`;
+    if (this.feature.draft) return `Draft ${Math.abs(this.feature.draft)}°: the sides lean ${this.feature.draft > 0 ? "in" : "out"}. A ${this.feature.draft > 0 ? "minus angle leans them out" : "plus angle leans them in"}.`;
     if (this.feature.symmetric) return "Symmetric: the distance goes each way from the shape - type half the whole width.";
     // (Auto goes by the way it is pulled: which way does what.)
     if (this.feature.mode !== "auto") return "Drag the arrow or type a distance.";
@@ -238,7 +247,11 @@ export class ExtrudeOp extends FeatureOp<ExtrudeFeature> {
       },
       ...(anyBody(this.app, this.feature.id) ? [modeChoice(
         () => this.feature.mode,
-        (m) => this.setMode(m),
+        (m) => {
+          const s = this.feature.source;
+          if (!this.existing && s.kind === "profile") lastExtrude.chosen = { sketch: s.sketch, mode: m };
+          this.setMode(m);
+        },
         () => this.render(),
         false,
         () => (this.shownEffect = this.autoEffect()),
@@ -326,6 +339,12 @@ export class ExtrudeOp extends FeatureOp<ExtrudeFeature> {
     this.ops = QuickActions.of(this.app.view, items, this.frame.base, { facing: out ? n : [-n[0], -n[1], -n[2]], hideBack: false });
   }
 
+  /** Quick buttons switched on or off in Settings: these come, or go, at once (Operation on the line says the same). */
+  quickSwitched(): void {
+    this.opsSig = "?";
+    this.showOps();
+  }
+
   /**
    * Where it ends (a set distance, through everything, or up to a face or
    * plane), where it starts, and how much its sides lean (a draft).
@@ -382,7 +401,8 @@ export class ExtrudeOp extends FeatureOp<ExtrudeFeature> {
     this.slots = ext === "to" ? [this.upToSlot()] : [];
     this.active = ext === "to" && !f.to ? 0 : -1;
     if (ext === "to" && f.symmetric) f.symmetric = undefined;
-    if (ext === "distance" && !f.distance) f.distance = lastExtrude.distance;
+    // (No extrude made yet to go by: a quarter of the size of what is there.)
+    if (ext === "distance" && !f.distance) f.distance = lastExtrude.set ? lastExtrude.distance : startSize(sceneSize(this.app), 0.25, lastExtrude.distance);
     // Through all, no way picked yet: a cut goes into the body (a sketch on a
     // face faces out of it: a hole "through all" went off into the air, cut nothing).
     // (So does Auto on a body's face: up off it, Through all only made a tower 350 high.)
@@ -650,7 +670,7 @@ export class ExtrudeOp extends FeatureOp<ExtrudeFeature> {
       if (!this.existing && this.feature.source.kind === "profile") this.app.ui.toast(`Nothing made: the ${this.feature.symmetric ? "distance each side" : "distance"} was 0`);
       return this.app.setTool(null);
     }
-    if (!this.existing && this.feature.source.kind === "profile") lastExtrude.distance = this.feature.distance;
+    if (!this.existing && this.feature.source.kind === "profile") (lastExtrude.distance = this.feature.distance), (lastExtrude.set = true);
     super.done();
   }
 
@@ -688,6 +708,30 @@ function withCircleKin(app: AppContext, edges: EdgeRef[]): EdgeRef[] {
   return out;
 }
 
+const XYZ: Vec3[] = [[1, 0, 0], [0, 1, 0], [0, 0, 1]];
+
+/** The smallest and the largest of the bodies' sizes along X, Y and Z (0: nothing to measure). */
+export function bodySizes(app: AppContext, bodies: string[]): { least: number; most: number } {
+  const all = XYZ.map((d) => bodyExtent(app, bodies, d)).filter((x) => x > 1e-9);
+  return all.length ? { least: Math.min(...all), most: Math.max(...all) } : { least: 0, most: 0 };
+}
+
+/** How big what is in the project is: the largest of its sizes along X, Y and Z (0: no body yet). */
+export function sceneSize(app: AppContext): number {
+  return bodySizes(app, app.view.bodyList.map((b) => b.id)).most;
+}
+
+/** The size a fillet or a chamfer starts with on these edges. */
+function edgeStartSize(app: AppContext, edges: EdgeRef[]): number {
+  let ref = Infinity;
+  for (const e of edges) if (e.length > 1e-9) ref = Math.min(ref, e.length);
+  for (const b of new Set(edges.map((e) => e.body))) {
+    const thin = bodySizes(app, [b]).least;
+    if (thin > 0) ref = Math.min(ref, thin);
+  }
+  return startSize(Number.isFinite(ref) ? ref : 0, 0.1, 1);
+}
+
 export class EdgeOp extends FeatureOp<EdgeFeature> {
   readonly id: string;
   private handle: Handle;
@@ -703,7 +747,11 @@ export class EdgeOp extends FeatureOp<EdgeFeature> {
     // Started by typing: the first digit is the size so far.
     const t = typed !== undefined && !variable ? Number(typed) : NaN;
     const v = variable ? evaluate(variable, "length") : t > 0 ? t : null;
-    super(app, { ...app.store.newIdentity(kind), type: kind, edges: existing ? edges : withCircleKin(app, edges), radius: v ?? 1, ...(variable && v !== null ? { exprs: { radius: variable } } : {}) }, existing);
+    // Neither: a tenth of the shortest edge picked, or of the body where it is thinner than that - a size that
+    // shows on the edge it is put on, small or a metre long.
+    const start = v === null && !existing ? edgeStartSize(app, edges) : 1;
+    super(app, { ...app.store.newIdentity(kind), type: kind, edges: existing ? edges : withCircleKin(app, edges), radius: v ?? start, ...(variable && v !== null ? { exprs: { radius: variable } } : {}) }, existing);
+    if (v === null && !existing) this.startValue = { path: "radius", value: start, left: 6 };
     this.id = kind;
     this.typed = typed;
     this.names = { fillet: existing?.type === "fillet" ? existing.name : app.store.newIdentity("fillet").name, chamfer: existing?.type === "chamfer" ? existing.name : app.store.newIdentity("chamfer").name };
@@ -726,7 +774,7 @@ export class EdgeOp extends FeatureOp<EdgeFeature> {
   }
 
   protected hint(): string {
-    return this.feature.type === "fillet" ? "Drag the dot or type a size to round the edge. Tap more edges to round them too (a face: all round it)." : "Drag the dot or type a size to cut the edge off at a slant. Tap more edges to add them (a face: all round it).";
+    return this.feature.type === "fillet" ? "Drag the dot or type a radius to round the edge. Tap more edges, or a face for all round it." : "Drag the dot or type a size to bevel the edge. Tap more edges, or a face for all round it.";
   }
 
   protected items(): PanelItem[] {
@@ -1142,7 +1190,7 @@ export class RevolveOp extends FeatureOp<RevolveFeature> {
   private typing = new DragTyping(this.app);
 
   protected hint(): string {
-    return "Set how far the shape spins around the axis (360° is a full turn). Drag the arrow along the axis to make a spring.";
+    return "Set the angle (360° is a full turn). Drag the arrow along the axis to make a spring.";
   }
 
   protected items(): PanelItem[] {
@@ -1431,8 +1479,8 @@ export class LoftOp extends FeatureOp<LoftFeature> {
   }
 
   protected hint(): string {
-    if (this.extra.conns) return "Connections: tap a point on each profile in turn - the loft joins them (a corner of a square to a point on a circle).";
-    if (this.extra.rails) return "Guide curves: each runs through every profile, and the sides follow it. Tap one again to take it off.";
+    if (this.extra.conns) return "Connections: tap a point on each profile in turn, and the loft joins them there.";
+    if (this.extra.rails) return "Guide curves: each runs through every profile and the sides follow it. Tap one again to drop it.";
     if (this.feature.guide) return "The body follows the guide through each shape. Tap more curves to make the guide longer.";
     return "Tap the shapes in order: the body passes through each one.";
   }
@@ -1482,7 +1530,10 @@ export class ShellOp extends FeatureOp<ShellFeature> {
   private original: FaceRef[];
 
   constructor(app: AppContext, body: string, faces: FaceRef[], existing?: ShellFeature) {
-    super(app, { ...app.store.newIdentity("shell"), type: "shell", body, faces, thickness: 1 }, existing);
+    // (The wall to start with: a twentieth of the body's smallest size - 1 mm on a box 20 across, 50 on one a metre.)
+    const start = existing ? 1 : startSize(bodySizes(app, [body]).least, 0.05, 1);
+    super(app, { ...app.store.newIdentity("shell"), type: "shell", body, faces, thickness: start }, existing);
+    if (!existing) this.startValue = { path: "thickness", value: start, left: 6 };
     this.original = (app.view.body(body)?.faces ?? []).map((f) => ({ body, center: f.center, normal: f.normal, area: f.area, ...(f.step ? { step: f.step } : {}), ...(f.curve ? { curve: f.curve } : {}) }));
 
     this.slots = [facesSlot(app, "Open faces", () => this.feature.faces, (f) => (this.feature.faces = f.map((r) => this.onOriginal(r))), true)];
@@ -1514,7 +1565,7 @@ export class ShellOp extends FeatureOp<ShellFeature> {
 
 
   protected hint(): string {
-    return this.feature.faces.length ? "Drag the arrow into the body, or type, to set how thick the walls are. Tap more faces to open them too." : "Tap the faces to leave open: an arrow comes up to set how thick the walls are.";
+    return this.feature.faces.length ? "Drag the arrow into the body, or type, for the wall's thickness. Tap more faces to open them." : "Tap the faces to leave open: an arrow comes up to set how thick the walls are.";
   }
 
   protected items(): PanelItem[] {
@@ -1778,13 +1829,13 @@ export class TransformOp extends FeatureOp<TransformFeature> {
   protected hint(): string {
     switch (this.kind) {
       case "move":
-        return "Drag an arrow to slide it, an arc to turn it, or type exact values. Drag the dot in the middle to move the point it turns about - it snaps to corners and edges. Tap empty space when done.";
+        return "Drag an arrow to move it or an arc to turn it, or type. The middle dot is the point it turns about.";
       case "mirror":
         return "The body is flipped across the plane. A copy is made unless you turn Copy off.";
       case "translate":
         return "Tap a point on the body, then the point it should move to.";
       default:
-        return ({ rotate: "Set the angle to turn the body around the axis.", linear: this.dir ? "Drag the arrow, or type, to set how far apart the copies are; Count is how many." : "Tap an edge, an axis or a face: the copies go along it (point at one to see how, in dashed yellow).", circular: this.axis ? "Drag the dot round the axis, or type, to set the angle the copies are spread over; Count is how many." : "Tap an axis, or a round edge or face: the copies go round it (point at an axis to see how)." } as Record<string, string>)[this.kind] ?? `${TITLES[this.kind]}: set the values, then tap empty space.`;
+        return ({ rotate: "Set the angle to turn the body around the axis.", linear: this.dir ? "Drag the arrow, or type, to set how far apart the copies are; Count is how many." : "Tap an edge, an axis or a face: the copies go along it (point at one to see how, in dashed yellow).", circular: this.axis ? "Drag the dot round the axis, or type, for the angle the copies cover. Count is how many." : "Tap an axis, or a round edge or face: the copies go round it (point at an axis to see how)." } as Record<string, string>)[this.kind] ?? `${TITLES[this.kind]}: set the values, then tap empty space.`;
     }
   }
 
@@ -2449,13 +2500,15 @@ export class ScaleOp extends FeatureOp<TransformFeature> {
 
   protected hint(): string {
     return this.xyz
-      ? "Drag one handle to stretch the body that way, or the centre to resize it evenly. Type a number while dragging (2 = twice)."
+      ? "Drag a handle to stretch the body that way, or the centre to resize it evenly. Or type (2 = twice)."
       : "Drag a handle to resize. Type a number while dragging (2 = twice as big).";
   }
 
   protected items(): PanelItem[] {
-    if (this.xyz) return (["X", "Y", "Z"] as const).map((l, i): PanelItem => this.num(`Scale ${l}`, `op.factors.${i}`, "number", { min: 0.0001 }));
-    return [this.num("Factor", "op.factor", "number", { min: 0.0001 }), { type: "toggle", label: "Copy", value: this.feature.copy, onChange: (v) => ((this.feature.copy = v), this.render(), this.update()) }];
+    const ways = this.existing ? [] : [scaleWays(this.app, this.xyz ? "xyz" : "uniform", this.feature.bodies)];
+    // (Beside the choice, which says Scale already, each is its letter: the four fit a phone in one row.)
+    if (this.xyz) return [...ways, ...(["X", "Y", "Z"] as const).map((l, i): PanelItem => this.num(ways.length ? l : `Scale ${l}`, `op.factors.${i}`, "number", { min: 0.0001 }))];
+    return [...ways, this.num("Factor", "op.factor", "number", { min: 0.0001 }), { type: "toggle", label: "Copy", value: this.feature.copy, onChange: (v) => ((this.feature.copy = v), this.render(), this.update()) }];
   }
 
   protected ready(): boolean {
@@ -2547,6 +2600,29 @@ export class ScaleOp extends FeatureOp<TransformFeature> {
  * type what the distance between them should be - the bodies scale about the
  * first point so it is (everything on them with it).
  */
+/** The way Scale was used last: it starts that way again. */
+export const scaleWay: { kind: "uniform" | "xyz" | "ref" } = { kind: "uniform" };
+
+/**
+ * Scale's three ways - evenly, each direction by itself, or two points and the distance they should be - on the line
+ * of the tool itself, whichever way it was started. (They were a list under Scale that only some ways in showed:
+ * from the line Scale opened by a factor, with nothing to say there were two more.)
+ */
+function scaleWays(app: AppContext, now: "uniform" | "xyz" | "ref", bodies: string[]): PanelItem {
+  return {
+    type: "choice",
+    label: "Scale",
+    lead: true,
+    options: [{ id: "uniform", label: "Uniform" }, { id: "xyz", label: "X / Y / Z" }, { id: "ref", label: "By reference" }],
+    value: now,
+    onChange: (v) => {
+      if (v === now) return;
+      scaleWay.kind = v as typeof now;
+      app.setTool(v === "ref" ? new ScaleRefOp(app, bodies) : new ScaleOp(app, v === "xyz", bodies));
+    },
+  };
+}
+
 export class ScaleRefOp extends FeatureOp<TransformFeature> {
   readonly id = "scale";
   private a: Vec3 | null = null;
@@ -2581,8 +2657,10 @@ export class ScaleRefOp extends FeatureOp<TransformFeature> {
 
   protected items(): PanelItem[] {
     const o = this.feature.op;
-    if (o.kind !== "scale" || this.d0 < 1e-9) return [];
+    const ways = this.existing ? [] : [scaleWays(this.app, "ref", this.feature.bodies)];
+    if (o.kind !== "scale" || this.d0 < 1e-9) return ways;
     return [
+      ...ways,
       { type: "number", label: "Distance", value: this.d0 * o.factor, kind: "length", onInput: (v) => this.setLength(v) },
       this.num("Factor", "op.factor", "number", { min: 0.0001, onInput: () => (this.dim?.setValue(this.d0 * (this.feature.op as { factor: number }).factor), this.update()) }),
     ];
@@ -2820,7 +2898,7 @@ export class ImageOp extends FeatureOp<ImageFeature> {
   }
 
   protected hint(): string {
-    return "Drag the arrows to place the image. Set its width and how see-through it is on the line at the bottom.";
+    return "Drag the arrows to place the image. Its width and how see-through it is are on the line.";
   }
 
   protected items(): PanelItem[] {
@@ -3176,7 +3254,7 @@ export class SplitOp extends FeatureOp<SplitFeature> {
   }
 
   protected hint(): string {
-    return "The body is cut where the planes, and the surfaces of the bodies picked, cross it. Those bodies stay as they are.";
+    return "The body is cut where the planes and the picked bodies' surfaces cross it. Those bodies stay.";
   }
 
   protected items(): PanelItem[] {
@@ -3228,7 +3306,7 @@ export class ConnectOp extends FeatureOp<ConnectFeature> {
   protected hint(): string {
     return this.feature.guide
       ? "The bridge runs along the guide from face to face. Size: how big it is against the faces."
-      : "Bend: how far the bridge bows out of the faces. Tap a sketch curve (a spline from face to face) to have it follow that instead.";
+      : "Bend: how far the bridge bows out. Or tap a sketch curve for it to follow.";
   }
 
   protected items(): PanelItem[] {
@@ -3262,7 +3340,7 @@ export class FillOp extends FeatureOp<FillFeature> {
   }
 
   protected hint(): string {
-    return this.feature.boundary.length ? "Tap more curves or edges until they close a loop. Guides are curves inside it the surface passes through." : "Tap the curves or edges round the surface.";
+    return this.feature.boundary.length ? "Tap curves or edges until they close a loop. A guide is a curve inside it the surface passes through." : "Tap the curves or edges round the surface.";
   }
 
   protected items(): PanelItem[] {
@@ -3417,6 +3495,8 @@ export class PlaneOp extends FeatureOp<PlaneFeature> {
   constructor(app: AppContext, base: PlaneDef | null, face: FaceRef | undefined, existing?: PlaneFeature) {
     super(app, { ...app.store.newIdentity("plane"), type: "plane", kind: "offset", plane: base ?? { origin: [0, 0, 0], xDir: [1, 0, 0], normal: [0, 0, 1] }, face, offset: 10 }, existing);
     this.base = existing ? existing.plane : base;
+    this.ownOffset = !existing;
+    if (!existing) this.feature.offset = this.startOffset(face);
     // Being edited: not from itself, nor from a plane made after it (that
     // one is built from this one, or comes later in the history).
     const at = existing ? app.store.doc.features.findIndex((x) => x.id === existing.id) : -1;
@@ -3424,7 +3504,15 @@ export class PlaneOp extends FeatureOp<PlaneFeature> {
       const k = app.store.doc.features.findIndex((x) => x.id === id);
       return at >= 0 && k >= at;
     };
-    this.slots = [planeSlot(app, "From", () => this.base, (p, f) => ((this.base = p), (this.feature.plane = p), (this.feature.face = f)), { named: existing ? baseName(app, existing) : undefined, skip })];
+    this.slots = [planeSlot(app, "From", () => this.base, (p, f) => ((this.base = p), (this.feature.plane = p), (this.feature.face = f), this.ownOffset && (this.feature.offset = this.startOffset(f))), { named: existing ? baseName(app, existing) : undefined, skip })];
+  }
+
+  /** The distance is still the one the tool chose (not typed or dragged yet). */
+  private ownOffset = false;
+
+  /** How far away the new plane starts: a quarter of the face it is taken from, or of what is in the project. */
+  private startOffset(face?: FaceRef): number {
+    return startSize(face && face.area > 0 ? Math.sqrt(face.area) : sceneSize(this.app), 0.25, 10);
   }
 
   private handle: Handle | null = null;
@@ -3473,6 +3561,7 @@ export class PlaneOp extends FeatureOp<PlaneFeature> {
   }
 
   private setOffset(v: number): void {
+    this.ownOffset = false;
     this.feature.offset = v;
     this.app.ui.updatePanelValues([v]);
     this.dim?.setValue(v);

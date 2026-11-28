@@ -117,10 +117,20 @@ export class DocStore {
       }
     }
     this.loaded = true;
+    this.untouched = true;
     this.listeners.forEach((fn) => fn());
   }
   /** Until the saved project is read, saving would overwrite it with an empty one. */
   private loaded = false;
+  /**
+   * Nothing changed since the project was read or opened: what the engine is building then is the project as it
+   * came, not a change to take back. (The undo steps of the session before come back with it: Stop pressed while
+   * it was built again after a reload took the last of those back.)
+   */
+  private untouched = false;
+  get justOpened(): boolean {
+    return this.untouched;
+  }
 
   /**
    * Undo survives a reload (a phone drops the page whenever it likes): the
@@ -201,11 +211,13 @@ export class DocStore {
       // No change overall - but after a drag that came back to where it began,
       // the document must still end up there (not at the drag's last frame).
       if (wasLive) {
+        this.untouched = false;
         this.doc = next;
         this.listeners.forEach((fn) => fn());
       }
       return;
     }
+    this.untouched = false;
     // The same box typed into again: still the step it began (its first undo state stays).
     const joins = mergeKey !== null && mergeKey === this.lastMerge && this.undoStack.length > 0;
     if (!joins) this.undoStack.push(before);
@@ -227,6 +239,7 @@ export class DocStore {
     this.transientBase ??= pack(this.doc);
     const next = unpack(pack(this.doc));
     mutate(next);
+    this.untouched = false;
     this.doc = next;
     this.listeners.forEach((fn) => fn());
   }
@@ -277,6 +290,7 @@ export class DocStore {
   undo(): void {
     const prev = this.undoStack.pop();
     if (!prev) return;
+    this.untouched = false;
     this.lastMerge = null;
     this.redoStack.push(pack(this.doc));
     this.doc = unpack(prev);
@@ -286,6 +300,7 @@ export class DocStore {
   redo(): void {
     const next = this.redoStack.pop();
     if (!next) return;
+    this.untouched = false;
     this.lastMerge = null;
     this.undoStack.push(pack(this.doc));
     this.doc = unpack(next);
@@ -303,6 +318,7 @@ export class DocStore {
     this.undoStack = [];
     this.redoStack = [];
     this.lastMerge = null;
+    this.untouched = true;
     this.changed();
   }
 

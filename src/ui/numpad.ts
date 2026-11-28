@@ -1,6 +1,7 @@
 // On-screen numpad for value boxes (phones, tablets, headsets): no system
 // keyboard covering half the screen. Switched on/off with the keypad button
-// in the right column.
+// in the right column. On as it comes, on a computer too: there its keyboard
+// types into the focused box as ever, the pad open beside it.
 //
 // It doesn't rely on keyboard focus (iPad Safari moves focus away from the
 // box as soon as a button is tapped): it keeps its own target and caret,

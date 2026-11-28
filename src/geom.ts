@@ -75,6 +75,24 @@ export function patternSpacing(extent: number, fallback = 10): number {
   return extent > 1e-9 ? roundSig(extent * 1.2) : fallback;
 }
 
+/**
+ * A size for a tool to start with: a share of what it is used on, as a round number of one figure (2, 30, 0.5).
+ * (A fillet started at 1 mm whatever it was on: on an edge a metre long it could not be seen, and looked as if
+ * nothing had happened.) `fallback` when there is no size to go by.
+ */
+export function startSize(extent: number, share: number, fallback: number): number {
+  const v = extent * share;
+  return Number.isFinite(v) && v > 1e-9 ? Number(v.toPrecision(1)) : fallback;
+}
+
+/** The next round size down (1, 2, 5 and tens of them): what a tool tries when the size it started with did not fit. */
+export function smallerSize(v: number): number {
+  if (!(v > 0)) return v;
+  const p = Math.pow(10, Math.floor(Math.log10(v) + 1e-9));
+  const m = v / p;
+  return Number(((m > 5.0001 ? 5 : m > 2.0001 ? 2 : m > 1.0001 ? 1 : 0.5) * p).toPrecision(1));
+}
+
 export function niceStep(raw: number): number {
   const p = Math.pow(10, Math.floor(Math.log10(raw)));
   const m = raw / p;

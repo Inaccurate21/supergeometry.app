@@ -396,7 +396,7 @@ export class FreeformTool implements Tool {
         this.error
           ? `⚠ ${this.error}`
           : this.selectedVerts().length
-            ? `Drag the arrows (along the face, or out of it), or type exact values; ${more}. Tap empty space to let go.`
+            ? `Drag the arrows (along the face or out of it), or type; ${more}. Tap empty space to let go.`
             : this.picks.length
               ? "Those are on the face's edge, which stays put - pick points, edges or faces inside it."
               : "Tap the frame's points, edges or faces to pick them, then drag. Its border stays on the face's edge.",
@@ -410,7 +410,7 @@ export class FreeformTool implements Tool {
     this.app.ui.setHint(
       this.picks.length
         ? `Drag the arrows, or type exact values. ${more}. Tap empty space to let go.`
-        : `Tap the points, edges or faces of the frame around it to pick them, then drag. Done turns it into a body.`,
+        : `Tap the frame's points, edges or faces to pick them, then drag. Done makes it a body.`,
     );
   }
 
@@ -449,7 +449,7 @@ export class FreeformTool implements Tool {
           boxByFinger = on;
           // (Its switch on the line shows how it is now: it was read once, and stayed as it was however it was set.)
           this.panel();
-          this.app.ui.setHint(on ? "Draw a box with your finger round the points to pick (the ones behind are picked too). Two fingers still move the view." : "A finger turns the view again.");
+          this.app.ui.setHint(on ? "Draw a box round the points to pick (those behind too). Two fingers still move the view." : "A finger turns the view again.");
         },
       });
     if (this.face) return this.facePanel(items);
@@ -474,7 +474,7 @@ export class FreeformTool implements Tool {
           this.symPairs = null;
           this.symPicking = on;
           this.drawSymPlane();
-          if (on) this.app.ui.setHint("Symmetry: pick X / Y / Z (through the middle), tap a cage edge (across its middle) - or pick two facing faces first: midway between them.");
+          if (on) this.app.ui.setHint("Symmetry: tap X, Y or Z, or a cage edge to mirror across its middle. (Or pick two facing faces first.)");
           this.panel();
         },
       });

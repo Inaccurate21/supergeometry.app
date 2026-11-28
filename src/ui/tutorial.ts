@@ -294,6 +294,15 @@ export class Tutorial {
     return Array.from(document.querySelectorAll<HTMLElement>("button.quick-action")).find((b) => b.offsetParent && says(b.title || b.textContent, name, true)) ?? null;
   }
   /**
+   * A tool for what is picked: its round button beside the pick. With none there (Quick buttons switched off in
+   * Settings, or the pick turned out of sight) the line has it: its group first - `there` is false then, and the
+   * card says to tap that - then the tool in the list the group opens.
+   */
+  private forPick(name: string, group: string): { el: Element | null; there: boolean } {
+    const tool = this.quick(name) ?? this.listed(name);
+    return tool ? { el: tool, there: true } : { el: this.word(`g-${group}`), there: false };
+  }
+  /**
    * One of a tool's own settings: on the line where there is room for it, else in the list Options opens (a phone
    * held upright), else Options itself - `opened`: false then, and the card says to tap Options.
    */
@@ -374,7 +383,10 @@ export class Tutorial {
         if (off) h.setNumber("distance", mm);
         return lit(ids.done, off ? `That is set to ${mm} mm for you. ${say.done}` : say.done, [this.done()]);
       }
-      if (sel.some((s) => s.kind === "profile")) return lit(ids.extrude, say.extrude, [this.quick("Extrude")]);
+      if (sel.some((s) => s.kind === "profile")) {
+        const t = this.forPick("Extrude", "create");
+        return lit(ids.extrude, t.there ? say.extrude : "Tap Create.", [t.el]);
+      }
       if (sel.length) h.setSelection([]);
       return lit(ids.extrude, "Tap your shape to pick it.", [this.at(pick, 20)]);
     };
@@ -472,7 +484,10 @@ export class Tutorial {
         return lit("thread-done", "An M10 thread, 1.5 mm from turn to turn. Tap Done: cutting it takes a moment.", [this.done()]);
       }
       const face = sel.length === 1 && sel[0].kind === "face" ? h.faces(sel[0].body)[sel[0].face] : null;
-      if (face?.type === "CYLINDRE") return lit("thread-tool", "Tap Thread.", [this.quick("Thread")]);
+      if (face?.type === "CYLINDRE") {
+        const t = this.forPick("Thread", "modify");
+        return lit("thread-tool", t.there ? "Tap Thread." : "Tap Modify.", [t.el]);
+      }
       if (sel.length) h.setSelection([]);
       // (The rod's round wall, on the side that faces the eye - not on the line where the wall is joined.)
       const eye = h.eye();
@@ -487,7 +502,7 @@ export class Tutorial {
       if (headSketch?.entities.length || tool.id === "extrude") return pulling({ extrude: "head-extrude", all: "head-all", done: "head-done" }, [1.3 * R, 0, H], HEAD_H, { extrude: "Tap Extrude.", done: `It is set ${HEAD_H} mm thick for you, as an M10 bolt's head is. Tap Done.` });
       if (tool.id === "select") {
         const top = sel.length === 1 && sel[0].kind === "face" ? h.faces(sel[0].body)[sel[0].face] : null;
-        if (top?.type === "PLANE" && top.normal[2] > 0.9) return lit("head-sketch", "Tap Sketch: you can draw on a face.", [this.quick("Sketch")]);
+        if (top?.type === "PLANE" && top.normal[2] > 0.9) return lit("head-sketch", "Tap Sketch: you can draw on a face.", [this.forPick("Sketch", "sketch").el]);
         if (sel.length) h.setSelection([]);
         return lit("head-face", "A rod. Now its head: tap the rod's flat top.", [this.at([0, 0, H], 18)]);
       }

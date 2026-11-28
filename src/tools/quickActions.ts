@@ -8,8 +8,13 @@
 // ones. On the model the row ends with Delete and More, which opens every
 // other tool the pick has (Shell among them); they are the very tools the line
 // at the bottom offers for the pick (the same ToolItems).
+//
+// Settings > Quick buttons switches them off: none are made then, for a pick or
+// for a tool's own choices (Extrude's Add and Cut beside the face), and the
+// line at the bottom is where the tools are.
 
 import type { Vec3 } from "../doc/types";
+import { settings } from "../settings";
 import { icons } from "../ui/icons";
 import type { ToolItem } from "../ui/ui";
 import type { Viewport } from "../view/viewport";
@@ -29,7 +34,8 @@ export const QUICK = {
   axis: ["delete"],
   image: ["scale", "delete"],
   // In a sketch: its picked curves and points (the sketch tool's own buttons).
-  curve: ["construction", "move", "delete"],
+  // (Constraints between them: its button opens the ones that fit what is picked; Move opens Move / Copy.)
+  curve: ["construction", "constraints", "move", "delete"],
   point: ["delete"],
 } satisfies Record<string, string[]>;
 
@@ -50,11 +56,13 @@ const MOST = 2;
  * An edge has three: Fillet, Chamfer and Move/Rotate Edge. Move/Rotate Edge is for one straight edge: with a curved one, or several, it is not
  * offered and the row is the two.
  */
-const MOST_OF: Partial<Record<QuickKind, number>> = { edge: 3, curve: 3 };
+const MOST_OF: Partial<Record<QuickKind, number>> = { edge: 3, curve: 4 };
 
 export class QuickActions {
   private readonly box = document.createElement("div");
   private readonly hook = () => this.layout();
+  /** The window's size changed (a phone's buttons are smaller): the names are fitted to the buttons as they are now. */
+  private readonly refit = () => (fitNames(this.box), this.layout());
   /**
    * A colour just tapped: the pick's buttons are made again (the one in use lit), and they come back with the
    * same choices open, so another colour is one tap more.
@@ -63,6 +71,8 @@ export class QuickActions {
 
   /** `items`: what the pick offers (the wheel's own list, its kinds' items too); `at`: the point it is shown beside. */
   static show(view: Viewport, kind: QuickKind, items: ToolItem[], at: Vec3, place: QuickPlace = {}, all = false): QuickActions | null {
+    // (Switched off in Settings: none, whatever is picked.)
+    if (!settings.value.quickButtons) return null;
     const byId = new Map<string, ToolItem>();
     const walk = (its: ToolItem[]) => {
       for (const it of its) {
@@ -71,7 +81,7 @@ export class QuickActions {
       }
     };
     walk(items);
-    const picked = (QUICK[kind] as readonly string[]).map((id) => byId.get(id)).filter((it): it is ToolItem => !!it && !it.disabled && !!it.run && (!it.beta || it.id === "editFreeform")).slice(0, MOST_OF[kind] ?? MOST);
+    const picked = (QUICK[kind] as readonly string[]).map((id) => byId.get(id)).filter((it): it is ToolItem => !!it && !it.disabled && (!!it.run || !!it.children?.length) && (!it.beta || it.id === "editFreeform")).slice(0, MOST_OF[kind] ?? MOST);
     if (!all) return picked.length ? new QuickActions(view, picked, at, place) : null;
     // On the model: Delete beside them, and a last button that opens every other tool the pick has. The few most likely
     // stay the row; the rest come up under it only when asked for, so nothing is crowded.
@@ -102,12 +112,13 @@ export class QuickActions {
     return row.length || rest.length ? new QuickActions(view, row, at, place, rest) : null;
   }
 
-  /** These very buttons (a tool's own choices, the one in use lit), beside `at`. */
-  static of(view: Viewport, items: ToolItem[], at: Vec3, place: QuickPlace = {}): QuickActions {
-    return new QuickActions(view, items, at, place);
+  /** These very buttons (a tool's own choices, the one in use lit), beside `at`. None with Quick buttons switched off. */
+  static of(view: Viewport, items: ToolItem[], at: Vec3, place: QuickPlace = {}): QuickActions | null {
+    return settings.value.quickButtons ? new QuickActions(view, items, at, place) : null;
   }
 
   private readonly facing?: Vec3;
+  private more?: HTMLButtonElement;
 
   private constructor(
     private readonly view: Viewport,
@@ -124,13 +135,28 @@ export class QuickActions {
       b.title = it.shortcut ? `${it.label} (${it.shortcut})` : it.label;
       b.setAttribute("aria-label", it.label);
       const icon = icons[it.icon as keyof typeof icons];
-      b.innerHTML = `${it.swatch ? `<i class="quick-swatch" style="background:${it.swatch}"></i>` : (icon ?? "")}<span>${shortName(it.label)}</span>`;
+      const glyph = document.createElement("i");
+      glyph.className = "quick-glyph";
+      glyph.textContent = it.glyph ?? "";
+      b.innerHTML = `${it.swatch ? `<i class="quick-swatch" style="background:${it.swatch}"></i>` : it.glyph ? "" : (icon ?? "")}<span>${shortName(it.label)}</span>`;
+      if (it.glyph) b.prepend(glyph);
       b.addEventListener("click", (e) => {
         e.stopPropagation();
-        if (!it.run && it.children?.length) choose(it);
-        else it.run?.();
+        // (A button of the row with choices: tapped again, they close.)
+        if (!it.run && it.children?.length) {
+          if (chosen === it.id && !grid.hidden && !rest.some((r) => r.id === it.id)) return close();
+          choose(it);
+        } else it.run?.();
       });
       return b;
+    };
+    let chosen: string | null = null;
+    const close = () => {
+      chosen = null;
+      if (rest.length) grid.replaceChildren(...rest.map(button));
+      else grid.hidden = true;
+      fitNames(grid);
+      this.layout();
     };
     // A button with choices (Color, Fade): the card shows them in place of the rest, a Back first.
     const choose = (it: ToolItem) => {
@@ -141,20 +167,27 @@ export class QuickActions {
       back.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 5l-7 7 7 7"/></svg><span>Back</span>`;
       back.addEventListener("click", (e) => {
         e.stopPropagation();
-        grid.replaceChildren(...rest.map(button));
-        this.layout();
+        close();
       });
       const kids = (it.children ?? []).filter((k) => k.label && !k.id.startsWith("---")).map((k): ToolItem => ({
         ...k,
         run: k.run && (() => {
-          QuickActions.reopen = { id: it.id, until: performance.now() + 1500 };
+          // (For the moment it takes the buttons to be made again - at once, when the choice took. A choice that
+          // made nothing - refused, or a list opened - left it standing a second and a half, and the next thing
+          // picked came up with these choices open by themselves.)
+          QuickActions.reopen = { id: it.id, until: performance.now() + 300 };
           k.run!();
         }),
       }));
+      chosen = it.id;
+      grid.hidden = false;
       grid.replaceChildren(back, ...kids.map(button));
+      fitNames(grid);
       this.layout();
     };
     const grid = document.createElement("div");
+    grid.className = "quick-rest";
+    grid.hidden = true;
     const row = document.createElement("div");
     row.className = "quick-row";
     for (const it of items) row.append(button(it));
@@ -166,30 +199,36 @@ export class QuickActions {
       more.title = "Every other tool for this";
       more.setAttribute("aria-label", "More tools for this");
       more.innerHTML = `${icons.more ?? ""}<span>More</span>`;
-      grid.className = "quick-rest";
-      grid.hidden = true;
       for (const it of rest) grid.append(button(it));
       more.addEventListener("click", (e) => {
         e.stopPropagation();
+        // (Opened again after a list of choices was up in it - Color's: the tools again, as More says.)
+        if (grid.hidden && chosen) {
+          chosen = null;
+          grid.replaceChildren(...rest.map(button));
+        }
         grid.hidden = !grid.hidden;
         more.classList.toggle("on", !grid.hidden);
+        fitNames(grid);
         this.layout();
       });
       row.append(more);
-      this.box.append(grid);
-      const again = QuickActions.reopen;
-      QuickActions.reopen = null;
-      const was = again && performance.now() < again.until ? rest.find((r) => r.id === again.id) : undefined;
-      if (was) {
-        grid.hidden = false;
-        more.classList.add("on");
-        choose(was);
-      }
+      this.more = more;
+    }
+    this.box.append(grid);
+    const again = QuickActions.reopen;
+    QuickActions.reopen = null;
+    const was = again && performance.now() < again.until ? [...items, ...rest].find((r) => r.id === again.id && !r.run && r.children?.length) : undefined;
+    if (was) {
+      if (rest.includes(was)) this.more?.classList.add("on");
+      choose(was);
     }
     // A press on them is theirs: never a pick on the model behind, nor the view turning.
     this.box.addEventListener("pointerdown", (e) => e.stopPropagation());
     document.body.append(this.box);
     view.frameHooks.add(this.hook);
+    window.addEventListener("resize", this.refit);
+    fitNames(this.box);
     this.layout();
   }
 
@@ -235,6 +274,7 @@ export class QuickActions {
 
   dispose(): void {
     this.view.frameHooks.delete(this.hook);
+    window.removeEventListener("resize", this.refit);
     this.box.remove();
   }
 }
@@ -242,5 +282,27 @@ export class QuickActions {
 /** A short name under the icon ("Move/Rotate Edge" → "Move"). */
 function shortName(label: string): string {
   const s = label.replace(/…$/, "").split(/[/ –]/)[0];
-  return s.length > 12 ? s.slice(0, 11) + "…" : s;
+  return s.length > 14 ? s.slice(0, 13) + "…" : s;
+}
+
+/**
+ * A name wider than its round button (Perpendicular; Construction on a phone, where the buttons are smaller) is
+ * fitted to it: it ran out over the button's edge. Narrowed first, by up to 15% - its letters stay as tall, which
+ * reads better than a smaller size - and made smaller only for what is still too wide. Only when they are drawn
+ * again, not every frame.
+ */
+function fitNames(root: HTMLElement): void {
+  for (const s of Array.from(root.querySelectorAll<HTMLElement>(".quick-action > span"))) {
+    s.style.fontSize = "";
+    s.style.transform = "";
+    s.classList.remove("narrowed");
+    const room = (s.parentElement?.clientWidth ?? 0) - 6;
+    const wide = s.scrollWidth;
+    if (room <= 0 || wide <= room) continue;
+    const k = Math.max(0.85, room / wide);
+    const size = Math.max(7, Math.floor((9 * room * 10) / (wide * k)) / 10);
+    if (size < 9) s.style.fontSize = `${size}px`;
+    s.classList.add("narrowed");
+    s.style.transform = `scaleX(${k.toFixed(3)})`;
+  }
 }

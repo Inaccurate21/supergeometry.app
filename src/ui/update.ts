@@ -13,7 +13,21 @@ export function loadedBuild(): string | null {
   return s ? (s.match(/index-[\w-]+\.js/)?.[0] ?? null) : null;
 }
 
-async function liveBuild(): Promise<string | null> {
+/**
+ * The main script of the build that is out now. Asked of /version.json, a few hundred bytes that say it - the
+ * whole page was fetched for this (half of all the site's requests, ten for each visit), to find one file's name
+ * in it. Where there is no such file (an older build still being served), the page as before.
+ */
+async function liveBuild(mine: string): Promise<string | null> {
+  try {
+    const res = await fetch(`/version.json?check=${Date.now()}`, { cache: "no-store" });
+    const script = res.ok ? ((await res.json()) as { script?: unknown }).script : null;
+    // The same as this page: nothing new, and nothing more to ask. Another: the page itself has the last word (a
+    // stale copy of the small file must not put a NEW badge on a page that is the newest).
+    if (script === mine) return script;
+  } catch {
+    // (No such file, or not what it should be: the page.)
+  }
   try {
     const res = await fetch(`/?check=${Date.now()}`, { cache: "no-store" });
     if (!res.ok) return null;
@@ -22,6 +36,9 @@ async function liveBuild(): Promise<string | null> {
     return null; // offline: nothing to say
   }
 }
+
+/** Not asked again sooner than this (coming back to the tab asks, and people flick between tabs). */
+const CHECK_APART = 5 * 60_000;
 
 /** Offline mode's part (src/ui/offline.ts): stores a new version as it comes out. */
 interface OfflineStore {
@@ -39,10 +56,17 @@ export class Updates {
     // Only a built site has a build to compare (not the dev server).
     if (!loadedBuild()) return;
     void packageInUse().then((p) => (this.packaged = !!p));
+    // A while after the start, then every ten minutes while the page is looked at, and on coming back to it if it
+    // has been a while. (A tab left open out of sight asked six times an hour all day; every flick back to the
+    // tab asked again.)
+    const due = () => document.visibilityState === "visible" && Date.now() - this.asked >= CHECK_APART && void this.check();
     setTimeout(() => void this.check(), 20_000);
-    setInterval(() => void this.check(), 10 * 60_000);
-    document.addEventListener("visibilitychange", () => document.visibilityState === "visible" && void this.check());
+    setInterval(due, 10 * 60_000);
+    document.addEventListener("visibilitychange", due);
   }
+
+  /** When the site was last asked. */
+  private asked = 0;
 
   /** More pulses; its Update item gets a NEW badge. */
   private markPending(): void {
@@ -54,8 +78,9 @@ export class Updates {
   /** Is a newer build out? Marks More if so. Returns whether it is. */
   async check(): Promise<boolean> {
     if (this.packaged) return false;
+    this.asked = Date.now();
     const mine = loadedBuild();
-    const live = await liveBuild();
+    const live = mine ? await liveBuild(mine) : null;
     if (!mine || !live || live === mine) return false;
     // Offline mode: the new version is downloaded now, so it's there next start even with no connection.
     if (this.offline?.on) await this.offline.download(false);

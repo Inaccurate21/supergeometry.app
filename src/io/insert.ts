@@ -33,6 +33,36 @@ export function pickFile(accept: string): Promise<File | null> {
   });
 }
 
+/**
+ * The most triangles a mesh may have to be brought in (the engine's own limit, kernel/engine.ts MESH_MAX), and the
+ * largest file read at all. Both are looked at here, before the file is put into the project: a mesh of millions
+ * of triangles was first made text, saved with the project, copied for undo and sent to the engine - where it
+ * would have been refused - and the page ran out of memory on the way. Saved by then, it did so again at every start.
+ */
+export const MESH_MAX = 250000;
+/** (A mesh as text is some 250 bytes a triangle; a STEP or 3MF file that large is far more than the engine reads.) */
+const FILE_MAX: Record<string, number> = { stl: 100, obj: 100, step: 40, stp: 40, "3mf": 40 };
+
+/** How many triangles an STL has: said in a binary one, counted in a text one. */
+export function stlTriangleCount(bytes: Uint8Array): number {
+  if (bytes.length >= 84) {
+    const n = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength).getUint32(80, true);
+    if (84 + n * 50 === bytes.length) return n;
+  }
+  // Text: one "endfacet" a triangle (e, n, d, f, a, c, e, t).
+  const want = [101, 110, 100, 102, 97, 99, 101, 116];
+  let count = 0;
+  for (let i = 0, n = bytes.length - 8; i <= n; i++) {
+    if ((bytes[i] | 32) !== 101 || (bytes[i + 3] | 32) !== 102) continue;
+    let k = 1;
+    while (k < 8 && (bytes[i + k] | 32) === want[k]) k++;
+    if (k === 8) (count++, (i += 7));
+  }
+  return count;
+}
+
+const many = (n: number) => n.toLocaleString("en-US");
+
 /** Why a mesh / STEP file can't be what it says (null: it looks right). */
 function unreadable(bytes: Uint8Array, format: "step" | "stl"): string | null {
   if (format === "step") {
@@ -76,6 +106,9 @@ export async function insertFile(app: AppContext): Promise<void> {
   if (!file) return;
   const ext = file.name.split(".").pop()!.toLowerCase();
   try {
+    // (Before it is read: a file this big would not fit in the page with the project.)
+    const most = FILE_MAX[ext];
+    if (most && file.size > most * 1048576) return app.ui.toast(`Could not insert ${file.name}: it is ${Math.round(file.size / 1048576)} MB, more than can be brought in (up to ${most} MB for this kind of file)`, "error");
     if (ext === "dwg") {
       app.ui.toast("DWG is a closed format. Save it as DXF (e.g. with LibreCAD or ODA File Converter, both free) and insert that.", "error");
       return;
@@ -97,7 +130,11 @@ export async function insertFile(app: AppContext): Promise<void> {
       return;
     }
     if (ext === "super" || ext === "tessel") {
-      insertProject(app, parseProject(await file.text()).features, file.name);
+      // (Not a mesh in it far over what can be brought in: see MESH_MAX.)
+      const parts = parseProject(await file.text()).features;
+      const big = parts.filter((f) => f.type === "import" && f.format === "stl" && (f.data.length * 0.75) / 50 > MESH_MAX * 1.5);
+      if (big.length) app.ui.toast(`Left out of ${file.name}: ${big.map((f) => (f.type === "import" && f.fileName) || f.name).join(", ")} has more triangles than can be brought in (up to ${many(MESH_MAX)})`, "error");
+      insertProject(app, parts.filter((f) => !big.includes(f)), file.name);
       return;
     }
     // (Any file can be picked on an iPad: see acceptFor.)
@@ -114,6 +151,10 @@ export async function insertFile(app: AppContext): Promise<void> {
     // (that kept the broken file in the project).
     const why = unreadable(bytes, format);
     if (why) return app.ui.toast(`Could not insert ${file.name}: ${why}`, "error");
+    // A mesh too big stops here too, before it is in the project.
+    const triangles = format === "stl" ? stlTriangleCount(bytes) : 0;
+    if (triangles > MESH_MAX)
+      return app.ui.toast(`Could not insert ${file.name}: it has ${many(triangles)} triangles, more than can be brought in (up to ${many(MESH_MAX)}). Thin it out in a mesh program first.`, "error");
     app.ui.setStatus(`Importing ${file.name}…`);
     // (A mesh: its flat faces made whole and its round parts round - see kernel/meshRound.ts.)
     const step = { ...app.store.newIdentity("import"), type: "import" as const, format, fileName: file.name, data: toBase64(bytes), apart: true, ...(format === "stl" ? { round: true } : {}) };

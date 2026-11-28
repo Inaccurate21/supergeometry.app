@@ -14,7 +14,8 @@ import { findAction, openCommandSearch, showShortcuts } from "./ui/commands";
 import type { EdgeFeature, EdgeRef, ExtrudeFeature, ExtrudeSource, Feature, FillToPlaneFeature, ImageFeature, LoftFeature, PathRef, PinDef, PlaneDef, PlaneFeature, ProjectDoc, RevolveFeature, ShellFeature, SketchEntity, SketchFeature, SplitFeature, SweepFeature, TransformFeature, Units, Vec3 } from "./doc/types";
 import { emptyDoc } from "./doc/types";
 import { editedStep } from "./doc/freeformEdits";
-import { createVariable, insertFile, insertImage, acceptFor } from "./io/insert";
+import { createVariable, insertFile, insertImage, acceptFor, MESH_MAX } from "./io/insert";
+import { saveFile } from "./io/save";
 import { RefImages } from "./ui/refImages";
 import { WebWindow } from "./ui/webWindow";
 import { numpadVariables } from "./ui/numpad";
@@ -34,7 +35,7 @@ import { ItemsPanel } from "./ui/items";
 import { OffsetEdgeOp } from "./tools/offsetEdge";
 import { faceFreeformTool } from "./tools/faceFreeform";
 import { HoleOp } from "./tools/holeOp";
-import { bodyCenter, AxisOp, ConnectOp, EdgeOp, ExtrudeOp, FillOp, FillToPlaneOp, ThreadOp, ImageOp, LoftOp, MidplaneOp, MoveFaceOp, PlaneOp, ReplaceFaceOp, ScaleFaceOp, ScaleOp, ScaleRefOp, RevolveOp, ShellOp, SplitOp, SweepOp, TransformOp } from "./tools/ops";
+import { bodyCenter, AxisOp, ConnectOp, EdgeOp, ExtrudeOp, FillOp, FillToPlaneOp, ThreadOp, ImageOp, LoftOp, MidplaneOp, MoveFaceOp, PlaneOp, ReplaceFaceOp, ScaleFaceOp, ScaleOp, ScaleRefOp, scaleWay, RevolveOp, ShellOp, SplitOp, SweepOp, TransformOp } from "./tools/ops";
 import { add, dist, scale, xDirFor } from "./geom";
 import { entityWorldPolylines } from "./sketch/curves";
 import { FreeformTool } from "./tools/freeform";
@@ -64,7 +65,8 @@ import { HelpPanel } from "./ui/help";
 import { icons } from "./ui/icons";
 import { Updates } from "./ui/update";
 import { Offline } from "./ui/offline";
-import { Install } from "./ui/install";
+import { Install, isInstalled, isIOS, notice } from "./ui/install";
+import { onShortPage } from "./ui/steady";
 import { exportThreeMF, zip } from "./io/threemf";
 import { glb } from "./io/formats";
 import { sketchToDXF } from "./io/dxf";
@@ -122,6 +124,17 @@ export class App implements AppContext {
   constructor(canvas: HTMLCanvasElement) {
     this.view = new Viewport(canvas);
     this.input = new InputRouter(this.view);
+    // Two fingers tapped on the view: Undo. Three: Redo (as drawing apps on a tablet have it). Said in a word each
+    // time, so that a tap not meant is seen for what it did.
+    this.input.fingerTap = (fingers) => {
+      const redo = fingers === 3;
+      const button = document.getElementById(redo ? "redo-btn" : "undo-btn") as HTMLButtonElement | null;
+      if (button?.disabled) return this.ui.toast(redo ? "Nothing to redo" : "Nothing to undo");
+      navigator.vibrate?.(10);
+      if (redo) this.redo();
+      else this.undo();
+      this.ui.toast(redo ? "Redo" : "Undo");
+    };
     this.selectTool = new SelectTool(this);
     this.tool = this.selectTool;
     this.input.handler = this.tool;
@@ -165,7 +178,7 @@ export class App implements AppContext {
     busy.hidden = true;
     busy.innerHTML = `<span class="spinner"></span><span>Working…</span><button type="button" class="busy-stop" title="Stop - takes back the last change">Stop</button>`;
     document.body.append(busy);
-    busy.querySelector(".busy-stop")!.addEventListener("click", () => this.stopWork());
+    busy.querySelector(".busy-stop")!.addEventListener("click", () => void this.stopWork());
     let busyTimer = 0;
     let busyWatch = 0;
     this.kernel.onBusy = (on) => {
@@ -226,6 +239,9 @@ export class App implements AppContext {
         this.view.xrMode(true);
       },
       onExit: () => this.view.xrMode(false),
+      // A photo taken in AR: to the share sheet where the device has one for pictures (it is taken to be sent),
+      // else saved as a file.
+      picture: (blob) => void this.deliver(blob, `${this.store.doc.name} in AR.jpg`, "share"),
     }));
     // In the top bar, where it's seen, in a headset; under More on a phone or tablet (when its browser can show AR); never on a computer.
     const vrBtn = document.getElementById("vr-btn")!;
@@ -279,6 +295,13 @@ export class App implements AppContext {
     this.ui.variableNames = () => this.store.doc.variables.map((v) => v.name);
     numpadVariables({ names: () => this.store.doc.variables.map((v) => v.name), create: (value) => createVariable(this, value) });
     settings.onChange(() => this.showPins());
+    // Quick buttons switched on or off (Settings): the tool in use shows its own, or takes them away, at once.
+    let quick = settings.value.quickButtons;
+    settings.onChange((s) => {
+      if (s.quickButtons === quick) return;
+      quick = s.quickButtons;
+      this.tool.quickSwitched?.();
+    });
     this.items = new ItemsPanel(this.store, {
       // A phone: like taps in the view, each body tapped in Items joins the
       // selection (tapped again, it leaves) - Subtract needs two bodies, and
@@ -314,6 +337,9 @@ export class App implements AppContext {
       },
       askName: async (title, current) => (await this.ui.dialog(title, [{ key: "name", label: "Name", value: current }]))?.name.trim() || null,
       isolated: () => this.isolatedWithSketches(),
+      deselect: () => {
+        if (this.tool === this.selectTool) this.setSelection([]);
+      },
     });
     // Items is the panel open at the start, on every screen (History is a tap away) - asked for.
     this.items.toggle(true);
@@ -332,7 +358,10 @@ export class App implements AppContext {
     this.tool.enter?.();
 
     this.ui.setStatus("Loading geometry kernel…");
-    const loaded = this.store.load().then(() => this.attachLibrary());
+    const loaded = this.store
+      .load()
+      .then(() => this.afterCrash())
+      .then(() => this.attachLibrary());
     // Every visit starts at the projects, with a welcome: shown as soon as the
     // projects are read, while the geometry kernel is still loading behind it.
     void loaded.then(() => this.showProjects(true, true));
@@ -721,19 +750,79 @@ export class App implements AppContext {
   }
 
   /**
-   * The Stop button by the spinner: the engine drops what it's doing and the
-   * change that started it is taken back (a live preview is cancelled; a
-   * committed change is undone).
+   * The Stop button by the spinner: the engine stops (between two steps, keeping what it built - or, stuck in one
+   * long step, thrown away) and the change that started it is taken back: a live preview is cancelled, a committed
+   * change undone. With nothing to take back - a project just opened or read again, or the rebuild after an earlier
+   * Stop - the steps from the one it stopped at are rolled back (the History's breakpoint), so it is not all built
+   * again: Stop stops. What is done while it is stopping stays as it is: nothing of it is taken back or closed.
    */
-  private stopWork(): void {
-    const running = this.kernel.running;
-    const committed = !running || running === this.store.doc.features;
-    this.kernel.stop();
-    if (this.tool !== this.selectTool && !(this.tool instanceof SketchTool)) this.setTool(null);
-    if (committed && this.store.canUndo) this.store.undo();
-    else void this.regenerate();
-    this.ui.toast("Stopped - the last change was taken back");
+  private async stopWork(): Promise<void> {
+    if (this.stopping) return;
+    this.stopping = true;
+    const button = document.querySelector<HTMLButtonElement>(".busy-stop");
+    if (button) {
+      button.disabled = true;
+      button.textContent = "Stopping…";
+    }
+    try {
+      const running = this.kernel.running;
+      const doc = this.store.doc;
+      const tool = this.tool;
+      const committed = !running || running === doc.features;
+      // (The rebuild a Stop itself started: taking back yet another change is not what this Stop is for.)
+      const again = !!running && running === this.afterStop;
+      // (The project as it was opened or read: no change of now to take back - the last one of the session before
+      // is not it.)
+      const opening = this.store.justOpened;
+      const { at, fresh } = await this.kernel.stop();
+      // The engine may take a few seconds to answer, and nothing is held up meanwhile. An edit made then, an Undo,
+      // another project opened: the project is no longer the one this Stop was pressed for - it stops, and takes
+      // nothing back (it undid that edit, and left the change it was pressed for). Nor is a tool opened meanwhile
+      // the one to close.
+      const moved = this.store.doc !== doc;
+      if (this.tool === tool && tool !== this.selectTool && !(tool instanceof SketchTool)) this.setTool(null);
+      if (moved) {
+        void this.regenerate();
+        return void this.ui.toast("Stopped");
+      }
+      if (!running) {
+        // Other work (an export, a drawing): its engine is a fresh one - the model is built again.
+        void this.regenerate();
+        return void this.ui.toast("Stopped");
+      }
+      if (!committed) {
+        void this.regenerate();
+        return void this.ui.toast("Stopped - the change was cancelled");
+      }
+      if (!at && !fresh) return; // (It had finished.)
+      if (this.store.canUndo && !again && !opening) {
+        this.store.undo();
+        this.afterStop = this.store.doc.features;
+        return void this.ui.toast("Stopped - the last change was taken back");
+      }
+      const i = at ? this.store.features.findIndex((f) => f.id === at) : -1;
+      if (i < 0) {
+        void this.regenerate();
+        return void this.ui.toast("Stopped");
+      }
+      const off = this.store.features.length - i;
+      const name = this.store.features[i].name;
+      this.store.commit((d) => d.features.forEach((f, k) => (k >= i ? (f.rolledBack = true) : delete f.rolledBack)));
+      // (Rolled back from there already - nothing changed, so nothing asked for the model: what is built is shown.)
+      if (this.store.doc === doc) void this.regenerate();
+      this.afterStop = this.store.doc.features;
+      this.ui.toast(`Stopped at ${name}: it and the steps after it (${off} in all) are rolled back. Remove the breakpoint in History to build them again.`);
+    } finally {
+      this.stopping = false;
+      if (button) {
+        button.disabled = false;
+        button.textContent = "Stop";
+      }
+    }
   }
+  private stopping = false;
+  /** The steps a Stop went back to: stopped again while they are rebuilt, nothing more is taken back. */
+  private afterStop: Feature[] | null = null;
 
   async preview(features: Feature[]): Promise<RegenResult | null> {
     const r = await this.kernel.regenerate(features);
@@ -808,15 +897,86 @@ export class App implements AppContext {
   private async regenerate(): Promise<void> {
     const features = this.store.doc.features;
     this.regenerating++;
+    // A build that may be too much for the page - the first of a project just opened, or one with a file in it that
+    // has not been built yet - is marked as under way. If the page dies in it, the next start finds the mark.
+    const files = features.filter((f) => f.type === "import" && !f.suppressed && !this.builtFiles.has(f.id)).map((f) => f.id);
+    const risky = files.length > 0 || !this.builtOnce;
+    const mark = risky ? `${Date.now()}-${Math.random().toString(36).slice(2, 8)}` : "";
+    if (risky) setBuilding({ mark, files, drawing: false });
     let r: RegenResult | null = null;
     try {
       r = await this.kernel.regenerate(features, true);
     } finally {
       this.regenerating--;
     }
-    if (r) ((this.made = r), this.apply(r, features));
+    if (r) {
+      this.made = r;
+      this.apply(r, features);
+      this.builtOnce = true;
+      for (const id of files) this.builtFiles.add(id);
+    }
     // (Not made - stopped, or overtaken: the next change asks again, whatever it is.)
     else this.madeFor = "";
+    // Built: what is left is drawing it. The mark says so, and goes once a frame or two have been drawn - or a
+    // moment later where frames are not being drawn (the page out of sight), or when the page is put out of sight.
+    // (Stopped before it was made: no build is under way, and none died.)
+    if (risky && !r && readBuilding()?.mark === mark) setBuilding(null);
+    if (risky && r && readBuilding()?.mark === mark) {
+      setBuilding({ mark, files, drawing: true });
+      const clear = () => {
+        if (readBuilding()?.mark !== mark) return;
+        setBuilding(null);
+        setDied(0);
+      };
+      requestAnimationFrame(() => requestAnimationFrame(clear));
+      setTimeout(clear, 2500);
+    }
+  }
+
+  /** The mark a build left behind before this start, if the page died in it: read, and taken away, before anything is built now. */
+  private readonly diedBefore = takeBuilding();
+
+  /** The project has been built once since it was opened; the files in it that have been built. */
+  private builtOnce = false;
+  private builtFiles = new Set<string>();
+
+  /**
+   * At the start: did the page die building this project last time (it ran out of memory on a file brought in)?
+   * Then it would die again now, and at every start after: the project could not be opened at all. The step it
+   * died on is switched off - still in History, to delete or to try again - and that is said. So is a mesh far
+   * over what can be brought in, from before files were checked on the way in.
+   */
+  private afterCrash(): void {
+    // (The mark was read as the app was made - see diedBefore - not here: by now this start's own first build
+    // has put its mark there, and that was taken for a death at every start.)
+    const died = this.diedBefore;
+    const fs = this.store.doc.features;
+    const off = new Set<string>();
+    // How sure it is. The page died while the engine was building a file that had not been built before: that file,
+    // at once. Anything less plain - it died with no such file, or after the build, while drawing - may as well
+    // have been a phone putting the page away, or a reload at the wrong moment: nothing is switched off for one
+    // such start (a harmless Extrude was, after an ordinary reload). Twice running is no accident.
+    const again = died ? readDied() + 1 : 0;
+    setDied(again);
+    const sure = !!died && ((!died.drawing && died.files.length > 0) || again >= 2);
+    for (const id of farTooBig(fs)) off.add(id);
+    for (const f of fs) if (sure && f.type === "import" && !f.suppressed && died!.files.includes(f.id)) off.add(f.id);
+    // (Died twice with no file to blame: the last step that is on.)
+    if (sure && !off.size) {
+      const last = [...fs].reverse().find((f) => !f.suppressed && !f.rolledBack);
+      if (last) off.add(last.id);
+    }
+    if (!off.size) return;
+    setDied(0);
+    const names = fs.filter((f) => off.has(f.id)).map((f) => (f.type === "import" && f.fileName) || f.name);
+    this.store.adopt((d) => {
+      for (const f of d.features) if (off.has(f.id)) f.suppressed = true;
+    });
+    void this.store.flush();
+    const what = names.length === 1 ? names[0] : `${names.length} steps`;
+    // (A window to close, not a line that is gone in a moment: it is why something of theirs is not there.)
+    const note = `It ran out of memory, most likely. ${what} is switched off so that the project opens. In History, delete that step, or tap its eye to try it again.`;
+    setTimeout(() => void this.ui.ask("This project did not finish opening last time", note, [{ id: "ok", label: "OK", primary: true }]), 1500);
   }
 
   /** Sketches the engine moved the curves of (they follow a body): those curves, by the sketch as it was sent. */
@@ -1391,13 +1551,14 @@ export class App implements AppContext {
             id: "moveKinds",
             label: "Move",
             icon: "move",
+            spread: true,
             children: [
               { id: "move", label: "Move/Rotate", icon: "move", shortcut: "M", run: transform("move", "Move/Rotate") },
               { id: "translate", label: "Translate", icon: "translate", run: transform("translate", "Translate") },
               { id: "rotate", label: "Rotate Around Axis", icon: "rotateAxis", run: transform("rotate", "Rotate Around Axis") },
             ],
           },
-          { id: "scale", label: "Scale", icon: "scale", run: wait("Scale", ["body", "face", "edge"], () => this.setTool(new ScaleOp(this, false, bodies()))) },
+          { id: "scale", label: "Scale", icon: "scale", run: wait("Scale", ["body", "face", "edge"], () => this.setTool(scaleWay.kind === "ref" ? new ScaleRefOp(this, bodies()) : new ScaleOp(this, scaleWay.kind === "xyz", bodies()))) },
           { id: "mirror", label: "Mirror", icon: "mirror", run: transform("mirror", "Mirror") },
           {
             id: "pattern",
@@ -1611,6 +1772,11 @@ export class App implements AppContext {
       e.preventDefault();
       return;
     }
+    // A number typed with a tool open: into its main value (see Sentence.typeMain).
+    if (!mod && !e.altKey && /^[0-9.,-]$/.test(e.key) && this.tool !== this.selectTool && this.sentence.typeMain(e.key === "," ? "." : e.key)) {
+      e.preventDefault();
+      return;
+    }
     // Space over a face: zoom to it.
     if (k === " " && !mod && this.pointerAt) {
       const hit = this.view.pick(this.pointerAt[0], this.pointerAt[1], { edges: false, planes: false, profiles: false });
@@ -1789,14 +1955,21 @@ export class App implements AppContext {
       if (nativeFull) return void (nativeFull.setFullscreen!(true), setTimeout(paint, 100));
       if (root.requestFullscreen) void root.requestFullscreen().catch(() => this.ui.toast("This browser won't go fullscreen here"));
       else if (root.webkitRequestFullscreen) root.webkitRequestFullscreen();
-      // iPhone Safari has no fullscreen for pages: the Home Screen app is.
-      else this.ui.toast("Tip: Share → Add to Home Screen opens superGeometry.app full screen");
+      // An iPhone's browser has no full screen for pages - Apple gives it to videos only there (an iPad has it, and
+      // Android): said, with the nearest thing there is, the app on the Home Screen. (It was a tip that went by in
+      // three seconds and did not say why.)
+      else if (isIOS()) install.offer(true, "On an iPhone, Apple lets only videos go full screen, not web pages. The nearest thing is superGeometry.app on your Home Screen, without Safari's bars.");
+      else this.ui.toast("This browser won't go fullscreen here");
     };
     const leaveFull = () => {
       if (nativeFull) return void (nativeFull.setFullscreen!(false), setTimeout(paint, 100));
       void (document.exitFullscreen?.() ?? doc.webkitExitFullscreen?.());
     };
     paint();
+    // Opened from an iPhone's Home Screen, the app has the screen already and the browser has no full screen to
+    // give: there is nothing to offer.
+    const nothingToOffer = !nativeFull && typeof root.requestFullscreen !== "function" && typeof root.webkitRequestFullscreen !== "function" && isInstalled();
+    fs.hidden = nothingToOffer;
     moreItem("m-fullscreen", () => {
       if (isFull()) return leaveFull();
       goFull();
@@ -1804,13 +1977,43 @@ export class App implements AppContext {
     // The welcome window (and File → Open) has a Full screen button too (a
     // browser only allows it from a tap). Everywhere but an app that already
     // has the whole screen; where a browser has none (iPhone), it says how.
-    this.fullscreen = nativeFull || !matchMedia("(display-mode: fullscreen)").matches ? { isFull, toggle: () => (isFull() ? leaveFull() : goFull()) } : null;
+    this.fullscreen = (nativeFull || !matchMedia("(display-mode: fullscreen)").matches) && !nothingToOffer ? { isFull, toggle: () => (isFull() ? leaveFull() : goFull()) } : null;
     // Help and Tutorial: placeholders for now.
     // A newer build out? More pulses and its Update item says NEW.
     this.updates = new Updates(() => this.store.flush());
     moreItem("m-update", () => void this.confirmReset());
     // Phones and tablets: an offer to add the app to the home screen (More → Install app too).
     const install = new Install((t) => this.ui.toast(t));
+    // An iPhone's Home Screen app laid out short of its screen (ui/steady.ts): said once on the device, so that the
+    // empty strip is known for the phone's doing and is not taken for a fault of the app (it was reported as one).
+    // Once the window the app opens with is out of the way, and the question that follows it a moment later: the
+    // notice would lie over their buttons.
+    let stripWatched = false;
+    onShortPage(() => {
+      if (stripWatched) return;
+      stripWatched = true;
+      const tell = () => {
+        try {
+          if (localStorage.getItem("sg.stripTold") === "1") return;
+          localStorage.setItem("sg.stripTold", "1");
+        } catch {
+          return;
+        }
+        notice("On this iPhone the tools at the bottom cannot reach the bottom of the screen. That is iOS's doing, not the app's: since iOS 26.1 an iPhone does not give a web app on its Home Screen the whole screen. Apple has the fault open.");
+      };
+      let timer = 0;
+      const wait = () => {
+        clearTimeout(timer);
+        timer = window.setTimeout(() => {
+          if (document.querySelector(".dialog-back")) return;
+          watch.disconnect();
+          tell();
+        }, 700);
+      };
+      const watch = new MutationObserver(wait);
+      watch.observe(document.body, { childList: true });
+      wait();
+    });
     const inst = document.getElementById("m-install")!;
     document.getElementById("more-btn")!.addEventListener("click", () => (inst.hidden = !install.available));
     moreItem("m-install", () => install.offer(true));
@@ -1939,6 +2142,8 @@ export class App implements AppContext {
     item("m-new", () => void this.newProject());
     item("m-open", () => void this.showProjects());
     item("m-save", () => this.save());
+    // (The same as More > Insert > File: where a file is looked for first.)
+    item("m-import", () => void insertFile(this));
     item("m-stl", () => void this.export("stl"));
     item("m-step", () => void this.export("step"));
     item("m-3mf", () => void this.export3mf());
@@ -2200,6 +2405,15 @@ export class App implements AppContext {
 
   /** Close the open project (it's kept, with a fresh picture) and open another. */
   private async switchProject(doc: ProjectDoc, id: string): Promise<void> {
+    // A project with a mesh in it far over what can be brought in (saved before files were checked on the way
+    // in, or made elsewhere): that step is switched off as it opens, and it is said - built, it would run the
+    // page out of memory, and at every start after.
+    const big = farTooBig(doc.features);
+    if (big.length) {
+      const names = doc.features.filter((f) => big.includes(f.id)).map((f) => (f.type === "import" && f.fileName) || f.name);
+      for (const f of doc.features) if (big.includes(f.id)) f.suppressed = true;
+      void this.ui.ask("A file in this project is too big to build", `${names.join(", ")} has far more triangles than can be brought in (up to ${MESH_MAX.toLocaleString("en-US")}). Its step is switched off so that the project opens: it is still in History.`, [{ id: "ok", label: "OK", primary: true }]);
+    }
     this.setTool(null);
     this.setSection(null);
     this.isolate(null);
@@ -2209,9 +2423,15 @@ export class App implements AppContext {
     // The id and the document change together: an autosave due meanwhile went to the old project.
     this.projectId = id;
     this.projectKept = kept;
+    // (Its first build is one that may be too much: marked, as at the start.)
+    this.builtOnce = false;
     // The last one's rebuild, if it is still going, is no use now: dropped, not waited for
     // (opening a small project while a guitar was still being built took the guitar's 90 s).
-    if (this.kernel.running) this.kernel.stop();
+    // (Its own rebuild waits behind that one: built as soon as the engine lets go - between two steps, at once
+    // mostly - or on a fresh engine when a long step holds it. Not waited for here; and what the rebuild thrown
+    // away was at is no business of the project now opened.)
+    if (this.kernel.running) void this.kernel.stop(KernelClient.SWITCH_WAIT_MS);
+    this.kernel.newProject();
     this.store.openDoc(doc);
     // A new one starts from the default view (not looking up from below, as the last was left).
     if (!doc.features.length) this.view.cam.iso();
@@ -2226,9 +2446,12 @@ export class App implements AppContext {
     // The open one with its picture as it looks now (starting: nothing has changed, nor is it drawn yet).
     if (this.projectId && !starting) await this.keepInLibrary(JSON.stringify(this.store.doc), true);
     const entries = await libraryEntries();
+    // The Tutorial button is for someone new: nothing kept on this device yet, and the tutorial never offered on
+    // it. Anyone who has been here before has it under More > Tutorial - not in this window each time it opens.
+    const someoneNew = !entries.length && !this.tutorialOffered(false);
     showLibrary(entries, this.projectId, {
       open: (id) => void this.openKept(id),
-      tutorial: () => (this.tutorialAsked(), this.startTutorial()),
+      ...(someoneNew ? { tutorial: () => (this.tutorialAsked(), this.startTutorial()) } : {}),
       newProject: () => void this.newProject(),
       openFile: () => this.open(),
       download: (id) => void this.downloadKept(id),
@@ -2253,18 +2476,22 @@ export class App implements AppContext {
     }
   }
 
+  /** Has it been? `unknown`: what to take it for where nothing can be kept (a browser with no storage). */
+  private tutorialOffered(unknown: boolean): boolean {
+    try {
+      return localStorage.getItem("sg.tutorialAsked") === "1";
+    } catch {
+      return unknown;
+    }
+  }
+
   /**
    * The first time the app is opened on a device, once the welcome window is closed: would they like the tutorial?
    * Asked once, whatever the answer (More > Tutorial has it from then on).
    */
   private offerTutorial(): void {
-    let asked = true;
-    try {
-      asked = localStorage.getItem("sg.tutorialAsked") === "1";
-    } catch {
-      /* no storage: not offered (it would be offered every time) */
-    }
-    if (asked) return;
+    // (No storage: not offered - it would be offered every time.)
+    if (this.tutorialOffered(true)) return;
     this.tutorialAsked();
     // (After what closing the window started - a new project, a file being opened - has had its turn.)
     setTimeout(() => {
@@ -2528,10 +2755,57 @@ function canShareType(ext: string): boolean {
   return canShare(new File(["x"], `x.${ext}`, { type: MIME[ext] ?? "application/octet-stream" }));
 }
 
+/** The mark of a build under way (see App.regenerate): kept where a page that dies leaves it behind. */
+const BUILDING = "sg.building";
+type Building = { mark: string; files: string[]; /** Built: it was being drawn. */ drawing: boolean };
+/** How many starts running found a build that had died. */
+const DIED = "sg.died";
+function readDied(): number {
+  try {
+    return Number(localStorage.getItem(DIED)) || 0;
+  } catch {
+    return 0;
+  }
+}
+function setDied(n: number): void {
+  try {
+    if (n > 0) localStorage.setItem(DIED, String(n));
+    else localStorage.removeItem(DIED);
+  } catch {
+    /* no storage */
+  }
+}
+function setBuilding(v: Building | null): void {
+  try {
+    if (v) localStorage.setItem(BUILDING, JSON.stringify(v));
+    else localStorage.removeItem(BUILDING);
+  } catch {
+    /* no storage: no mark */
+  }
+}
+function readBuilding(): Building | null {
+  try {
+    const v = JSON.parse(localStorage.getItem(BUILDING) ?? "null") as { mark?: unknown; files?: unknown; drawing?: unknown } | null;
+    return v && typeof v.mark === "string" && Array.isArray(v.files) ? { mark: v.mark, files: v.files.filter((x): x is string => typeof x === "string"), drawing: v.drawing === true } : null;
+  } catch {
+    return null;
+  }
+}
+/** The steps that are meshes far over what can be brought in, and are on. (A binary STL as text: four letters to three bytes, fifty bytes a triangle.) */
+function farTooBig(features: readonly Feature[]): string[] {
+  return features.filter((f) => f.type === "import" && !f.suppressed && f.format === "stl" && (f.data.length * 0.75) / 50 > MESH_MAX * 1.5).map((f) => f.id);
+}
+function takeBuilding(): Building | null {
+  const v = readBuilding();
+  setBuilding(null);
+  return v;
+}
+// (The page left in the ordinary way - closed, reloaded, another site: not a build that died.)
+window.addEventListener("pagehide", () => setBuilding(null));
+// (Put out of sight with the build done and only the drawing marked: nothing is being drawn now.)
+document.addEventListener("visibilitychange", () => document.visibilityState === "hidden" && readBuilding()?.drawing && setBuilding(null));
+
+/** A made file to the device: see io/save.ts (Android's "Save to" window where the browser has it, else a download). */
 function download(blob: Blob, name: string): void {
-  const a = document.createElement("a");
-  a.href = URL.createObjectURL(blob);
-  a.download = name;
-  a.click();
-  setTimeout(() => URL.revokeObjectURL(a.href), 5000);
+  saveFile(blob, name);
 }

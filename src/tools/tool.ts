@@ -28,6 +28,8 @@ export interface Tool extends PointerHandler {
   dragKey?(e: KeyboardEvent): boolean;
   /** Called after every regeneration (committed or preview). */
   refresh?(): void;
+  /** Quick buttons were switched on or off in Settings: the tool's own are made again, or taken away. */
+  quickSwitched?(): void;
   /**
    * The tool's own steps, before anything is committed (a freeform cage being
    * shaped): Undo/Redo take these back first, and never the project's steps

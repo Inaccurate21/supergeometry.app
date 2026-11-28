@@ -1324,6 +1324,78 @@ export function constraintName(c: SketchConstraint): string {
   return c.type;
 }
 
+/**
+ * The constraints a copy of some curves takes with it. `ids`: each curve copied, to its copy; `entities`: the sketch
+ * with the copies in it, where they stand now (moved, turned, scaled). A copy had none: its lines were not even
+ * joined at their corners, and a shape drawn once and copied to be changed a little fell apart at the first drag
+ * (reported).
+ * - Only what lies between the curves copied: a constraint that reaches a curve left behind stays the original's.
+ * - Each as it holds for the copy where it stands. A line that was horizontal, turned a quarter round, is
+ *   vertical; turned by another angle it is neither. A size or a distance that no longer fits - the copy was
+ *   scaled - is the copy's own, and follows no variable any more.
+ * - Not a lock: it would hold the copy where the original is held. Nor what ties a curve to the one it was
+ *   patterned, mirrored or offset from.
+ */
+export function copiedConstraints(constraints: SketchConstraint[], ids: Map<string, string>, entities: SketchEntity[], newId: () => string): SketchConstraint[] {
+  if (!ids.size) return [];
+  const m = new Map(entities.map((e) => [e.id, e]));
+  const get = (id: string) => m.get(id);
+  // (As near as a copy made by moving, turning or scaling comes: a millionth of the sketch's own size.)
+  let span = 1;
+  for (const e of entities) for (const q of pointsOf(e)) span = Math.max(span, Math.abs(q.at[0]), Math.abs(q.at[1]));
+  const tol = 1e-6 * span;
+  const met = (c: SketchConstraint) => residuals(c, get).every((v) => Number.isFinite(v) && Math.abs(v) <= tol);
+  const P = (r: PointRef) => {
+    const e = get(r.e);
+    return e ? pointOf(e, r.p) : null;
+  };
+  /** The size or the distance as it is on the copy (null: none to be had). */
+  const measured = (c: SketchConstraint): number | null => {
+    if (c.type === "dim") {
+      const e = c.curves?.[0] ? get(c.curves[0]) : undefined;
+      // (An angle between two lines does not change with a copy: one that does not hold is not this.)
+      return e && c.prop && !(c.prop === "angle" && c.curves?.length === 2) ? sizeOf(e, c.prop) : null;
+    }
+    const [l, k] = (c.curves ?? []).map(get);
+    if (c.pts?.length === 1 && l?.kind === "line") {
+      const p = P(c.pts[0]);
+      return p ? distPointLine(p, l.a, l.b) : null;
+    }
+    if (!c.pts?.length && l?.kind === "line" && k?.kind === "line") return distPointLine([(k.a[0] + k.b[0]) / 2, (k.a[1] + k.b[1]) / 2], l.a, l.b);
+    const [a, b] = (c.pts ?? []).map(P);
+    return a && b ? Math.hypot(a[0] - b[0], a[1] - b[1]) : null;
+  };
+  const out: SketchConstraint[] = [];
+  for (const c of constraints) {
+    if (c.type === "fix" || c.type === "pattern" || c.type === "follow") continue;
+    const on = refsOf(c);
+    if (!on.length || !on.every((id) => ids.has(id))) continue;
+    const copy: SketchConstraint = {
+      ...c,
+      id: newId(),
+      ...(c.pts ? { pts: c.pts.map((p) => ({ ...p, e: ids.get(p.e)! })) } : {}),
+      ...(c.curves ? { curves: c.curves.map((id) => ids.get(id)!) } : {}),
+    };
+    if (met(copy)) {
+      out.push(copy);
+      continue;
+    }
+    if (c.type === "horizontal" || c.type === "vertical") {
+      const other: SketchConstraint = { ...copy, type: c.type === "horizontal" ? "vertical" : "horizontal" };
+      if (met(other)) out.push(other);
+      continue;
+    }
+    if (c.type === "dim" || c.type === "distance") {
+      const value = measured(copy);
+      if (value === null || !Number.isFinite(value)) continue;
+      const own: SketchConstraint = { ...copy, value };
+      delete own.expr;
+      if (met(own)) out.push(own);
+    }
+  }
+  return out;
+}
+
 /** Largest residual of the constraints on these entities as they are (0 = all met). */
 export function constraintError(entities: SketchEntity[], constraints: SketchConstraint[]): number {
   const m = new Map(entities.map((e) => [e.id, e]));

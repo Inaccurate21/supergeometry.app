@@ -32,8 +32,8 @@ think in 3D: brackets, boxes, vases, knobs, threads, enclosures, furniture parts
 
 Inside the app, **More → Help** shows what every button does, and **More →
 Tutorial** builds a first part with you: an M10 bolt and the nut that fits it,
-one lit tap at a time (the first time the app is opened, it is offered once
-the welcome window is closed).
+one lit tap at a time (the first time the app is opened, the welcome window
+has a Tutorial button, and it is offered once more when that window is closed).
 
 ---
 
@@ -100,11 +100,14 @@ There's no wrong order. Undo (bottom left) is always one tap away.
 | Turn the view | right-drag (or Alt + left-drag) | one-finger drag | drag with the trigger |
 | Move the view | middle-drag (or Shift + right-drag) | two-finger drag | - (use the view cube) |
 | Zoom | mouse wheel | pinch | thumbstick / pinch |
+| Roll the view | ⟲ ⟳ on the view cube | twist two fingers | - |
 | Select | click | tap | point and trigger |
 | Select several | left-drag a box on empty space, or Ctrl + A for everything | tap one after another | point and trigger |
 | Select a whole body | double-click | double-tap | double-trigger |
 | Deselect | Esc or click empty space | tap empty space | tap empty space |
 | Step back | right-click or Esc | - | - |
+| Undo / Redo | Ctrl + Z / Ctrl + Y | tap with two fingers / with three | - |
+| A menu by the pointer | right-click | press and hold still (on a part: then lift) | press and hold |
 
 - **Used to another program's mouse?** Settings → Mouse makes the buttons
   turn, move and zoom the view as they do there: Onshape and Tinkercad (the
@@ -123,7 +126,10 @@ There's no wrong order. Undo (bottom left) is always one tap away.
 
 - **Fit**: double-tap the view cube to get everything on screen.
 - **View cube** (top right): tap a face for a straight-on view (Top, Front…);
-  ⟲ ⟳ at its top corners turn the view by 90°.
+  ⟲ ⟳ at its top corners turn the view by 90°. On a touch screen two fingers
+  twisted roll it by any amount, about the point between them; let go near
+  level or near a quarter turn and it goes there. A rolled view comes level
+  again as you turn it.
 - **Orbit centre** (the cube's bottom-left button): tap it, then tap a point -
   the view now turns around that point. Fit resets it.
 - **Views** (the cube's bottom-right button): standard and saved views; tap
@@ -162,11 +168,14 @@ runs between, a row or a ring of copies for a pattern.
 tools (a flat face Sketch and Move, a round face Thread and Fillet, an edge
 Chamfer and Move, a body Fillet and Mirror), then **Delete**, then **More**,
 which opens every other tool that pick has. In a sketch: Construction and
-Delete.
+Delete. On a phone they are smaller, their names the same size.
+**Settings → Quick buttons** switches them off, for working from the
+line at the bottom alone: every one of those tools is on it too.
 
 **Right edge** - **Fit**, **Display** (shaded, wireframe, X-ray) and
-**Settings**: one sheet with Units & grid, Snapping, the number pad and
-Appearance, each row saying how it is set now.
+**Settings**: one sheet with Units & grid, Snapping, Appearance and (with a
+mouse) Mouse, each row saying how it is set now, then the two switches:
+Number pad on screen and Quick buttons.
 
 **Bottom left** - Undo / Redo.
 
@@ -195,11 +204,11 @@ Script - or **Import font…** a .ttf / .otf / .woff of your own; each letter ke
 a few lines, arcs and smooth curves, so extruded text has a face per side, not hundreds), Project
 (copies body edges or other sketches' curves here).
 
-**Exact points on touch screens:** right after the first tap of a line,
-rectangle, circle, polygon or ellipse the line has **X / Y** for that point
-(a fingertip can't hit a 1 mm grid). A line then takes **Length and Angle**,
-or **Across and Up** for a slope ("in 10, up 12"); an arc by centre takes the
-centre, Radius and the Start and End angles. Grid snapping follows the zoom
+**Exact sizes on touch screens:** after the first tap of a line, rectangle,
+circle, polygon or ellipse the line has the shape's sizes (on a phone, behind
+**Values**): a line's **Length and Angle**, a rectangle's Width and Height, a
+circle's Diameter; an arc by centre takes its Radius and the Start and End
+angles. Type them, and the tick puts the shape in. Grid snapping follows the zoom
 (1 / 5 / 10 mm) so a tap lands where a fingertip can tell apart. A typed shape
 is placed with Enter or Done.
 
@@ -208,10 +217,12 @@ perpendicular, where two cross) are kept as constraints. Dragging a point onto
 another joins them.
 
 **Fill Pattern:** a closed shape filled with lines from edge to edge (straight, crossed, zigzag, waves) or with
-small shapes (dots, honeycomb, squares, diamonds), its spacing, size and angle set; the strips and cells are
-shapes to extrude or cut, for textures.
+small shapes (dots, honeycomb, squares, diamonds). One tap inside the shape fills it; its spacing and size are a
+share of the shape, in percent (5 gives about twenty rows on a shape of any size), and the pattern follows when
+they or its angle are changed. The strips and cells are shapes to extrude or cut, for textures.
 
-**Edit tools:** Offset Edge (parallel copy; whole outlines too), Fillet and
+**Edit tools:** Offset Edge (parallel copy; several edges together, or whole outlines; an ellipse's
+offset is the curve the same distance from it all along, a spline), Fillet and
 Chamfer (round or bevel a corner where lines or arcs meet; tap the next corner
 to go on), Mirror (the selected shapes, across a line or an axis), Trim (cut
 away between crossings - tap, or swipe across several - or *Join* two lines
@@ -220,6 +231,12 @@ on along their circle), Split, Move/Rotate (gimbal, or Rotate About a tapped
 centre), Scale, Pattern (linear with an arrow you drag, or circular around a
 centre), Delete. Tools with options start with the option you used last.
 Tapping empty space finishes Offset, Move, Scale, Pattern, Rotate and Mirror.
+A copy made with the **Copy** switch (by the gimbal, or in Move/Rotate, Rotate
+About and Scale) keeps the constraints that lie within it: joined corners,
+level and upright lines, sizes. Change one of its sizes and the rest follows.
+So does the blue tick: while a tool is on, the line at the bottom holds only that tool's own
+buttons, Sketch view and the tick. The tick finishes what the tool has set up and puts it down,
+and Draw, Modify, Transform, Delete and Exit are on the line again.
 
 **Select** (in a sketch): tap curves to select them, double-tap for a whole
 shape. Drag points or curves, or use the gimbal. Tap an arc or circle to type
@@ -253,7 +270,8 @@ sketch. A sketch stays in view until every region of it is used.
 
 - **Extrude** - pull a region or a face. **Operation** (Auto, New body, Add,
   Cut, Intersect): Auto goes by direction - on a plane + is a new body and -
-  a cut, on a face out adds and in cuts. **Taper end %** sizes the far end (100 none, 0 a
+  a cut, on a face out adds and in cuts. Several shapes of a sketch pulled up as a new body are a body
+  each where they stand apart (shapes that touch are one). **Taper end %** sizes the far end (100 none, 0 a
   point: a spire, a pyramid or a cone in one step) - type it or drag the box
   left / right. Extrude starts at the last distance.
 - **Revolve** - spin a region around an axis (a separate line, a side of a
@@ -264,13 +282,18 @@ sketch. A sketch stays in view until every region of it is used.
   profiles.
 - **Shell** - hollow a body; tapped faces become openings (Clear empties the
   list).
+- **Starting sizes** - a tool starts at a size taken from what it is used on, so the change shows on a
+  small part and on one a metre across: a fillet or chamfer at a tenth of the shortest edge picked, a
+  shell at a twentieth of the body, an offset plane at a quarter of its face. If that size cannot be
+  built, the tool steps down to one that can. Type or drag to change it.
 - **Fillet / Chamfer** - tap edges, drag the dot (outward rounds, inward
   bevels) or type a size in the box on the model; variables work too. A
   fillet that can't be made leaves the edge sharp with a note in History.
 - **Direct touch** - what is picked is dragged by itself: a face pushed or
   pulled, a sketch's shape pulled up into a solid, an edge rounded, a body
   slid over the floor. On a touch screen press and hold a face, shape or edge
-  and pull, in one touch.
+  and pull, in one touch. Lifted without pulling, the press brings the list of
+  what can be done with it, as a right-click does.
 - **Faces** - drag the arrow to push/pull a face: its neighbours follow,
   curved ones included; fillets next to it are kept. **Move/Rotate Face**
   (a gimbal on the face) moves it every way and turns it about its normal. A
@@ -285,8 +308,8 @@ sketch. A sketch stays in view until every region of it is used.
   message instead.
 - **Transform** - Move/Rotate (gimbal, with a Copy switch: after a drag the
   panel stays for exact values; copies are independent bodies, **Link** keeps a
-  freeform copy following its original), Scale (uniform,
-  or X/Y/Z on freeform bodies), Translate (from a point to a point; the origin, 0, 0, 0, can be tapped too), Mirror,
+  freeform copy following its original), Scale (its three ways are on its line: Uniform,
+  X / Y / Z for each direction by itself, By reference for two points and the distance they should be), Translate (from a point to a point; the origin, 0, 0, 0, can be tapped too), Mirror,
   Rotate Around Axis (a round edge gives an axis through its centre),
   Patterns. A body of a pattern picked: **Whole Pattern** selects the rest.
 - **Union / Subtract / Intersect** - combine bodies (they need to touch to
@@ -394,8 +417,9 @@ sketch. A sketch stays in view until every region of it is used.
   the project's unit changes no size: plain numbers in formulas are given
   the unit they were typed in.
 - The **on-screen numpad** (Settings at the right edge, Number pad on
-  screen) replaces the system keyboard for value boxes. It's on by default
-  on phones, tablets and headsets. Tapping a box selects its value, so typing
+  screen) replaces the system keyboard for value boxes. It's on by default,
+  on a computer too: there it opens beside the box, and the keyboard types
+  into the box as ever. Tapping a box selects its value, so typing
   replaces it; nothing is applied until you press ↵. After the second tap of
   a line, its length box opens right away. Drag the numpad by its grip where
   you want it; double-tap the grip to put it back by the box.
@@ -430,6 +454,11 @@ can't be rebuilt after a change, it's marked and the reason is shown.
   clearing the site's data in the browser's settings deletes them.
 - **File → Save project** downloads a `.super` file (keep it as a backup or
   move it to another device).
+- **On Android**, Save project and the exports open the device's own *Save to* window where the
+  browser has it (Chrome): Google Drive and the device's other places are in it. Where it has none, the
+  file is downloaded as before.
+- **File → Import file…** brings a STEP, STL, OBJ, 3MF, DXF or SVG file into the project that is
+  open (the same as More → Insert → File).
 - **File → Export STL** or **Export 3MF** for 3D printing (3MF keeps body
   names and colours), **Export STEP** for other CAD programs. With bodies
   selected (or isolated), only those are exported. On phones and tablets the
@@ -467,7 +496,12 @@ can't be rebuilt after a change, it's marked and the reason is shown.
 - iPad / Android: **More → Fullscreen** gives the whole screen. On phones and
   tablets the app offers to be **installed on the home screen** (or More →
   Install app); on iPhone/iPad it's *Share → Add to Home Screen*.
-- The window the app opens with has a **Full screen** button.
+- The window the app opens with has a **Full screen** button. On an iPhone,
+  Apple lets only videos go full screen, not web pages: in Safari the button
+  says so and how to add the app to the Home Screen, and opened from the Home
+  Screen it is not offered. Since iOS 26.1 an iPhone does not give a web app on
+  its Home Screen the whole screen either (a fault in iOS that Apple has
+  open): the app says so once and uses the room it gets.
 - Fit frames the model in the part of the screen the bars leave
   free.
 - Meta Quest: open the site in the Quest browser; buttons and pick distances
@@ -497,8 +531,10 @@ can't be rebuilt after a change, it's marked and the reason is shown.
 - **Something is hidden**: check the eyes in **Items**, and whether
   **Isolate** is on.
 - **A "Working…" spinner**: the geometry engine is busy; complex steps can
-  take a moment. **Stop** next to it drops the work and takes back the change
-  that started it (like an undo).
+  take a moment. **Stop** next to it ends the work before its next step and
+  takes back the change that started it (like an undo). On a project just
+  opened there is no change to take back: the steps not reached yet are rolled
+  back in **History**, to build again when you remove the breakpoint.
 - **A change you expected isn't there yet**: when a newer version is out,
   **More** pulses and its **Update** item says NEW. **More → Update** loads the newest
   version right away (your project is kept).
@@ -516,9 +552,13 @@ you: how to build a model in the person's open tab with the page's `sg` handle, 
 complete examples, is https://supergeometry.app/llms-full.txt; everything both pages say is tested against the
 app on every change (`tests/llms.test.ts`).
 
-**Learning the app with an assistant:** ask it to teach you. It has a course of eight lessons
-(`public/llms-teach.txt`): you do the tapping, it says what to tap and why, and checks what you did
-(`sg.now()`) before going on. It starts from what you want to make and what you already know.
+**Learning the app with an assistant:** ask it to teach you. Its course (`public/llms-teach.txt`) builds
+one thing from start to finish, a desk lamp, in nine lessons: a base, a pole drawn on it, a flared hollow
+shade, a freeform bulb, three feet as a pattern of holes, the head tilted, then the tilt, the wall and the
+number of feet made variables, and out to the printer. You do the tapping, it says what to tap and why,
+and checks what you did (`sg.now()`) before going on. Three more lessons cover what the lamp does not
+need: exact sizes and constraints, Revolve, two parts that fit. The lamp as the lessons build it is
+tested on every change (`tests/courselamp.test.ts`).
 
 **People:** on a computer, the **Claude** button at the bottom right shows how to model by asking. It needs
 Claude's extension for Chrome: open it beside the app, say what you want, and Claude builds the model in your

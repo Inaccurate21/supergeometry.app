@@ -46,6 +46,22 @@ body {
   }
 }
 
+/* An iPhone's home-screen app, iOS 26.1 and later: the page is laid out as tall as the screen less its status bar,
+   yet drawn from the very top of the screen - a strip as tall as the status bar is left along the bottom with
+   nothing in it, and the line at the bottom floats that much too high (reported; the phone's own fault, WebKit bug
+   301994). ui/steady.ts finds it (html.page-short, --page-gap). Then, and none of it can make things worse: the
+   model's picture is drawn on down through the strip, and what is pinned to the bottom no longer keeps clear of
+   the home bar - the strip already does. Nothing is moved into the strip itself: whether a tap lands there is not
+   known. (--safe-bh: the heights worked out from the bottom inset stay as they were.) */
+html.page-short #view {
+  bottom: auto;
+  height: calc(100% + var(--page-gap));
+}
+html.page-short body {
+  --safe-bh: env(safe-area-inset-bottom, 0px);
+  --safe-b: max(0px, calc(env(safe-area-inset-bottom, 0px) - var(--page-gap)));
+}
+
 button {
   font: inherit;
   color: inherit;
@@ -294,6 +310,11 @@ kbd {
   padding: 10px;
   border-radius: 6px;
 }
+/* (An item with nothing to offer here is off the menu: Install app where it is installed or cannot be, Fullscreen
+   in an iPhone's home-screen app. Hidden, each was still shown - the rule above drew it.) */
+.menu button[hidden] {
+  display: none;
+}
 .menu button:hover {
   background: rgba(255, 255, 255, 0.08);
 }
@@ -428,7 +449,7 @@ button.menu-note {
 /* The constraints of a pick, as a list. */
 .dialog.constraint-list {
   width: min(440px, calc(100vw - 24px));
-  max-height: min(80vh, calc(100vh - 24px - var(--safe-t) - var(--safe-b)));
+  max-height: min(80vh, calc(100vh - 24px - var(--safe-t) - var(--safe-bh, var(--safe-b))));
   padding: 14px;
 }
 .constraint-rows {
@@ -732,7 +753,7 @@ body.items-open #left-col {
   left: calc(8px + var(--safe-l));
   top: 50%;
   transform: translateY(-50%);
-  max-height: calc(100vh - 200px - var(--safe-t) - var(--safe-b));
+  max-height: calc(100vh - 200px - var(--safe-t) - var(--safe-bh, var(--safe-b)));
   overflow-y: auto;
 }
 #toolbar:empty,
@@ -2335,7 +2356,7 @@ body.items-open #bottom-left {
 }
 /* The fields: as tall as the screen allows, then they scroll (with a bar always shown). */
 form.dialog {
-  max-height: calc(100dvh - 24px - var(--safe-t) - var(--safe-b));
+  max-height: calc(100dvh - 24px - var(--safe-t) - var(--safe-bh, var(--safe-b)));
 }
 .dialog-list {
   display: flex;
@@ -2451,7 +2472,7 @@ form.dialog {
 /* File → Open: the projects kept on this device. */
 .dialog.library {
   width: min(780px, calc(100vw - 24px));
-  max-height: min(86vh, calc(100vh - 24px - var(--safe-t) - var(--safe-b)));
+  max-height: min(86vh, calc(100vh - 24px - var(--safe-t) - var(--safe-bh, var(--safe-b))));
   padding: 14px;
   /* A short screen (a phone on its side): the window scrolls up and down,
      its parts keep their size (the projects were squeezed out of sight). */
@@ -2544,7 +2565,7 @@ form.dialog {
 /* More → About: the README, read in the app. */
 .dialog.about {
   width: min(720px, calc(100vw - 24px));
-  max-height: min(88vh, calc(100vh - 24px - var(--safe-t) - var(--safe-b)));
+  max-height: min(88vh, calc(100vh - 24px - var(--safe-t) - var(--safe-bh, var(--safe-b))));
   padding: 14px;
   display: flex;
   flex-direction: column;
@@ -3655,7 +3676,7 @@ body.history-open #viewcube-host {
 }
 @media (max-height: 500px) and (orientation: landscape) {
   #popover {
-    max-height: calc(100vh - 60px - var(--safe-t) - var(--safe-b));
+    max-height: calc(100vh - 60px - var(--safe-t) - var(--safe-bh, var(--safe-b)));
   }
 }
 /* Phones sideways: the column's buttons a little shorter but wider (easy to
@@ -3692,7 +3713,7 @@ body.history-open #viewcube-host {
   left: 50%;
   transform: translateX(-50%);
   width: min(680px, calc(100vw - 24px));
-  max-height: calc(100vh - 80px - var(--safe-t) - var(--safe-b));
+  max-height: calc(100vh - 80px - var(--safe-t) - var(--safe-bh, var(--safe-b)));
   display: flex;
   flex-direction: column;
   background: var(--chrome-solid);
@@ -3759,14 +3780,14 @@ body.history-open #viewcube-host {
   .help-panel {
     top: calc(52px + var(--safe-t));
     width: calc(100vw - 16px);
-    max-height: calc(100vh - 64px - var(--safe-t) - var(--safe-b));
+    max-height: calc(100vh - 64px - var(--safe-t) - var(--safe-bh, var(--safe-b)));
   }
 }
 /* Phones sideways: use the full height. */
 @media (max-height: 500px) {
   .help-panel {
     top: calc(8px + var(--safe-t));
-    max-height: calc(100vh - 16px - var(--safe-t) - var(--safe-b));
+    max-height: calc(100vh - 16px - var(--safe-t) - var(--safe-bh, var(--safe-b)));
   }
 }
 body.headset .help-list li {
@@ -3844,6 +3865,9 @@ body:has(#flyout:not([hidden])) #warn {
   gap: 10px;
   flex-wrap: wrap;
   justify-content: center;
+  /* (As wide as its words, up to the screen: placed from the middle, it was held to half the screen's width - a
+     notice of three sentences stood as a narrow column on a phone.) */
+  width: max-content;
   max-width: calc(100vw - 24px);
   padding: 8px 10px 8px 16px;
   border-radius: 14px;
@@ -4079,7 +4103,7 @@ html[data-screen="tablet"] #more-menu {
     transform: none;
     max-height: none;
     height: fit-content;
-    max-height: calc(100vh - 190px - var(--safe-t) - var(--safe-b));
+    max-height: calc(100vh - 190px - var(--safe-t) - var(--safe-bh, var(--safe-b)));
     overflow-x: hidden;
     overflow-y: auto;
     z-index: 26;
@@ -4092,7 +4116,7 @@ html[data-screen="tablet"] #more-menu {
   }
   /* Clear of the guide text when it's showing. */
   body.sketching:has(#hint:not([hidden])) #toolbar {
-    max-height: calc(100vh - 250px - var(--safe-t) - var(--safe-b));
+    max-height: calc(100vh - 250px - var(--safe-t) - var(--safe-bh, var(--safe-b)));
   }
 }
 
@@ -4342,7 +4366,7 @@ html body #topbar .project-name.wide {
     top: calc(52px + var(--safe-t)) !important;
     bottom: auto !important;
     transform: none !important;
-    max-height: calc(100vh - 60px - var(--safe-t) - var(--safe-b));
+    max-height: calc(100vh - 60px - var(--safe-t) - var(--safe-bh, var(--safe-b)));
     overflow-y: auto;
   }
 }
@@ -4400,10 +4424,10 @@ html[data-screen="phone"] .numpad .np-grip {
   }
   html body.sketching #toolbar {
     bottom: calc(62px + var(--safe-b));
-    max-height: calc(100vh - 134px - var(--safe-t) - var(--safe-b));
+    max-height: calc(100vh - 134px - var(--safe-t) - var(--safe-bh, var(--safe-b)));
   }
   html body.sketching:has(#hint:not([hidden])) #toolbar {
-    max-height: calc(100vh - 134px - var(--hint-h, 63px) - var(--safe-t) - var(--safe-b));
+    max-height: calc(100vh - 134px - var(--hint-h, 63px) - var(--safe-t) - var(--safe-bh, var(--safe-b)));
   }
 }
 /* Full screen on phones: the browser's bars are gone, so the edges come in -
@@ -6072,16 +6096,20 @@ body.items-open #items-btn {
   display: none;
 }
 .quick-action {
-  /* (Round; a longer name - Construction - makes it a pill.) */
-  min-width: 48px;
-  height: 48px;
-  padding: 0 7px;
+  /* (All one size, beside the pick and in its list: a longer name - Construction - made a wider pill beside round
+     ones, and the list's were smaller again. A long name is made smaller to fit instead: quickActions.ts fitNames.) */
+  /* (52 by 40 on every screen: on a computer they were 60 by 48, big beside the part they are for. The names keep
+     their 9 px - a long one is narrowed, then made smaller, to stay inside - and the icon is 16 px over them.) */
+  width: 52px;
+  flex: none;
+  height: 40px;
+  padding: 0 3px;
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
   gap: 1px;
-  border-radius: 24px;
+  border-radius: 20px;
   border: 1.5px solid rgba(120, 165, 255, 0.6);
   background: rgba(31, 33, 37, 0.95);
   color: var(--text);
@@ -6100,13 +6128,14 @@ body.items-open #items-btn {
   border-color: #8fbcff;
 }
 .quick-action svg {
-  width: 18px;
-  height: 18px;
+  width: 16px;
+  height: 16px;
   flex: none;
 }
 .quick-action span {
   font-size: 9px;
   line-height: 10px;
+  max-width: 100%;
   overflow: hidden;
   white-space: nowrap;
   color: #c3c7cf;
@@ -6497,6 +6526,13 @@ body.sentence-ui #panel:not(:has(.text-input)) {
   width: 18px;
   height: 18px;
 }
+/* A sign in an icon's place (a constraint's ∥ ⟂ =): as big as an icon, in the middle of its square. */
+.sn-glyph {
+  place-items: center;
+  font-size: 15px;
+  line-height: 1;
+  font-weight: 600;
+}
 .sn-swatch {
   width: 16px;
   height: 16px;
@@ -6822,6 +6858,15 @@ html[data-screen="phone"] #sentence {
   }
   html[data-screen="phone"] body.sentence-ui #hint {
     bottom: calc(var(--sn-line, 48px) + var(--sn-sheet, 0px) + 70px + var(--safe-b)) !important;
+  }
+  /* The warning line: clear above undo and redo, which stand over the line here. (It was a fixed 118 px up, from
+     when they were lower: half of it was under them.) */
+  html[data-screen="phone"] body.sentence-ui #warn {
+    bottom: calc(var(--sn-line, 48px) + var(--sn-sheet, 0px) + 16px + min(var(--sn-bar, 52px), 64px) + 10px + var(--safe-b));
+  }
+  /* (The guide text is there too, over undo and redo: the warning over that.) */
+  html[data-screen="phone"] body.sentence-ui.hint-shown #warn {
+    bottom: calc(var(--sn-line, 48px) + var(--sn-sheet, 0px) + 70px + var(--hint-h, 40px) + 8px + var(--safe-b));
   }
   html[data-screen="phone"] .sn-row.sn-wrap {
     max-height: 94px;
@@ -7313,6 +7358,36 @@ html[data-screen="phone"] .sn-sheet:not(.sn-typing) .sn-group-words .sn-word:not
 html[data-screen="phone"] .sn-sheet .sn-group-cap {
   font-size: 11.5px;
 }
+/* A sketch's constraints: small buttons, five across, both rows (in use, to add) in view at once - the big ones ran
+   to a scroll before what could be added. */
+html[data-screen="phone"] .sn-sheet.sn-small .sn-group-words {
+  gap: 5px;
+}
+html[data-screen="phone"] .sn-sheet.sn-small .sn-group-words .sn-word {
+  min-height: 44px;
+  min-width: 0;
+  padding: 4px 2px 3px;
+  font-size: 10.5px;
+  border-radius: 9px;
+}
+html[data-screen="phone"] .sn-sheet.sn-small .sn-group-words .sn-word .sn-body {
+  gap: 2px;
+}
+html[data-screen="phone"] .sn-sheet.sn-small .sn-group-words .sn-word .sn-icon,
+html[data-screen="phone"] .sn-sheet.sn-small .sn-group-words .sn-word .sn-icon svg {
+  width: 17px;
+  height: 17px;
+}
+html[data-screen="phone"] .sn-sheet.sn-small .sn-group-words .sn-word .sn-text {
+  overflow-wrap: normal;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+html[data-screen="phone"] .sn-sheet.sn-kids.sn-small .sn-group + .sn-group {
+  margin-top: 8px;
+  padding-top: 6px;
+}
 /* (A phone on its side: the list is a card over its word - its cells as wide as a finger.) */
 @media (orientation: landscape) {
   html[data-screen="phone"] .sn-sheet:not(.sn-typing) .sn-group-words .sn-word {
@@ -7361,18 +7436,19 @@ html[data-screen="phone"] body.sentence-ui #toast {
 .quick-actions {
   flex-direction: column;
   align-items: center;
-  gap: 8px;
+  gap: 6px;
 }
 .quick-row {
   display: flex;
-  gap: 8px;
+  gap: 6px;
 }
 .quick-rest {
   display: grid;
-  grid-template-columns: repeat(4, 48px);
-  gap: 8px;
+  /* (A little wider than round: a constraint's name - Perpendicular - fits in it, made smaller only as needed.) */
+  grid-template-columns: repeat(4, 52px);
+  gap: 6px;
   justify-content: center;
-  padding: 8px;
+  padding: 7px;
   border-radius: 18px;
   background: rgba(24, 26, 30, 0.92);
   border: 1px solid rgba(255, 255, 255, 0.1);
@@ -7385,9 +7461,6 @@ html[data-screen="phone"] body.sentence-ui #toast {
   display: none;
 }
 .quick-rest .quick-action {
-  min-width: 0;
-  width: 48px;
-  padding: 0 2px;
   border-color: rgba(255, 255, 255, 0.18);
   box-shadow: none;
 }
@@ -7397,15 +7470,65 @@ html[data-screen="phone"] body.sentence-ui #toast {
 .quick-action.danger svg {
   color: #ff8d82;
 }
+.quick-glyph {
+  font-style: normal;
+  font-size: 15px;
+  line-height: 16px;
+  height: 16px;
+  font-weight: 600;
+}
 .quick-swatch {
-  width: 18px;
-  height: 18px;
+  width: 16px;
+  height: 16px;
   flex: none;
   border-radius: 50%;
   border: 1px solid rgba(255, 255, 255, 0.35);
 }
 .quick-action.quick-more {
   border-style: dashed;
+}
+/* A name too wide for its button: narrowed to fit (quickActions.ts fitNames), so it is laid out at its own width. */
+.quick-action span.narrowed {
+  max-width: none;
+  overflow: visible;
+}
+/* A phone: smaller. A row of four took seven tenths of the screen's width, right over the model it is for. The names
+   keep their size (a long one is narrowed before it is made smaller), and each button takes a touch a little past
+   its own edge, half way to the next one: as easy to hit as it was. */
+html[data-screen="phone"] .quick-actions,
+html[data-screen="phone"] .quick-row {
+  gap: 6px;
+}
+html[data-screen="phone"] .quick-action {
+  position: relative;
+  /* (Not narrower: Construction, the longest name in a row, is still as tall as the others, only narrowed.) */
+  width: 52px;
+  height: 40px;
+  border-radius: 20px;
+}
+html[data-screen="tablet"] .quick-action {
+  position: relative;
+}
+html[data-screen="tablet"] .quick-action::after,
+html[data-screen="phone"] .quick-action::after {
+  content: "";
+  position: absolute;
+  inset: -4.5px;
+}
+html[data-screen="phone"] .quick-action svg,
+html[data-screen="phone"] .quick-swatch {
+  width: 16px;
+  height: 16px;
+}
+html[data-screen="phone"] .quick-glyph {
+  font-size: 15px;
+  line-height: 16px;
+  height: 16px;
+}
+html[data-screen="phone"] .quick-rest {
+  grid-template-columns: repeat(4, 52px);
+  gap: 6px;
+  padding: 7px;
 }
 
 /* A list at the right edge (Settings and its pages, Display): its parts apart - a grey line over each heading but
@@ -7415,7 +7538,7 @@ html[data-screen="phone"] body.sentence-ui #toast {
   padding-top: 12px;
   border-top: 1px solid rgba(255, 255, 255, 0.14);
 }
-/* Its own name at the top, a line under it: Settings apart from Units & grid, Snapping, Number pad, Appearance. */
+/* Its own name at the top, a line under it: Settings apart from Units & grid, Snapping, Appearance and its switches. */
 #popover .pop-heading:first-child {
   padding-bottom: 8px;
   margin-bottom: 4px;
@@ -7577,11 +7700,11 @@ html[data-screen="phone"] body.sn-open #left-col {
 #items,
 #history {
   bottom: auto !important;
-  max-height: calc(100dvh - 16px - var(--safe-t) - var(--safe-b));
+  max-height: calc(100dvh - 16px - var(--safe-t) - var(--safe-bh, var(--safe-b)));
 }
 html[data-screen="tablet"] #items,
 html[data-screen="tablet"] #history {
-  max-height: calc(100dvh - 150px - var(--safe-t) - var(--safe-b));
+  max-height: calc(100dvh - 150px - var(--safe-t) - var(--safe-bh, var(--safe-b)));
 }
 @media (max-height: 500px) and (min-width: 721px) {
   #items,
@@ -7589,7 +7712,7 @@ html[data-screen="tablet"] #history {
   html[data-screen="tablet"] #items,
   html[data-screen="tablet"] #history {
     /* (Clear of the line and of the tag over it.) */
-    max-height: calc(100dvh - 52px - 128px - var(--safe-t) - var(--safe-b));
+    max-height: calc(100dvh - 52px - 128px - var(--safe-t) - var(--safe-bh, var(--safe-b)));
   }
 }
 @media (max-width: 720px) {
@@ -7703,6 +7826,47 @@ body.history-open.history-clear-col #right-col {
 }
 .sn-line.sn-two .sn-end-btn .sn-end-name {
   font-size: 10.5px;
+}
+/* The tool's buttons and the ones at the end (Sketch view, the tick, Exit) as one set, the same width each, two rows
+   right across the bar. (They were two blocks: the tool's in rows at the left, the end's in one row at the bottom
+   right - nothing over it, and the left block's names cut short.) How many across: --sn-cols, set as it is drawn. */
+.sn-line.sn-two {
+  flex-wrap: wrap;
+  align-content: center;
+  padding: 3px;
+  row-gap: 2px;
+}
+.sn-line.sn-two .sn-row,
+.sn-line.sn-two .sn-end {
+  display: contents;
+}
+.sn-line.sn-two .sn-row .sn-word,
+.sn-line.sn-two .sn-end > .sn-end-btn {
+  /* (Each the same width, a short row too - a row of four was wider buttons than a row of five.) */
+  flex: 0 0 calc(100% / var(--sn-cols, 5) - 1px);
+  max-width: none;
+  min-width: 0;
+  box-sizing: border-box;
+}
+.sn-line.sn-two .sn-end > .sn-end-btn {
+  height: 46px;
+  min-width: 0;
+  padding: 3px 2px 2px;
+  flex-direction: column;
+  gap: 2px;
+  background: none;
+}
+/* (What is left over in a short row: before the end's buttons, so Exit stays at the right edge.) */
+.sn-line.sn-two .sn-end > .sn-end-btn:first-child {
+  margin-left: auto;
+}
+/* (The tick keeps its own blue and a finger's width, in the middle of its place.) */
+.sn-line.sn-two .sn-end > .sn-end-btn.sn-done {
+  flex-basis: calc(100% / var(--sn-cols, 5) - 9px);
+  height: 40px;
+  align-self: center;
+  margin: 0 4px;
+  background: var(--accent);
 }
 
 /* Undo and redo are a piece of the bottom bar: its height, whatever that is on this screen. They were a fixed 52 (48 on a

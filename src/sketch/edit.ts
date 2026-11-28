@@ -422,7 +422,8 @@ export function endNear(e: SketchEntity, at: Vec2): "a" | "b" | null {
 
 type Carrier = { kind: "line"; p: Vec2; d: Vec2 } | { kind: "circle"; c: Vec2; r: number };
 
-type Piece = Extract<SketchEntity, { kind: "line" | "arc" | "spline" }>;
+type Piece = Extract<SketchEntity, { kind: "line" | "arc" | "spline" | "ellipse" }>;
+type EllipseE = Extract<SketchEntity, { kind: "ellipse" }>;
 
 /** Where an open spline starts and ends (its real curve ends). */
 export function splineEnds(e: SketchEntity): [Vec2, Vec2] | null {
@@ -431,11 +432,145 @@ export function splineEnds(e: SketchEntity): [Vec2, Vec2] | null {
   return [evalPrim(p, 0), evalPrim(p, 1)];
 }
 
+/** A point of an ellipse at angle `t` of its own, and the way straight out of it there (of length 1). */
+function ellipseAt(e: EllipseE, t: number): { p: Vec2; n: Vec2 } {
+  const [c, s] = [Math.cos(e.rotation), Math.sin(e.rotation)];
+  const [x, y] = [e.rx * Math.cos(t), e.ry * Math.sin(t)];
+  const [nx, ny] = [e.ry * Math.cos(t), e.rx * Math.sin(t)];
+  const L = Math.hypot(nx, ny) || 1;
+  return { p: [e.center[0] + x * c - y * s, e.center[1] + x * s + y * c], n: [(nx * c - ny * s) / L, (nx * s + ny * c) / L] };
+}
+
+/** Where part of an ellipse starts and ends (null: a whole one, or no ellipse). */
+export function ellipseEnds(e: SketchEntity): [Vec2, Vec2] | null {
+  if (e.kind !== "ellipse" || e.sweep === undefined) return null;
+  return [ellipseAt(e, e.a0 ?? 0).p, ellipseAt(e, (e.a0 ?? 0) + e.sweep).p];
+}
+
+/** As round as a circle (its two radii the same): its offset is the same with another radius, exactly. */
+const roundEllipse = (e: EllipseE) => Math.abs(e.rx - e.ry) <= 1e-9 * Math.max(e.rx, e.ry);
+
+/**
+ * The curve a set distance from an ellipse, or from part of one, as a few points along it: each that far out along
+ * the ellipse's own normal there (d > 0: away from the centre; a part: from its start to its end, both in). Null:
+ * inward by as much as its tightest bend or more - the curve would fold over itself.
+ */
+function ellipseParallel(e: EllipseE, d: number): Vec2[] | null {
+  const part = e.sweep !== undefined;
+  const a0 = part ? (e.a0 ?? 0) : 0;
+  const sweep = part ? e.sweep! : 2 * Math.PI;
+  if (d < 0) {
+    const n = Math.max(8, Math.ceil((Math.abs(sweep) / (Math.PI / 2)) * 48));
+    for (let i = 0; i <= n; i++) {
+      const t = a0 + (sweep * i) / n;
+      // (How tightly it bends there: the radius of the circle that fits it.)
+      const bend = Math.pow(e.rx * e.rx * Math.sin(t) ** 2 + e.ry * e.ry * Math.cos(t) ** 2, 1.5) / (e.rx * e.ry);
+      if (-d >= bend * (1 - 1e-9)) return null;
+    }
+  }
+  // Where along it the points go: evenly by its own angle and by the way its normal turns, half and half. (By its
+  // own angle alone a long thin one had too few points round its tips, by the normal alone too few along its
+  // sides.) A part: more closely toward its two ends, where the spline has nothing beyond to lean on.
+  const turn = (t: number) => t + 0.5 * Math.atan2((e.rx - e.ry) * Math.sin(t) * Math.cos(t), e.ry * Math.cos(t) ** 2 + e.rx * Math.sin(t) ** 2);
+  const [y0, y1] = [turn(a0), turn(a0 + sweep)];
+  const at = (y: number): number => {
+    let [lo, hi] = [a0, a0 + sweep];
+    for (let i = 0; i < 52; i++) {
+      const m = (lo + hi) / 2;
+      if (turn(m) < y === y0 < y1) lo = m;
+      else hi = m;
+    }
+    return (lo + hi) / 2;
+  };
+  const m = part ? Math.max(6, Math.ceil((Math.abs(y1 - y0) / (Math.PI / 2)) * 12)) : 40;
+  const ease = (u: number) => 0.25 * u + 0.75 * (6 * u ** 5 - 15 * u ** 4 + 10 * u ** 3);
+  const out: Vec2[] = [];
+  for (let i = 0; i <= (part ? m : m - 1); i++) {
+    const t = i === 0 ? a0 : part && i === m ? a0 + sweep : at(y0 + (y1 - y0) * (part ? ease(i / m) : i / m));
+    const { p, n: out1 } = ellipseAt(e, t);
+    out.push([p[0] + out1[0] * d, p[1] + out1[1] * d]);
+  }
+  return out;
+}
+
+/**
+ * The control points of the smooth curve (a spline of the "control" kind) that passes through `q`: an open one from
+ * the first to the last, its ends exactly on them, or a closed one round them all.
+ */
+function splineThrough(q: Vec2[], closed: boolean): Vec2[] {
+  const n = q.length;
+  if (closed) {
+    // (C[k-1] + 4 C[k] + C[k+1]) / 6 = Q[k], round and round: each sweep halves what is left of the error.
+    let c = q.map((p): Vec2 => [p[0], p[1]]);
+    for (let it = 0; it < 70; it++) c = c.map((_, k): Vec2 => [(6 * q[k][0] - c[(k + n - 1) % n][0] - c[(k + 1) % n][0]) / 4, (6 * q[k][1] - c[(k + n - 1) % n][1] - c[(k + 1) % n][1]) / 4]);
+    return c;
+  }
+  if (n < 3) return q.map((p): Vec2 => [p[0], p[1]]);
+  // The same, the two end ones the points themselves.
+  const b = new Array<number>(n).fill(4);
+  const r = q.map((p): Vec2 => [6 * p[0], 6 * p[1]]);
+  const lower = (i: number) => (i === n - 1 ? 0 : 1);
+  const upper = (i: number) => (i === 0 ? 0 : 1);
+  b[0] = b[n - 1] = 1;
+  r[0] = [q[0][0], q[0][1]];
+  r[n - 1] = [q[n - 1][0], q[n - 1][1]];
+  for (let i = 1; i < n; i++) {
+    const w = lower(i) / b[i - 1];
+    b[i] -= w * upper(i - 1);
+    r[i] = [r[i][0] - w * r[i - 1][0], r[i][1] - w * r[i - 1][1]];
+  }
+  const c = new Array<Vec2>(n);
+  c[n - 1] = [r[n - 1][0] / b[n - 1], r[n - 1][1] / b[n - 1]];
+  for (let i = n - 2; i >= 0; i--) c[i] = [(r[i][0] - upper(i) * c[i + 1][0]) / b[i], (r[i][1] - upper(i) * c[i + 1][1]) / b[i]];
+  return c;
+}
+
+/**
+ * Where the curve a distance `d` from an ellipse crosses a line or a circle, nearest one end of the part given: the
+ * ellipse's own angle there - past the end (the curve carried on along the ellipse) or short of it (cut back).
+ * Null: it ends on it already, or does not reach it within a quarter turn.
+ */
+function ellipseMeets(e: EllipseE, d: number, k: Carrier, end: "a" | "b"): number | null {
+  const sweep = e.sweep ?? 0;
+  const te = (e.a0 ?? 0) + (end === "b" ? sweep : 0);
+  const off = (t: number): number => {
+    const { p, n } = ellipseAt(e, t);
+    const q: Vec2 = [p[0] + n[0] * d, p[1] + n[1] * d];
+    if (k.kind === "circle") return Math.hypot(q[0] - k.c[0], q[1] - k.c[1]) - k.r;
+    return ((q[0] - k.p[0]) * k.d[1] - (q[1] - k.p[1]) * k.d[0]) / (Math.hypot(k.d[0], k.d[1]) || 1);
+  };
+  const g0 = off(te);
+  if (Math.abs(g0) < 1e-9 * Math.max(1, e.rx, e.ry)) return null;
+  const h = 0.01;
+  // Step by step both ways at once, so the nearer crossing is the one found.
+  const reach = [Math.PI / 2, Math.min(Math.PI / 2, Math.abs(sweep) * 0.9)];
+  const way = [(end === "b" ? 1 : -1) * Math.sign(sweep), (end === "b" ? -1 : 1) * Math.sign(sweep)];
+  const last = [g0, g0];
+  for (let i = 1; i * h <= Math.PI / 2 + h; i++) {
+    for (const s of [0, 1]) {
+      if (i * h > reach[s] + h) continue;
+      const g = off(te + way[s] * i * h);
+      if (g === 0 || g < 0 !== last[s] < 0) {
+        let [lo, hi] = [te + way[s] * (i - 1) * h, te + way[s] * i * h];
+        for (let it = 0; it < 60; it++) {
+          const m = (lo + hi) / 2;
+          if (off(m) < 0 === last[s] < 0) lo = m;
+          else hi = m;
+        }
+        return (lo + hi) / 2;
+      }
+      last[s] = g;
+    }
+  }
+  return null;
+}
+
 /** The same curve run the other way. */
 function reverseIf(e: SketchEntity, rev: boolean): SketchEntity {
   if (!rev) return e;
   if (e.kind === "line" || e.kind === "arc") return { ...e, a: e.b, b: e.a } as SketchEntity;
   if (e.kind === "spline") return { ...e, points: [...e.points].reverse(), ...(e.z ? { z: [...e.z].reverse() } : {}) };
+  if (e.kind === "ellipse" && e.sweep !== undefined) return { ...e, a0: (e.a0 ?? 0) + e.sweep, sweep: -e.sweep };
   return e;
 }
 
@@ -810,12 +945,13 @@ export interface ChainLink {
  * when the last one comes back to where the first started.
  */
 export function connectedChain(entities: SketchEntity[], id: string): { links: ChainLink[]; closed: boolean } | null {
-  // Lines, arcs and open splines, by their two ends.
+  // Lines, arcs, open splines and parts of ellipses, by their two ends. (A part of an ellipse was left out: an
+  // outline with a fillet's edge seen at a slant in it stopped there, and its pieces were offset each by itself.)
   type Open = { id: string; a: Vec2; b: Vec2 };
   const open: Open[] = entities.flatMap((e) => {
     if (e.construction) return [];
     if (e.kind === "line" || e.kind === "arc") return [{ id: e.id, a: e.a, b: e.b }];
-    const ends = splineEnds(e);
+    const ends = splineEnds(e) ?? ellipseEnds(e);
     return ends ? [{ id: e.id, a: ends[0], b: ends[1] }] : [];
   });
   const start = open.find((e) => e.id === id);
@@ -855,11 +991,13 @@ export function offsetChain(entities: SketchEntity[], id: string, d: number): Sk
   if (!chain) return null;
   const byId = new Map(entities.map((e) => [e.id, e]));
   // Walk direction: flip pieces walked backwards so every piece runs along the chain.
-  const pieces = chain.links.map((l) => reverseIf(byId.get(l.id)!, l.reversed) as Piece);
+  // (Part of an ellipse that is as round as a circle: the arc it is.)
+  const asArc = (e: SketchEntity): SketchEntity => (e.kind === "ellipse" && e.sweep !== undefined && roundEllipse(e) ? { id: e.id, kind: "arc", a: ellipseAt(e, e.a0 ?? 0).p, m: ellipseAt(e, (e.a0 ?? 0) + e.sweep / 2).p, b: ellipseAt(e, (e.a0 ?? 0) + e.sweep).p, construction: e.construction } : e);
+  const pieces = chain.links.map((l) => reverseIf(asArc(byId.get(l.id)!), l.reversed) as Piece);
   // Outward is to the right of a counter-clockwise loop (offsetEntity goes left).
   let side = 1;
   if (chain.closed) {
-    const poly = pieces.flatMap((e) => (e.kind === "arc" ? [e.a, e.m] : e.kind === "spline" ? samplePrim(entityPrims(e)[0], 0, 1).slice(0, -1) : [e.a]));
+    const poly = pieces.flatMap((e) => (e.kind === "arc" ? [e.a, e.m] : e.kind === "spline" || e.kind === "ellipse" ? samplePrim(entityPrims(e)[0], 0, 1).slice(0, -1) : [e.a]));
     let area = 0;
     for (let i = 0; i < poly.length; i++) {
       const p = poly[i];
@@ -870,8 +1008,9 @@ export function offsetChain(entities: SketchEntity[], id: string, d: number): Sk
   }
   // offsetEntity moves lines to their left but arcs always outward: an arc
   // turning left (counter-clockwise) has its left side towards its centre.
-  const leftOf = (e: Piece) => (e.kind === "arc" && (arcFrom3(e.a, e.m, e.b)?.sweep ?? 0) > 0 ? -1 : 1);
-  const endOf = (e: Piece, k: "a" | "b"): Vec2 => (e.kind === "spline" ? splineEnds(e)![k === "a" ? 0 : 1] : e[k]);
+  // (Part of an ellipse goes outward too, as an arc does.)
+  const leftOf = (e: Piece) => ((e.kind === "arc" ? (arcFrom3(e.a, e.m, e.b)?.sweep ?? 0) : e.kind === "ellipse" ? (e.sweep ?? 0) : 0) > 0 ? -1 : 1);
+  const endOf = (e: Piece, k: "a" | "b"): Vec2 => (e.kind === "spline" ? splineEnds(e)![k === "a" ? 0 : 1] : e.kind === "ellipse" ? ellipseEnds(e)![k === "a" ? 0 : 1] : e[k]);
   const lenOf = (e: Piece) => (e.kind === "line" ? Math.hypot(e.b[0] - e.a[0], e.b[1] - e.a[1]) : 1);
   let size = 1;
   for (const e of pieces) for (const k of ["a", "b"] as const) size = Math.max(size, Math.abs(endOf(e, k)[0]), Math.abs(endOf(e, k)[1]));
@@ -892,6 +1031,13 @@ export function offsetChain(entities: SketchEntity[], id: string, d: number): Sk
     out = moved as Piece[];
     // Re-join neighbours where their offset carriers cross, nearest the original corner.
     const n = out.length;
+    // (Part of an ellipse at a corner: its offset carried on along the ellipse, or cut back, to where it meets its
+    // neighbour - made again over that much of the ellipse, not its end pulled across.)
+    const span = new Map<number, [number, number]>();
+    const partOf = (k: number): EllipseE | null => {
+      const e = pieces[alive[k]];
+      return e.kind === "ellipse" && e.sweep !== undefined && out[k].kind === "spline" ? e : null;
+    };
     for (let i = 0; i < (chain.closed ? n : n - 1); i++) {
       const j = (i + 1) % n;
       const k1 = carrierOf(out[i]);
@@ -905,7 +1051,16 @@ export function offsetChain(entities: SketchEntity[], id: string, d: number): Sk
         // A spline next to a line/arc: the spline's offset end, brought onto the other's carrier.
         const k = (k1 ?? k2)!;
         const q = k1 ? endOf(out[j], "a") : endOf(out[i], "b");
-        meet = k.kind === "line" ? projectOnLine(q, k.p, [k.p[0] + k.d[0], k.p[1] + k.d[1]]) : towards(k.c, q, k.r);
+        const [at, end] = k1 ? ([j, "a"] as const) : ([i, "b"] as const);
+        const el = partOf(at);
+        const by = el ? leftOf(el) * side * d : 0;
+        const t = el ? ellipseMeets(el, by, k, end) : null;
+        if (el && t !== null) {
+          const was = span.get(at) ?? [el.a0 ?? 0, (el.a0 ?? 0) + el.sweep!];
+          span.set(at, end === "a" ? [t, was[1]] : [was[0], t]);
+          const w = ellipseAt(el, t);
+          meet = [w.p[0] + w.n[0] * by, w.p[1] + w.n[1] * by];
+        } else meet = k.kind === "line" ? projectOnLine(q, k.p, [k.p[0] + k.d[0], k.p[1] + k.d[1]]) : towards(k.c, q, k.r);
       } else {
         // Two splines: halfway between their offset ends.
         const p = endOf(out[i], "b");
@@ -918,6 +1073,12 @@ export function offsetChain(entities: SketchEntity[], id: string, d: number): Sk
       if (!meet) meet = endOf(out[i], "b");
       out[i] = moveEnd(out[i], "b", meet) as (typeof out)[number];
       out[j] = moveEnd(out[j], "a", meet) as (typeof out)[number];
+    }
+    for (const [k, [t0, t1]] of span) {
+      const el = partOf(k);
+      if (!el || Math.sign(t1 - t0) !== Math.sign(el.sweep!)) continue;
+      const again = offsetEntity({ ...el, a0: t0, sweep: t1 - t0 }, leftOf(el) * side * d);
+      if (again) out[k] = { ...again, id: out[k].id } as Piece;
     }
     // All straight: no piece is dropped here - the offset is cut where it crosses
     // itself instead, and what turned round or runs too near the outline goes
@@ -951,6 +1112,63 @@ export function offsetChain(entities: SketchEntity[], id: string, d: number): Sk
     return [...entities, ...clean.map((e) => ({ ...e, id: uid() }))];
   }
   return [...entities, ...out.map((e) => ({ ...e, id: uid() }))];
+}
+
+/**
+ * Several curves offset together by `d`, the first the way it would go alone. Those that join end to end go as one
+ * run - trimmed or carried on to meet again at their corners, as a whole outline's are (offsetChain) - and a run
+ * apart from the first goes to the same side of the lot as the first did (towards the middle of them all, or away
+ * from it). What would collapse is left out.
+ */
+export function offsetSeveral(picked: SketchEntity[], d: number): SketchEntity[] {
+  const list = picked.filter((e, i) => picked.findIndex((x) => x.id === e.id) === i);
+  if (!list.length) return [];
+  // (Dashed ones join runs like the others: whether what comes out is dashed is the caller's to say.)
+  const plain = list.map((e) => (e.construction ? { ...e, construction: undefined } : e));
+  const mid = (es: SketchEntity[]): Vec2 | null => {
+    const ps = es.flatMap((e) => entityPrims(e).map((p) => evalPrim(p, 0.5)));
+    return ps.length ? [ps.reduce((s, p) => s + p[0], 0) / ps.length, ps.reduce((s, p) => s + p[1], 0) / ps.length] : null;
+  };
+  // The runs: each curve with the ones joined to it end to end, the first curve's run first.
+  const left = new Map(plain.map((e) => [e.id, e]));
+  const runs: SketchEntity[][] = [];
+  for (const e of plain) {
+    if (!left.has(e.id)) continue;
+    const ids = connectedChain([...left.values()], e.id)?.links.map((l) => l.id) ?? [e.id];
+    runs.push(ids.map((id) => left.get(id)!));
+    for (const id of ids) left.delete(id);
+  }
+  const make = (run: SketchEntity[], seed: string, by: number): SketchEntity[] => {
+    if (run.length === 1) {
+      const o = offsetEntity(run[0], by);
+      return o ? [o] : [];
+    }
+    return offsetChain(run, seed, by)?.slice(run.length) ?? [];
+  };
+  const gap = (es: SketchEntity[], q: Vec2) => Math.min(Infinity, ...es.flatMap((e) => entityPrims(e).map((p) => closestOnPrim(p, q).d)));
+  // The first run: the way that puts its first curve where it would go alone.
+  const [first, ...rest] = runs;
+  let out = make(first, first[0].id, d);
+  if (first.length > 1) {
+    const alone = offsetEntity(first[0], d);
+    const want = alone && mid([alone]);
+    const other = make(first, first[0].id, -d);
+    if (want && other.length && (!out.length || gap(other, want) < gap(out, want))) out = other;
+  }
+  // The others: to the same side of them all - towards their middle, or away from it - as the first went.
+  const centre = mid(plain);
+  const away = (run: SketchEntity[], made: SketchEntity[]): number => {
+    const [a, b] = [mid(run), mid(made)];
+    if (!centre || !a || !b) return 0;
+    const dd = Math.hypot(b[0] - centre[0], b[1] - centre[1]) - Math.hypot(a[0] - centre[0], a[1] - centre[1]);
+    return Math.abs(dd) < Math.abs(d) * 1e-6 ? 0 : Math.sign(dd);
+  };
+  const lead = away(first, out);
+  for (const run of rest) {
+    const [a, b] = [make(run, run[0].id, d), make(run, run[0].id, -d)];
+    out = [...out, ...(lead && b.length && away(run, b) === lead && away(run, a) !== lead ? b : a.length ? a : b)];
+  }
+  return out;
 }
 
 /**
@@ -1103,8 +1321,20 @@ export function offsetEntity(e: SketchEntity, d: number): SketchEntity | null {
       return null;
     case "circle":
       return e.radius + d > 0 ? { ...base, kind: "circle", center: e.center, radius: e.radius + d } : null;
-    case "ellipse":
-      return e.rx + d > 0 && e.ry + d > 0 ? { ...base, kind: "ellipse", center: e.center, rx: e.rx + d, ry: e.ry + d, rotation: e.rotation, ...(e.sweep === undefined ? {} : { a0: e.a0 ?? 0, sweep: e.sweep }) } : null;
+    case "ellipse": {
+      // As round as a circle: the same with another radius.
+      if (roundEllipse(e)) return e.rx + d > 0 ? { ...base, kind: "ellipse", center: e.center, rx: e.rx + d, ry: e.ry + d, rotation: e.rotation, ...(e.sweep === undefined ? {} : { a0: e.a0 ?? 0, sweep: e.sweep }) } : null;
+      // The curve that distance from it everywhere. It is not an ellipse: one with both radii made larger or
+      // smaller by d is that far away only where its axes cross it, and the two ends of a part of one did not
+      // land on the offsets of the curves it joined. (A fillet's edge seen at a slant, offset with the lines either
+      // side of it: an outline that looked closed and was open by 7 mm at each end - reported.) A spline along
+      // it, its ends exactly the ellipse's ends moved out, and between them within a few ten-thousandths of
+      // its size of the true curve.
+      const run = ellipseParallel(e, d);
+      if (!run) return null;
+      const whole = e.sweep === undefined;
+      return { ...base, kind: "spline", points: splineThrough(run, whole), closed: whole, mode: "control" };
+    }
     case "rect":
       return e.w + 2 * d > 0 && e.h + 2 * d > 0 ? { ...base, kind: "rect", center: e.center, w: e.w + 2 * d, h: e.h + 2 * d, rotation: e.rotation } : null;
     case "polygon": {
@@ -1867,18 +2097,24 @@ export function lineMeet(p: LineE, q: LineE): Vec2 | null {
  */
 export function outlineOffsetCurves(boundary: SketchEntity[], links: OutlineOffset[] | undefined): SketchEntity[] {
   const out: SketchEntity[] = [];
-  for (const o of links ?? []) {
+  const nearest = (at: Vec2): SketchEntity | null => {
     let seed: SketchEntity | null = null;
     let best = Infinity;
     for (const e of boundary) {
       for (const p of entityPrims(e)) {
-        const d = closestOnPrim(p, o.at).d;
+        const d = closestOnPrim(p, at).d;
         if (d < best) [best, seed] = [d, e];
       }
     }
+    return seed;
+  };
+  for (const o of links ?? []) {
+    const seed = nearest(o.at);
     if (!seed) continue;
     let made: SketchEntity[] = [];
-    if (!o.single && (seed.kind === "line" || seed.kind === "arc" || (seed.kind === "spline" && !seed.closed))) made = offsetChain(boundary, seed.id, o.distance)?.slice(boundary.length) ?? [];
+    // (Several edges picked one by one: together, the ones that join as one run.)
+    if (o.single && o.also?.length) made = offsetSeveral([seed, ...o.also.map(nearest).filter((e): e is SketchEntity => !!e)], o.distance);
+    else if (!o.single && (seed.kind === "line" || seed.kind === "arc" || (seed.kind === "spline" && !seed.closed) || (seed.kind === "ellipse" && seed.sweep !== undefined))) made = offsetChain(boundary, seed.id, o.distance)?.slice(boundary.length) ?? [];
     else {
       const one = offsetEntity(seed, o.distance);
       if (one) made = [one];

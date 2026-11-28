@@ -503,6 +503,8 @@ export function setupRightColumn(ui: UI, view: Viewport, store: DocStore, onUnit
           go("Theme", THEMES.find(([t]) => t === theme)![1], "theme"),
           go("Language", LANGS.find(([l]) => l === lang)![1], "lang"),
           toggleRow("Number pad on screen", settings.value.numpad, (v) => settings.set("numpad", v)),
+          // The round buttons beside what is picked (off: everything from the line at the bottom).
+          toggleRow("Quick buttons", settings.value.quickButtons, (v) => settings.set("quickButtons", v)),
         ],
       },
       {

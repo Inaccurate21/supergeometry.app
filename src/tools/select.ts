@@ -28,7 +28,7 @@ import { detachFreeformCopy, freeformBodies } from "../doc/freeformCopies";
 import { connectEdges } from "../doc/freeformConnect";
 import { OffsetEdgeOp } from "./offsetEdge";
 import { faceFreeformTool } from "./faceFreeform";
-import { AxisOp, bodyCenter as centerOf, ConnectOp, EdgeOp, ExtrudeOp, FillToPlaneOp, ImageOp, LoftOp, MoveFaceOp, PlaneMoveOp, PlaneOp, planeAxes, ReplaceFaceOp, ScaleFaceOp, ScaleOp, ScaleRefOp, RevolveOp, ShellOp, SplitOp, SweepOp, TransformOp } from "./ops";
+import { AxisOp, bodyCenter as centerOf, ConnectOp, EdgeOp, ExtrudeOp, FillToPlaneOp, ImageOp, LoftOp, MoveFaceOp, PlaneMoveOp, PlaneOp, planeAxes, ReplaceFaceOp, ScaleFaceOp, ScaleOp, ScaleRefOp, scaleWay, RevolveOp, ShellOp, SplitOp, SweepOp, TransformOp } from "./ops";
 import { SketchTool, type SketchKind } from "./sketch";
 import { SectionTool, type SectionHost } from "./section";
 import { BooleanOp } from "./booleanOp";
@@ -62,6 +62,11 @@ export class SelectTool implements Tool {
   constructor(private app: AppContext) {}
 
   enter(): void {
+    this.refresh();
+  }
+
+  /** Quick buttons switched on or off in Settings: what is picked gets its own or loses them, and the guide text follows. */
+  quickSwitched(): void {
     this.refresh();
   }
 
@@ -361,7 +366,7 @@ export class SelectTool implements Tool {
 
   private boxHint(): void {
     const name = { all: "everything", body: "bodies", face: "faces", edge: "edges" }[this.boxKind];
-    this.app.ui.setHint(`Box: ${name} - Tab for the next kind (B bodies, F faces, E edges, A all). Left to right takes what's inside, right to left what it touches.`);
+    this.app.ui.setHint(`Box: ${name}. Tab changes the kind. Left to right: what is inside. Right to left: what it touches.`);
   }
 
   /**
@@ -652,7 +657,7 @@ export class SelectTool implements Tool {
     if (first.kind === "face" && n === 2 && sel[1].kind === "face") return "The distance between the faces is shown. Pick a tool for them.";
     if (first.kind === "edge" && !this.sheetFreeform(first.body)) return `Drag the dot to round ${n > 1 ? "the edges" : "the edge"}, ${or}.`;
     if (first.kind === "body") return `Drag the arrows or arcs to move it, ${or}.`;
-    return this.quick ? `${cap(tap)} a button beside it, or pick a tool on the line at the bottom.` : `Pick a tool for ${n > 1 ? "them" : "it"}, or ${tap} another to add it (${tap} a picked one to let it go).`;
+    return this.quick ? `${cap(tap)} a button beside it, or pick a tool on the line at the bottom.` : `Pick a tool for ${n > 1 ? "them" : "it"}, or ${tap} another to add it.`;
   }
 
   /** Called by the app when a top-level tool needs a selection first. */
@@ -858,8 +863,17 @@ export class SelectTool implements Tool {
     const freeFaces = { disabled: !allFlat, why: one ? "Needs a flat face" : "Needs flat faces of one body" };
     const ref = faceRefOf(app, s);
     const bodies = bodiesOf(sel);
-    // (One round wall of a hole picked: a pattern started here repeats the hole.)
-    const holeRef = one && info?.round?.hole && ref ? ref : undefined;
+    // (One round wall of a hole picked: a pattern started here repeats the hole. So does its flat bottom, or the
+    // step of a counterbore - any face a Hole step made: a shallow recess has a wall too thin to tap, and a
+    // pattern started from its bottom made copies of the whole body.)
+    const holeRef = ((): NonNullable<typeof ref> | undefined => {
+      if (!one || !info || !ref) return undefined;
+      if (info.round?.hole) return ref;
+      const made = info.step ? app.store.features.find((f) => f.id === info.step) : undefined;
+      if (made?.type !== "hole") return undefined;
+      const wall = app.view.body(s.body)?.faces.findIndex((g) => g.step === info.step && !!g.round?.hole) ?? -1;
+      return wall >= 0 ? (faceRefOf(app, { body: s.body, face: wall }) ?? undefined) : undefined;
+    })();
     // A round face: its axis (from its mesh).
     const axis = info?.round && one ? roundAxis(app, s.body, s.face) : null;
     // A face a Freeform Face step made: that step opens again to reshape it.
@@ -1024,15 +1038,10 @@ export class SelectTool implements Tool {
         id: "scale",
         label: "Scale",
         icon: "scale",
-        // Starts the kind used last.
-        sub: { uniform: "Uniform", xyz: "X / Y / Z", ref: "By reference" }[lastScale.kind],
-        run: () => app.setTool(lastScale.kind === "ref" ? new ScaleRefOp(app, bodies) : new ScaleOp(app, lastScale.kind === "xyz", bodies)),
-        children: [
-          { id: "scaleUniform", label: "Uniform", icon: "scale", active: lastScale.kind === "uniform", run: () => ((lastScale.kind = "uniform"), app.setTool(new ScaleOp(app, false, bodies))) },
-          { id: "scaleXYZ", label: "X / Y / Z", icon: "scale", sub: "one direction", active: lastScale.kind === "xyz", run: () => ((lastScale.kind = "xyz"), app.setTool(new ScaleOp(app, true, bodies))) },
-          // Two points on it, then what their distance should be: the whole body scales to it.
-          { id: "scaleRef", label: "By reference", icon: "scale", sub: "two points, a distance", active: lastScale.kind === "ref", run: () => ((lastScale.kind = "ref"), app.setTool(new ScaleRefOp(app, bodies))) },
-        ],
+        // Starts the way used last; its three ways are a choice on the tool's own line (ops.ts scaleWays), not a
+        // list to open here first - that was a tap more for the same thing.
+        sub: { uniform: "Uniform", xyz: "X / Y / Z", ref: "By reference" }[scaleWay.kind],
+        run: () => app.setTool(scaleWay.kind === "ref" ? new ScaleRefOp(app, bodies) : new ScaleOp(app, scaleWay.kind === "xyz", bodies)),
       },
       { id: "translate", label: "Translate", icon: "translate", shortcut: "N", run: () => app.setTool(new TransformOp(app, "translate", bodies)) },
       { id: "patl", label: "Pattern – Linear", icon: "patternLinear", run: () => app.setTool(new TransformOp(app, "linear", bodies)) },
@@ -1209,7 +1218,8 @@ export class SelectTool implements Tool {
    */
   private showQuick(items: ToolItem[]): void {
     const sel = this.picks;
-    if (!sel.length || this.pending) return;
+    // (Switched off in Settings: none - nor is where they would stand worked out.)
+    if (!sel.length || this.pending || !settings.value.quickButtons) return;
     const view = this.app.view;
     const s = sel[sel.length - 1];
     const show = (kind: QuickKind, at: Vec3 | undefined, place?: QuickPlace) => {
@@ -1620,7 +1630,6 @@ function cap(s: string): string {
 }
 
 /** Which Scale was used last (the button starts that one). */
-const lastScale: { kind: "uniform" | "xyz" | "ref" } = { kind: "uniform" };
 
 /** Which group a list entry belongs to (a dim line goes between groups). */
 const GROUP: Record<string, string> = {

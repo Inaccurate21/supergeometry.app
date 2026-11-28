@@ -30,6 +30,8 @@ export interface ItemsHandlers {
   saveView(): void;
   /** Assemblies (a joint tapped). */
   openJoints(): void;
+  /** Nothing selected any more (the selected items went into a folder). */
+  deselect(): void;
 }
 
 interface Row {
@@ -73,6 +75,8 @@ export class ItemsPanel {
       }
       this.picking = !this.picking;
       if (!this.picking) this.checked.clear();
+      // What is selected (its rows lit) starts ticked: a lit row and a ticked one look the same.
+      else for (const id of this.selectedIds) if (this.list.querySelector(`li[data-id="${CSS.escape(id)}"]`)) this.checked.add(id);
       pick.classList.toggle("on", this.picking);
       this.render(this.last);
     });
@@ -103,7 +107,7 @@ export class ItemsPanel {
     // click that's in progress would swallow that click).
     const d = this.store.doc;
     const sig = JSON.stringify([
-      d.hidden, d.names, d.folders, this.h.isolated(), d.units, d.views, d.joints?.map((j) => [j.id, j.name]), settings.value.showAxes, settings.value.showOriginPlanes, settings.value.originPlanes, [...this.checked], this.picking, this.moving, [...this.collapsed],
+      d.hidden, d.names, d.folders, this.h.isolated(), d.units, d.views, d.joints?.map((j) => [j.id, j.name]), settings.value.showAxes, settings.value.showOriginPlanes, settings.value.originPlanes, [...this.checked], this.picking, this.moving, [...this.collapsed], [...this.selectedIds], this.used,
       result?.bodies.map((b) => [b.id, b.name]),
       d.features.filter((f) => ["sketch", "plane", "axis", "image"].includes(f.type)).map((f) => [f.id, f.name, f.type]),
     ]);
@@ -220,25 +224,30 @@ export class ItemsPanel {
     const drawn = new Set<string>();
     for (const f of top) drawFolder(f, 0, drawn);
 
-    // Grouping bar.
-    if (!this.checked.size) this.moving = false;
-    if (this.checked.size) {
+    // Grouping bar: for the ticked items - or, nothing ticked, for two or more selected ones (rows lit by plain
+    // clicks look the same as ticked ones, and offered nothing). Once used, not again for the same selection.
+    const lit = !this.checked.size && !this.picking ? [...this.selectedIds].filter((id) => byId.has(id)) : [];
+    this.selKey = lit.join("|");
+    const group = this.checked.size ? [...this.checked] : lit.length >= 2 && this.selKey !== this.used ? lit : [];
+    this.grouped = group;
+    if (!group.length) this.moving = false;
+    if (group.length) {
       const bar = el("li", "items-groupbar");
       // All ticked items in the same folder: the new folder goes inside it.
-      const homes = new Set([...this.checked].map((id) => this.folders.find((f) => f.items.includes(id))?.id ?? ""));
+      const homes = new Set(group.map((id) => this.folders.find((f) => f.items.includes(id))?.id ?? ""));
       const parent = homes.size === 1 ? [...homes][0] || undefined : undefined;
-      const make = el("button", "text-btn primary", `${parent ? "New subfolder" : "New folder"} (${this.checked.size})`);
+      const make = el("button", "text-btn primary", `${parent ? "New subfolder" : "New folder"} (${group.length})`);
       make.addEventListener("click", () => void this.makeFolder(parent));
       // (No Clear: Select at the top again clears the ticks.)
       bar.append(make);
       // Ticked items that are in a folder: Remove takes them out - one level up
       // (into the folder around a subfolder), or back among the loose ones.
-      const filed = [...this.checked].filter((id) => inFolder.has(id));
+      const filed = group.filter((id) => inFolder.has(id));
       if (filed.length) {
         const remove = el("button", "text-btn", `Remove (${filed.length})`);
         remove.title = "Take the ticked items out of their folders";
         remove.addEventListener("click", () => {
-          this.checked.clear();
+          this.spent();
           this.store.commit((d) => {
             const fs = d.folders ?? [];
             const up = new Map<string, string[]>();
@@ -253,7 +262,7 @@ export class ItemsPanel {
       }
       // Move: then tick the folder (or subfolder) they go into.
       if (this.folders.length) {
-        const move = el("button", `text-btn${this.moving ? " primary" : ""}`, this.moving ? "Cancel move" : `Move (${this.checked.size})`);
+        const move = el("button", `text-btn${this.moving ? " primary" : ""}`, this.moving ? "Cancel move" : `Move (${group.length})`);
         move.title = "Move the ticked items into another folder";
         move.addEventListener("click", () => ((this.moving = !this.moving), this.render(this.last)));
         bar.append(move);
@@ -358,6 +367,19 @@ export class ItemsPanel {
     li?.scrollIntoView({ block: "center" });
   }
 
+  /** The items the grouping bar is for (ticked, or selected), and the selection it was last used on. */
+  private grouped: string[] = [];
+  private selKey = "";
+  private used = "";
+  private spent(): void {
+    // Made of the selection, not of ticks: those items are let go (each click in the list adds to the selection,
+    // and the next folder would have taken these along).
+    const lit = !this.checked.size;
+    this.checked.clear();
+    this.used = this.selKey;
+    if (lit) this.h.deselect();
+  }
+
   /** What's selected in the view (a body double-clicked, a plane…): its row lights up. */
   private selectedIds = new Set<string>();
   markSelected(ids: string[]): void {
@@ -372,6 +394,8 @@ export class ItemsPanel {
     }
     // Scrolled out of sight in a long list: brought into view.
     if (first && !this.el.hidden) first.scrollIntoView({ block: "nearest" });
+    // Two or more selected, or no longer: the grouping bar comes or goes.
+    if (!this.checked.size && (next.size >= 2 || this.grouped.length)) this.render(this.last);
   }
 
   /** A folder's row; `items` is everything in it, its subfolders' too. */
@@ -432,8 +456,8 @@ export class ItemsPanel {
 
   /** The ticked items into folder `id` (out of whichever folder they were in). */
   private moveInto(id: string): void {
-    const ids = [...this.checked];
-    this.checked.clear();
+    const ids = [...this.grouped];
+    this.spent();
     this.moving = false;
     this.store.commit((d) => (d.folders = (d.folders ?? []).map((f) => ({ ...f, items: f.id === id ? [...f.items.filter((x) => !ids.includes(x)), ...ids] : f.items.filter((x) => !ids.includes(x)) }))));
   }
@@ -446,10 +470,10 @@ export class ItemsPanel {
 
   /** A folder of the ticked items; `parent`: inside that folder (a subfolder). */
   private async makeFolder(parent?: string): Promise<void> {
-    const ids = [...this.checked];
+    const ids = [...this.grouped];
     const name = await this.h.askName(parent ? "New subfolder" : "New folder", `Folder ${this.folders.length + 1}`);
     if (!name) return;
-    this.checked.clear();
+    this.spent();
     this.picking = false;
     document.getElementById("items-pick")!.classList.remove("on");
     // An item lives in one folder at a time.

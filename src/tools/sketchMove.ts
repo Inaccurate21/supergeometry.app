@@ -47,7 +47,7 @@ export class SketchMoveOp extends FeatureOp<SketchFeature> {
   }
 
   protected hint(): string {
-    return "Drag the blue arrow to move the sketch forward or back, or red and green to slide it. Tap empty space when done.";
+    return "Drag the blue arrow to move the sketch forward or back, red and green to slide it.";
   }
 
   protected items(): PanelItem[] {

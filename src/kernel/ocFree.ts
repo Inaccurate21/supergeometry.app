@@ -431,15 +431,94 @@ function ownSums(s: Measurable): (Sums & { R: Vec3 }) | null {
 }
 const measured = new WeakMap<object, (Sums & { R: Vec3 }) | null>();
 
+/**
+ * A face's sums, kept from the last time a face just like it was measured from the same point. A cut or a join
+ * changes a few of a body's faces and leaves the rest as they were - and the result was measured again whole,
+ * face by face, to check the step (a slot cut in a drill's housing: 5 of its 7 seconds; the project 55 s where
+ * it had been 34).
+ *
+ * The same face is known by what it is, not by its handle: the engine tidies a boolean's result (unify), and
+ * every face of it is a new object, the untouched ones too. What it is: which way it faces, how many edges it
+ * has, each edge's two ends and its middle, the surface's own bounds, and the surface's point and normal at
+ * three places - all read to the last digit, as an untouched face has them to the last digit. A face cut into
+ * or trimmed has another edge, or an edge that ends elsewhere, and is measured anew.
+ */
+let sumsNow = new Map<string, Sums>();
+let sumsWas = new Map<string, Sums>();
+function faceKey(f: Face, R: Vec3, size: number): string | null {
+  try {
+    const parts: number[] = [size, R[0], R[1], R[2]];
+    const { uMin, uMax, vMin, vMax } = f.UVBounds;
+    parts.push(uMin, uMax, vMin, vMax);
+    for (const [u, v] of [[0.5, 0.5], [0.31, 0.47], [0.73, 0.19]]) {
+      const at = surfaceAt(f, u, v);
+      parts.push(...at.p, ...at.n);
+    }
+    const edges = f.edges;
+    parts.push(edges.length);
+    // (Summed: the order the kernel hands the edges out in is its own business.)
+    const sum = [0, 0, 0, 0, 0, 0, 0, 0, 0];
+    for (const e of edges) {
+      const [p0, p1, pm] = [e.startPoint, e.endPoint, e.pointAt(0.5)];
+      for (const [k, q] of [p0, p1, pm].entries()) {
+        sum[k * 3] += q.x * (k === 2 ? 1 : 0.5);
+        sum[k * 3 + 1] += q.y * (k === 2 ? 1 : 0.5);
+        sum[k * 3 + 2] += q.z * (k === 2 ? 1 : 0.5);
+      }
+    }
+    // (Its two ends together, whichever is which: an edge may run either way round.)
+    parts.push(sum[0] + sum[3], sum[1] + sum[4], sum[2] + sum[5], sum[6], sum[7], sum[8]);
+    return `${f.orientation}|${parts.join(",")}`;
+  } catch {
+    return null;
+  }
+}
+/** What is kept of faces measured, let go (a test measures a body afresh to compare). */
+export function forgetFaceSums(): void {
+  sumsNow = new Map();
+  sumsWas = new Map();
+}
+function faceSumsKept(f: Face, R: Vec3, size: number): Sums {
+  const key = faceKey(f, R, size);
+  if (key !== null) {
+    const hit = sumsNow.get(key) ?? sumsWas.get(key);
+    if (hit) {
+      sumsNow.set(key, hit);
+      return hit;
+    }
+  }
+  const sums = faceSums(f, R, size);
+  if (key !== null) {
+    // (Not for ever: the faces of bodies long gone are let go, two lots back.)
+    if (sumsNow.size >= 12000) {
+      sumsWas = sumsNow;
+      sumsNow = new Map();
+    }
+    sumsNow.set(key, sums);
+  }
+  return sums;
+}
+
+/**
+ * The point a body's sums are taken from, and the size its finenesses go by: its box's middle and diagonal, but
+ * in steps - the size the nearest power of two, the middle on a grid an eighth of that. A step that leaves the
+ * body where it is (a hole in it, a boss on it) leaves these the same to the last digit, so its unchanged faces
+ * are found again; the box's own middle moved in its last digits with every cut.
+ */
+function sumsFrame(b: { center: readonly number[]; width: number; height: number; depth: number }): { R: Vec3; size: number } {
+  const diag = Math.max(1e-9, Math.hypot(b.width, b.height, b.depth));
+  const size = Math.pow(2, Math.round(Math.log2(diag)));
+  const grid = size / 8;
+  return { R: b.center.slice(0, 3).map((x) => Math.round(x / grid) * grid) as Vec3, size };
+}
+
 function ownSumsNow(s: Measurable): (Sums & { R: Vec3 }) | null {
   const faces = s.faces;
   if (!faces.some(sweptFace)) return null;
-  const b = s.boundingBox;
-  const R = [...b.center] as Vec3;
-  const size = Math.max(1e-9, Math.hypot(b.width, b.height, b.depth));
+  const { R, size } = sumsFrame(s.boundingBox);
   const out: Sums = { area: 0, m: [0, 0, 0], vol: 0, mv: [0, 0, 0] };
   for (const f of faces) {
-    const r = faceSums(f, R, size);
+    const r = faceSumsKept(f, R, size);
     out.area += r.area;
     out.vol += r.vol;
     for (let j = 0; j < 3; j++) {

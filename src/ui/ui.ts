@@ -36,8 +36,14 @@ export interface ToolItem {
    * it while it's the one in use opens the variants.
    */
   variantsWhenActive?: boolean;
+  /** Its name where there is little room and what it belongs to is plain (a tool's way beside its others on the bottom line). */
+  brief?: string;
   /** Show a colour circle instead of the icon (colour choices). */
   swatch?: string;
+  /** A sign in its icon's place (a constraint's ∥ ⟂ =). */
+  glyph?: string;
+  /** Its kinds stand in its parent's list on the bottom bar, not one tap further in, while that list stays short (Transform: Move/Rotate, Translate, Rotate Around Axis). */
+  spread?: boolean;
   /** Small icons after the label (e.g. ⟲ + what a toggle switches to). */
   trailing?: IconName[];
   /**
@@ -85,6 +91,8 @@ export type PanelItem =
       onExpr?(expr: string | null): void;
       /** The same value as the value box on the model: left out of the list attached to it. */
       inBox?: boolean;
+      /** In the tool's own window only, not on the bottom line (a text's X and Y: the window that opens has them). */
+      aside?: boolean;
       /**
        * Nothing set yet: the value only shows where the pointer is (a line's
        * Across / Up). Digits typed start it over, sign and all - a set value
@@ -101,8 +109,10 @@ export type PanelItem =
       onChange(id: string): void;
       /** Always a drop-down. */
       list?: boolean;
+      /** Which tool this is (Scale: Uniform, X / Y / Z, By reference): on the line itself on a phone too, not behind Options. */
+      lead?: boolean;
     }
-  | { type: "toggle"; label: string; value: boolean; onChange(v: boolean): void }
+  | { type: "toggle"; label: string; value: boolean; /** Its picture on the bottom bar (a switch had none: Construction stood higher than the buttons beside it). */ icon?: IconName; onChange(v: boolean): void }
   /**
    * Drag to set (no typing, no maths): how much a spout bends, a handle
    * arches… The value shows beside it (`show` formats it).
@@ -110,7 +120,7 @@ export type PanelItem =
   | { type: "slider"; label: string; value: number; min: number; max: number; step?: number; show?(v: number): string; onInput(v: number): void }
   | { type: "button"; label: string; icon?: IconName; onClick(): void; /** Blue: the step to take next (Apply). */ primary?: boolean }
   /** A row of one-tap chips (e.g. the constraints that fit a selection); `on` ones are lit. */
-  | { type: "chips"; label?: string; chips: { label: string; glyph?: string; on?: boolean; title?: string; onClick(): void }[]; empty?: string };
+  | { type: "chips"; label?: string; chips: { label: string; glyph?: string; on?: boolean; title?: string; /** In the first row with those that are on, though not lit itself (Constraints' list of them all). */ used?: boolean; onClick(): void }[]; empty?: string; /** One word on the line, its list in two rows: those on (and `used`) first, under `split[0]`; the rest under `split[1]`. */ split?: [string, string] };
 
 /** Kept for older call sites: a numeric field. */
 export interface ValueField {
@@ -702,6 +712,8 @@ export class UI {
     this.hintWords.textContent = text ?? "";
     this.hintText = text;
     this.hint.hidden = !text || !settings.value.showHints;
+    // (Shown or not: the warning line stands over it, or in its place.)
+    document.body.classList.toggle("hint-shown", !this.hint.hidden);
     // How tall it is (a long hint wraps to more lines): the sketch tools column keeps clear of it.
     if (!this.hint.hidden) {
       document.documentElement.style.setProperty("--hint-h", `${Math.ceil(this.hint.offsetHeight)}px`);

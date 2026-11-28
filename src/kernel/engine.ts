@@ -243,6 +243,58 @@ let savedCache: CacheEntry[] = [];
 let drawingCache: CacheEntry[] = [];
 /** While drawings rebuild into `drawingCache`: the model's own steps, for the ones before its first thread. */
 let alsoCache: CacheEntry[] = [];
+/** A rebuild ended by Stop part way: the steps it had built, kept for when it is asked again. */
+let partCache: CacheEntry[] = [];
+
+/**
+ * Stop asked for (the page's Stop), for the rebuild with this id: it ends before its next step, keeping what it
+ * built. That rebuild only - an export or a drawing working through the same steps is not it (a Stop meant for the
+ * rebuild waiting behind an export failed the export, and the rebuild then ran on) - and it holds till that rebuild
+ * has begun and ended (asked while the engine was still being loaded afresh, it was forgotten when the rebuild began).
+ */
+let stopFor: number | null = null;
+export function askStop(of: number): void {
+  stopFor = of;
+}
+/** The rebuild the engine is on (its request's id); null: other work, or none - nothing a Stop is for. */
+let rebuilding: number | null = null;
+export function rebuildBegins(id: number): void {
+  rebuilding = id;
+}
+export function rebuildEnds(id: number): void {
+  if (stopFor === id) stopFor = null;
+  rebuilding = null;
+}
+/** Told each step the rebuild builds, as it begins (a Stop that has to throw the engine away says where it was). */
+export let onStep: ((featureId: string) => void) | null = null;
+export function setOnStep(f: ((featureId: string) => void) | null): void {
+  onStep = f;
+}
+/** A rebuild ended by Stop before step `featureId` (every step before it built, and kept). */
+export class Stopped extends Error {
+  constructor(readonly featureId: string) {
+    super(`Stopped:${featureId}`);
+  }
+}
+/** When the rebuild last let other work in (a Stop asked for meanwhile). */
+let lastYield = 0;
+let pauses = 0;
+/**
+ * Other work let in for a moment: a Stop asked for. By a message to itself, not a timer: timers set one from the
+ * other are each held to 4 ms by the browser - a tenth of the time of a long rebuild made of short steps. Now and
+ * then by a timer all the same, so that nothing which waits its turn behind one is kept out.
+ */
+function pause(): Promise<void> {
+  if (typeof MessageChannel === "undefined" || ++pauses % 8 === 0) return new Promise((done) => setTimeout(done, 0));
+  return new Promise((done) => {
+    const c = new MessageChannel();
+    c.port1.onmessage = () => {
+      c.port1.close();
+      done();
+    };
+    c.port2.postMessage(0);
+  });
+}
 
 /**
  * The engine itself broke down on a step (out of memory, a fault inside
@@ -284,6 +336,7 @@ export function resetKernel(): void {
   cache = [];
   savedCache = [];
   drawingCache = [];
+  partCache = [];
   lastBodies = new Map();
   importCache.clear();
   sketchWas.clear();
@@ -799,7 +852,7 @@ export async function regenerate(features: Feature[], saved = false): Promise<Re
     const f = asGiven.get(id);
     if (f?.type === "sketch" && f.links?.length && s.entities !== f.entities && JSON.stringify(s.entities) !== JSON.stringify(f.entities)) (sketchEntities ??= {})[id] = s.entities;
   }
-  return { bodies: meshes, errors, notes, sketchPlanes, sketchBoundaries, ...(sketchEntities ? { sketchEntities } : {}), ...(whole ? { whole } : {}), planes: [...ctx.planes.values()], axes: [...ctx.axes.values()], ms: performance.now() - t0 };
+  return { bodies: meshes, errors, notes, sketchPlanes, sketchBoundaries, ...(sketchEntities ? { sketchEntities } : {}), ...(whole ? { whole } : {}), planes: [...ctx.planes.values()], axes: [...ctx.axes.values()], ms: performance.now() - t0, ...(features.length && !rebuildStats.kept && !rebuildStats.reused ? { fromNothing: true } : {}) };
 }
 
 /**
@@ -828,7 +881,8 @@ async function run(features: Feature[], saved = false) {
   const off = [...switchedOff].sort().join();
   // The steps as last rebuilt (by step, wherever in the list they are now).
   const before = new Map<string, CacheEntry>();
-  for (const e of [...cache, ...savedCache, ...alsoCache]) if (e.id && !before.has(e.id)) before.set(e.id, e);
+  for (const e of [...cache, ...savedCache, ...alsoCache, ...partCache]) if (e.id && !before.has(e.id)) before.set(e.id, e);
+  lastYield = performance.now();
   rebuildStats.ran = rebuildStats.kept = rebuildStats.reused = 0;
   smoothSteps = new Set(features.filter((f) => f.type === "faceFreeform").map((f) => f.id));
   let key = "";
@@ -848,7 +902,7 @@ async function run(features: Feature[], saved = false) {
     const text = JSON.stringify((f.type === "boolean" || f.type === "delete") && f.whole ? { ...f, whole: undefined } : f, shortBig);
     const json = `${hash53(text, 3)}.${text.length}`;
     key = chainKey(key, text);
-    const cached: CacheEntry | undefined = !hit ? undefined : cache[i]?.key === key ? cache[i] : savedCache[i]?.key === key ? savedCache[i] : alsoCache[i]?.key === key ? alsoCache[i] : undefined;
+    const cached: CacheEntry | undefined = !hit ? undefined : cache[i]?.key === key ? cache[i] : savedCache[i]?.key === key ? savedCache[i] : alsoCache[i]?.key === key ? alsoCache[i] : partCache[i]?.key === key ? partCache[i] : undefined;
     hit = !!cached;
     let entry: CacheEntry;
     const was = before.get(f.id);
@@ -865,6 +919,24 @@ async function run(features: Feature[], saved = false) {
       entry = { ...was, key, ctx: out, input: ctx };
       rebuildStats.reused++;
     } else {
+      // A step to build. (Not one switched off or rolled back: those take no time, and a rebuild stopped at one
+      // had built everything there was to build - nothing was shown of it.) The page is told which, as it begins:
+      // a Stop that has to throw the engine away then knows where it was - told only now and then, the first step
+      // of a rebuild was never named, and a project whose slow step came first could not be stopped. Now and then
+      // other work is let in - a Stop asked for, between two steps (a step itself can't be broken off). What is
+      // built so far is kept: asked again, it carries on from here.
+      if (!f.suppressed) {
+        onStep?.(f.id);
+        if (performance.now() - lastYield > 40) {
+          await pause();
+          lastYield = performance.now();
+        }
+        if (stopFor !== null && stopFor === rebuilding) {
+          stopFor = null;
+          partCache = next;
+          throw new Stopped(f.id);
+        }
+      }
       const out = fork(ctx);
       entry = { key, ctx: out, id: f.id, json, off, input: ctx };
       rebuildStats.ran++;
@@ -995,6 +1067,7 @@ async function run(features: Feature[], saved = false) {
   }
   cache = next;
   if (saved) savedCache = next;
+  partCache = [];
   lastBodies = ctx.bodies;
   // Steps that don't say yet which patterns they used whole: as they were made.
   let whole: Record<string, string[]> | undefined;
@@ -1061,6 +1134,11 @@ async function apply(f: Feature, ctx: Ctx): Promise<void> {
         distance = way * reach;
       }
       const plain = ext === "distance" && !f.start && !f.draft;
+      // (A point just inside each shape's own solid, in the order the shapes were picked: which body is which.)
+      const apartFrom = (): Vec3[] | undefined =>
+        f.separate
+          ? startFaces().map(({ face, normal }) => add(pointOnFace(face as unknown as Shape3D, face).p, scale(normal, (Math.sign(distance) || 1) * Math.min(1e-3, Math.abs(distance) / 2))))
+          : undefined;
       // Pushing/pulling a face of its own body offsets it: the neighbouring faces
       // extend along their own surfaces (a round side stays round).
       const tapered = f.taper !== undefined && Math.abs(f.taper - 1) > 1e-9;
@@ -1091,7 +1169,7 @@ async function apply(f: Feature, ctx: Ctx): Promise<void> {
             throw new Error("This shape can't be tapered");
           }
         });
-        combine(f.id, f.mode, f.target, fuseAll(parts), distance < 0, ctx);
+        combine(f.id, f.mode, f.target, fuseAll(parts), distance < 0, ctx, apartFrom());
         return;
       }
       if (plain && f.source.kind === "face" && f.mode !== "new" && f.mode !== "intersect" && f.target === f.source.face.body && !f.symmetric) {
@@ -1153,7 +1231,7 @@ async function apply(f: Feature, ctx: Ctx): Promise<void> {
         }
         if (hit.length && !f.target) return;
       }
-      combine(f.id, f.mode, f.target, solid, distance < 0, ctx);
+      combine(f.id, f.mode, f.target, solid, distance < 0, ctx, apartFrom());
       return;
     }
 
@@ -1701,6 +1779,8 @@ async function apply(f: Feature, ctx: Ctx): Promise<void> {
         }
       }
       plane = { ...plane, origin: add(plane.origin, scale(plane.normal, f.offset)) };
+      // (A plane as far off as a body may not reach: an offset of a million million was taken, and the view with it.)
+      if (!(Math.max(...plane.origin.map(Math.abs)) < MAX_REACH)) throw new Error("This would be more than 10 km from the origin - check its values (a typo?)");
       // (Older projects: how it was made, from its name.)
       const kind = f.kind ?? (/^Midplane/.test(f.name) ? "mid" : /3 Points/.test(f.name) ? "3pt" : /Perp/.test(f.name) ? "perp" : /on Curve/.test(f.name) ? "curve" : /Angle/.test(f.name) ? "angle" : /Parallel/.test(f.name) ? "parallel" : "offset");
       ctx.planes.set(f.id, { id: f.id, name: f.name, plane, kind });
@@ -3876,7 +3956,22 @@ const PINCHED = "This only touches the body along an edge, so the two hang toget
 export const AUTO_CUT_INSIDE = "Auto cut this out of the body it starts inside - what reaches past that body isn't added. To add it (a branch, a boss), pick Add.";
 const MISSED_CUT = "This cut doesn't reach the body, so nothing was cut - check which way it goes (Flip), or make it longer.";
 
-function combine(id: string, mode: string, target: string | undefined, solid: Shape3D, negative: boolean, ctx: Ctx): void {
+/**
+ * The solids of a new body that stand apart, each by itself, in the order of the shapes they were made from
+ * (`from`: a point inside each shape's own solid): the first shape's is the body, the rest are bodies of their own.
+ * Shapes that touch or overlap are one solid, and so one body.
+ */
+function apartSolids(solid: Shape3D, from: Vec3[]): Shape3D[] {
+  const pieces = subShapes(solid, "SOLID").map((x) => cast(x) as Shape3D);
+  if (pieces.length < 2) return [solid];
+  const rank = pieces.map((p) => {
+    const i = insideOf(p, from).indexOf(true);
+    return i < 0 ? from.length : i;
+  });
+  return pieces.map((p, i) => ({ p, r: rank[i], i })).sort((a, b) => a.r - b.r || a.i - b.i).map((x) => x.p);
+}
+
+function combine(id: string, mode: string, target: string | undefined, solid: Shape3D, negative: boolean, ctx: Ctx, apart?: Vec3[]): void {
   // (A mode that isn't one - a damaged file: the body was left as it was, and nothing said so.)
   if (typeof mode === "string" && !["auto", "new", "join", "cut", "intersect"].includes(mode)) throw new Error(DAMAGED_TEXT);
   const m = mode === "auto" ? (target ? (negative ? "cut" : "join") : "new") : mode;
@@ -3910,7 +4005,10 @@ function combine(id: string, mode: string, target: string | undefined, solid: Sh
   }
   if (!target && m === "join") target = touching(solid, ctx)[0];
   if (m === "new" || !target) {
-    ctx.bodies.set(id, solid);
+    // (Shapes that stand apart: a body each. They were one body in pieces, to be split apart by hand.)
+    const pieces = apart ? apartSolids(solid, apart) : [solid];
+    ctx.bodies.set(id, pieces[0]);
+    pieces.slice(1).forEach((p, k) => ctx.bodies.set(`${id}:${k + 2}`, p));
     return;
   }
   const t = need(ctx.bodies, target);
@@ -5074,7 +5172,9 @@ let infosKept = 0;
 function faceInfoKept(face: Face): FaceInfo {
   let hash = -1;
   try {
-    hash = (face.wrapped as unknown as { HashCode(max: number): number }).HashCode(2147483647);
+    // (The face's own hash, as replicad reads it: asked of the kernel's handle directly - HashCode on it - there is
+    // no such thing in this build, so nothing was ever found again and every face was measured anew each time.)
+    hash = face.hashCode;
     for (const kept of [infosNow, infosWas]) {
       const hit = kept.get(hash)?.find((x) => !x.face.IsNull() && x.face.IsEqual(face.wrapped));
       if (hit) {
@@ -6260,6 +6360,9 @@ export function errorText(err: unknown): string {
     console.error(err);
     return DAMAGED_TEXT;
   }
+  // (The kernel's own words for a result that is nothing - "This shape has not type, it is null" - were shown as
+  // they are, on a step whose face could no longer be offset after an earlier size was changed.)
+  if (err instanceof Error && /has not type, it is null/i.test(err.message)) return "The geometry kernel could not make this shape (try other values)";
   if (err instanceof Error) return err.message.trim() || "The geometry kernel could not compute this (try other values)";
   // OpenCascade gave up (a raw exception from the kernel): say so in words.
   if (typeof err === "number" || String(err).includes("WebAssembly.Exception") || String(err) === "[object Object]") return "The geometry kernel could not compute this (try other values)";
@@ -6740,18 +6843,20 @@ function blendFillet(body: Shape3D, edges: Edge[], r: number, smooth: boolean): 
       t = norm(cross(n, sub(p0, c)));
     } else throw new Error(smooth ? "Smooth (G2) works on straight edges between flat faces and on the round edges of cylinders - set Blend to Round for this edge" : "unsupported edge");
     const probe = Math.max(1e-4, r * 1e-3);
+    // (Asked at the edge's middle: at an end that is a wall's corner, a step either way is still on the face's rim.)
+    const from = axis ? at : add(at, scale(t, length / 2));
     const inward = (face: Face): Vec3 => {
-      const nrm = norm(P(face.normalAt(at)));
+      const nrm = norm(P(face.normalAt(from)));
       let u = norm(cross(nrm, t));
-      const q = makeVertex(add(at, scale(u, probe)));
+      const q = makeVertex(add(from, scale(u, probe)));
       if (measureDistanceBetween(face, q) > probe * 0.5) u = scale(u, -1);
       q.delete();
       return u;
     };
     const u1 = inward(fa);
     const u2 = inward(fb);
-    const n1 = norm(P(fa.normalAt(at)));
-    const n2 = norm(P(fb.normalAt(at)));
+    const n1 = norm(P(fa.normalAt(from)));
+    const n2 = norm(P(fb.normalAt(from)));
     const convex = dot(n1, u2) < 0;
     const cosA = Math.max(-1, Math.min(1, dot(u1, u2)));
     const phi = Math.acos(cosA);
@@ -6774,7 +6879,9 @@ function blendFillet(body: Shape3D, edges: Edge[], r: number, smooth: boolean): 
     const wire = assembleWire([curve, makeLine(B, outB), makeLine(outB, outO), makeLine(outO, outA), makeLine(outA, A)]);
     const section = makeFace(wire);
     const tool = (axis ? revolution(section, axis.c, axis.dir, 360) : basicFaceExtrusion(section, new Vector(scale(t, length + 2 * ext)))) as Shape3D;
-    made.push({ tool, convex, along: axis ? null : t });
+    // The piece between the two faces and nowhere else (see heldByBoth).
+    const held = () => (axis ? heldByRound(tool, kinds[0] === "PLANE" ? [fa, n1] : [fb, n2], kinds[0] === "PLANE" ? fb : fa, axis, d) : heldByBoth(tool, [fa, u2], [fb, u1], d));
+    made.push({ tool: convex ? sparing(tool, held, body, r) : held(), convex, along: axis ? null : t });
   }
   // Two rounds side by side that run into each other along their length (both
   // edges of a block narrower than the two of them): that isn't a round that
@@ -6787,7 +6894,66 @@ function blendFillet(body: Shape3D, edges: Edge[], r: number, smooth: boolean): 
       if (measureVolume(both) > 1e-6 * Math.pow(r, 3)) throw new Error("Those rounds run into each other - make the radius smaller");
     }
   let out = body;
-  for (const m of made) out = (m.convex ? out.cut(m.tool) : out.fuse(m.tool)) as Shape3D;
+  for (const m of made) {
+    if (isEmpty(m.tool)) continue;
+    out = m.convex ? (out.cut(m.tool) as Shape3D) : checkedBoolean("fuse", out, m.tool);
+  }
+  return out;
+}
+
+/**
+ * A blend's piece (an inside corner's fill, an outside corner's cut), kept to where both faces of its edge are:
+ * made as long as the edge and a little more, and as deep as the radius, it took no notice of what stood there.
+ * A fill stood out past a face that narrows to nothing at the edge's ends (the flat top of a round boss against
+ * a wall) as a bar with a block under each end; a cut went on into a wall the edge ends at, or one standing on
+ * the face nearer than the radius. Each face, made a slab on both sides of itself, cuts the piece to its own
+ * outline: what is left lies between the two faces and nowhere else.
+ */
+function heldByBoth(tool: Shape3D, a: [Face, Vec3], b: [Face, Vec3], d: number): Shape3D {
+  let out = tool;
+  // (Each face's outline is carried the other face's way, not square to itself: in a corner that isn't square,
+  // that is where the piece lies over it.)
+  for (const [face, n] of [a, b]) {
+    const slab = basicFaceExtrusion(face.clone().translate(scale(n, -1.5 * d)) as Face, new Vector(scale(n, 3 * d))) as Shape3D;
+    out = out.intersect(slab) as Shape3D;
+  }
+  return out;
+}
+
+/**
+ * An outside corner's cut is made bigger than the piece between the faces (out past both, and past the edge's
+ * ends), so that none of its faces lies on the body's. Whatever of the body stands in that extra - a wall the
+ * edge ends at, a tower on the face nearer than the radius - is spared: taken out of the cut first. Nothing
+ * there (most edges): the cut as it is.
+ */
+function sparing(tool: Shape3D, held: () => Shape3D, body: Shape3D, r: number): Shape3D {
+  try {
+    const extra = tool.cut(held()) as Shape3D;
+    if (isEmpty(extra)) return tool;
+    const stands = body.intersect(extra) as Shape3D;
+    if (isEmpty(stands) || measureVolume(stands) < 1e-6 * Math.pow(r, 3)) return tool;
+    return tool.cut(stands) as Shape3D;
+  } catch {
+    return tool;
+  }
+}
+
+/** The same for a round edge: the flat face's outline, and the cylinder's own height (a low boss, a thin disc). */
+function heldByRound(tool: Shape3D, flat: [Face, Vec3], round: Face, axis: { c: Vec3; dir: Vec3 }, d: number): Shape3D {
+  const [face, n] = flat;
+  let out = tool.intersect(basicFaceExtrusion(face.clone().translate(scale(n, -1.5 * d)) as Face, new Vector(scale(n, 3 * d))) as Shape3D) as Shape3D;
+  let lo = Infinity;
+  let hi = -Infinity;
+  let reach = 0;
+  for (const e of round.edges)
+    for (const u of [0, 0.25, 0.5, 0.75, 1]) {
+      const p = sub(e.pointAt(u).toTuple() as Vec3, axis.c);
+      const h = dot(p, axis.dir);
+      lo = Math.min(lo, h);
+      hi = Math.max(hi, h);
+      reach = Math.max(reach, len(sub(p, scale(axis.dir, h))));
+    }
+  if (hi - lo > 1e-9) out = out.intersect(makeCylinder(reach + 3 * d, hi - lo, add(axis.c, scale(axis.dir, lo)), axis.dir) as Shape3D) as Shape3D;
   return out;
 }
 
